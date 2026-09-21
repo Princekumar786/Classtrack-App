@@ -10,6 +10,7 @@ import '../../../../core/utils/date_utils.dart';
 import '../../../../core/utils/url_launcher_util.dart';
 import '../../../../shared/widgets/progress_ring.dart';
 import '../../../../shared/widgets/states.dart';
+import '../../../../shared/widgets/ui_kit.dart';
 import '../../../attendance/domain/attendance_record.dart';
 import '../../../attendance/presentation/providers/attendance_providers.dart';
 import '../../../attendance/presentation/widgets/bunk_calculator.dart';
@@ -101,18 +102,24 @@ class SubjectDetailScreen extends ConsumerWidget {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final todayId = DateUtilsX.dateId(today);
-    void markToday(AttendanceStatus status) {
+    // Returns false when the class was already in this state (nothing written),
+    // so the caller can skip the confirmation toast.
+    bool markToday(AttendanceStatus status) {
       final slots = uniqueSessions
           .where((s) => s.occursOn(today))
           .map((s) => s.startTime)
           .toList()
         ..sort();
+      // Union the dated records with marks already issued from this client, so
+      // a quick second tap advances to the next class instead of re-targeting
+      // the first one before the records stream has caught up.
       final markedSlots = <String>{
         for (final r in records)
           if (r.dateId == todayId) r.slot,
+        ...controller.pendingSlots(subject.id, today),
       };
       final slot = nextAttendanceSlot(slots, markedSlots);
-      controller.setForOccurrence(subject.id, now, slot, status);
+      return controller.markOccurrence(subject.id, now, slot, status);
     }
 
     return Scaffold(
@@ -458,23 +465,21 @@ class SubjectDetailScreen extends ConsumerWidget {
   }
 
   Widget _detailMark(BuildContext context, String label, IconData icon,
-      Color color, VoidCallback onTap, String toast) {
+      Color color, bool Function() onTap, String toast) {
     return Material(
       color: color.withValues(alpha: 0.12),
       borderRadius: BorderRadius.circular(16),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () {
-          onTap();
+          // Skip the haptic + toast when the class was already in this state:
+          // re-showing an identical confirmation made the bar flash while the
+          // counters stayed put, which read as a glitch.
+          if (!onTap()) return;
           HapticFeedback.lightImpact();
-          ScaffoldMessenger.of(context)
-            ..removeCurrentSnackBar()
-            ..showSnackBar(SnackBar(
-              content: Text(toast),
-              backgroundColor: color,
-              behavior: SnackBarBehavior.floating,
-              duration: const Duration(milliseconds: 1100),
-            ));
+          showQuickFeedback(context, toast,
+              background: color,
+              duration: const Duration(milliseconds: 1100));
         },
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 14),

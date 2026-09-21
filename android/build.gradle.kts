@@ -89,15 +89,36 @@ subprojects {
     }
 }
 
-// Some third-party plugins (e.g. receive_sharing_intent 1.8.x) ship an older
-// Gradle config whose Kotlin compile task ends up on a different JVM target
-// than the Java one, which AGP 9 / Kotlin 2.x rejects with "Inconsistent JVM
-// Target Compatibility". Pin every subproject's Kotlin compilation to 17 to
-// match the Java target set above.
+// Some third-party plugins (e.g. receive_sharing_intent 1.8.x, posthog_flutter)
+// ship an older Gradle config whose Kotlin compile task ends up on a different
+// JVM target than the Java one, which AGP 9 / Kotlin 2.x rejects with
+// "Inconsistent JVM Target Compatibility". Pin every subproject's Kotlin
+// compilation to 17 to match the Java target set above.
+//
+// This MUST run in `afterEvaluate`: plugins like posthog_flutter register their
+// own `KotlinCompile.configureEach { jvmTarget = JVM_1_8 }` inside their build
+// script, and `configureEach` callbacks win in registration order. Registering
+// ours after the subproject has been evaluated guarantees it runs last (and
+// therefore wins) over the plugin's 1.8 setting.
 subprojects {
-    tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
-        compilerOptions {
-            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    // Applied late (after the subproject's own build script) so it wins over a
+    // plugin's own `KotlinCompile.configureEach { jvmTarget = JVM_1_8 }`.
+    // `evaluationDependsOn(":app")` above may have already evaluated some
+    // subprojects, and afterEvaluate throws on those — so apply directly when
+    // already evaluated, otherwise defer to afterEvaluate.
+    if (project.state.executed) {
+        tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+            compilerOptions {
+                jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+            }
+        }
+    } else {
+        afterEvaluate {
+            tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+                compilerOptions {
+                    jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+                }
+            }
         }
     }
 }

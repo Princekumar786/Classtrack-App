@@ -252,7 +252,10 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       ).push(MaterialPageRoute(builder: (_) => ReviewScreen(schedule: result)));
     } catch (e) {
       final reason = await _handleError(e);
-      _analytics.importParseFailed(method, reason);
+      // Guard: _handleError may await a paywall/dialog, during which the user
+      // can leave this screen. Touching `ref` (via _analytics) after that would
+      // throw "Cannot use ref after the widget was disposed".
+      if (mounted) _analytics.importParseFailed(method, reason);
     } finally {
       _stopStatusRotator();
       if (mounted) setState(() => _loading = false);

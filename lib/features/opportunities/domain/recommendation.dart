@@ -89,15 +89,6 @@ class Recommender {
       'Matches your department',
     );
 
-    // Academic year.
-    signal(
-      r.targetAcademicYears.isNotEmpty,
-      user?.academicYear != null &&
-          r.targetAcademicYears.contains(user!.academicYear),
-      weights.academicYear,
-      'For your year',
-    );
-
     // Interests (any overlap).
     signal(
       r.targetInterests.isNotEmpty,

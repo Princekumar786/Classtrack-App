@@ -7,7 +7,7 @@ class AppConstants {
 
   /// User-facing app version shown in Settings. Keep this in sync with the
   /// `version:` field in pubspec.yaml (the part before the `+` build number).
-  static const String appVersion = '1.0.37';
+  static const String appVersion = '1.0.40';
 
   // Google Sign-In: the OAuth 2.0 *Web* client ID (client_type 3 in
   // google-services.json). Passing this explicitly to GoogleSignIn makes the
@@ -164,6 +164,19 @@ class AppConstants {
 
   // Gemini
   static const String geminiModel = 'gemini-2.0-flash';
+
+  // ── PostHog (product analytics, EU cloud) ────────────────────────────────
+  // The PROJECT API key is a public client token (it ships to every device,
+  // like the Google client ID above) — safe to embed. A build can override it
+  // with --dart-define=POSTHOG_KEY=... / --dart-define=POSTHOG_HOST=... .
+  static const String posthogApiKey = String.fromEnvironment(
+    'POSTHOG_KEY',
+    defaultValue: 'phc_sCjBUKQ55dxzbzbedF964bFPhrDVeERHwLkRt7oru9d9',
+  );
+  static const String posthogHost = String.fromEnvironment(
+    'POSTHOG_HOST',
+    defaultValue: 'https://eu.i.posthog.com',
+  );
 
   // Website & legal (hosted pages)
   static const String websiteUrl = 'https://classtracks.app/';

@@ -53,6 +53,10 @@ class NotificationService {
   /// Payload used by the daily agenda summary notification.
   static const String dailyAgendaPayload = 'daily_agenda';
 
+  /// Payload used by the daily learning-planner study reminder. Tapping it
+  /// deep-links to the Planner tab.
+  static const String studyReminderPayload = 'planner_study_reminder';
+
   /// Payload used by the attendance risk-alert notification.
   static const String attendanceRiskPayload = 'attendance_risk';
 
@@ -728,6 +732,39 @@ class NotificationService {
   Future<void> cancelDailySummary() async {
     await init();
     await _plugin.cancel(id: _idDailySummary);
+  }
+
+  /// Daily learning-planner study reminder id (band 8, its own slot).
+  static const int _idStudyReminder = 8 * _idBand;
+
+  /// Schedules (or reschedules) a once-daily study reminder at [hour]:[minute]
+  /// for the learning planner. Repeats daily via [DateTimeComponents.time].
+  Future<void> scheduleStudyReminder({
+    required int hour,
+    required int minute,
+    required String title,
+    required String body,
+  }) async {
+    await init();
+    final now = tz.TZDateTime.now(tz.local);
+    var when =
+        tz.TZDateTime(tz.local, now.year, now.month, now.day, hour, minute);
+    if (when.isBefore(now)) when = when.add(const Duration(days: 1));
+    await _plugin.zonedSchedule(
+      id: _idStudyReminder,
+      title: title,
+      body: body,
+      scheduledDate: when,
+      notificationDetails: _details,
+      androidScheduleMode: _scheduleMode,
+      matchDateTimeComponents: DateTimeComponents.time,
+      payload: studyReminderPayload,
+    );
+  }
+
+  Future<void> cancelStudyReminder() async {
+    await init();
+    await _plugin.cancel(id: _idStudyReminder);
   }
 
   /// Attendance risk-alert id (single, one-shot per reschedule) — band 7, above

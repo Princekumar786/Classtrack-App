@@ -4,6 +4,13 @@ import '../../../core/constants/app_constants.dart';
 import '../../../core/utils/firestore_parsing.dart';
 import '../domain/subject.dart';
 
+/// Narrows [delta] so applying it to a counter currently at [current] can never
+/// push it below zero. Pure so the "counters never go negative" guarantee stays
+/// unit-testable now that [SubjectRepository.adjust] writes increments (which
+/// cannot clamp themselves) instead of absolute totals.
+int clampCounterDelta(int delta, int current) =>
+    delta < -current ? -current : delta;
+
 /// CRUD for users/{uid}/subjects.
 class SubjectRepository {
   final FirebaseFirestore _db;
@@ -54,10 +61,19 @@ class SubjectRepository {
   ///
   /// Offline-safe: a `runTransaction` here would need a live server connection
   /// and silently fail to apply while offline (the reason quick Present/Absent
-  /// taps sometimes "didn't register" or landed late). Instead we read the
-  /// current counters cache-first (instant offline) and write them back with a
-  /// plain merge `set`, which the SDK applies to the local cache immediately
-  /// and syncs to the server when connectivity returns.
+  /// taps sometimes "didn't register" or landed late).
+  ///
+  /// Uses `FieldValue.increment` rather than writing absolute totals. Writing
+  /// absolute values here was a LOST-UPDATE bug: the dated mark path
+  /// ([AttendanceRepository.setStatus]) also adjusts these counters via
+  /// increments, so a stepper adjustment that read the counters before a mark's
+  /// increment was visible would write back a total that silently discarded it —
+  /// the attendance number appeared to jump back to an older value. Increments
+  /// from both paths are commutative, so they compose correctly instead.
+  ///
+  /// The cache-first read is still used, but only to CLAMP the delta so a
+  /// counter can never be driven below zero (an increment alone cannot express
+  /// "subtract, but stop at 0").
   Future<void> adjust(String id,
       {int attendedDelta = 0,
       int absentDelta = 0,
@@ -71,19 +87,20 @@ class SubjectRepository {
             .clamp(0, 100000);
     final curCancelled = (data['cancelled'] as num?)?.toInt() ?? 0;
 
-    var attended = curAttended + attendedDelta;
-    var absent = curAbsent + absentDelta;
-    var cancelled = curCancelled + cancelledDelta;
-    if (attended < 0) attended = 0;
-    if (absent < 0) absent = 0;
-    if (cancelled < 0) cancelled = 0;
+    // Never let a decrement take a counter below 0.
+    final attended = clampCounterDelta(attendedDelta, curAttended);
+    final absent = clampCounterDelta(absentDelta, curAbsent);
+    final cancelled = clampCounterDelta(cancelledDelta, curCancelled);
+
+    if (attended == 0 && absent == 0 && cancelled == 0) return;
 
     await ref.set(
         {
-          'attended': attended,
-          'absent': absent,
-          'held': attended + absent,
-          'cancelled': cancelled,
+          'attended': FieldValue.increment(attended),
+          'absent': FieldValue.increment(absent),
+          // held is always attended + absent.
+          'held': FieldValue.increment(attended + absent),
+          'cancelled': FieldValue.increment(cancelled),
         },
         SetOptions(merge: true));
   }

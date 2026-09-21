@@ -19,6 +19,58 @@ BoxDecoration softCard(
   );
 }
 
+/// The message currently on screen via [showQuickFeedback], used to collapse
+/// repeats. Deliberately module-level: the messenger is app-wide, so the
+/// de-duplication must be too (the same confirmation is raised from several
+/// screens/tiles). Cleared when that bar closes.
+String? _visibleQuickFeedback;
+
+/// Shows a short confirmation snackbar, collapsing a REPEAT of the same message
+/// while that message is still on screen. Returns true when a bar was shown and
+/// false when the call was absorbed as a repeat.
+///
+/// Why: the quick attendance-mark buttons used to do
+/// `removeCurrentSnackBar()` + `showSnackBar()` on every tap.
+/// `removeCurrentSnackBar` tears the bar down instantly (no settle animation),
+/// so tapping Present a few times in a row — or marking several classes —
+/// made the confirmation visibly flash in and out ("the notification blinks
+/// many times"). Re-showing an identical message adds no information, so the
+/// existing bar is left to ride instead. A *different* message still replaces
+/// the current one immediately, which is what users expect.
+///
+/// The suppression window is the bar's ACTUAL lifetime (tracked via
+/// [ScaffoldFeatureController.closed]) rather than a wall-clock timer, so it
+/// stays exact regardless of the configured [duration] or animation speed.
+bool showQuickFeedback(
+  BuildContext context,
+  String message, {
+  Color? background,
+  Duration duration = const Duration(milliseconds: 1400),
+}) {
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  if (messenger == null) return false;
+  if (message == _visibleQuickFeedback) return false; // already on screen
+  messenger.removeCurrentSnackBar();
+  _visibleQuickFeedback = message;
+  messenger
+      .showSnackBar(SnackBar(
+        content: Text(message),
+        duration: duration,
+        backgroundColor: background,
+        behavior: SnackBarBehavior.floating,
+      ))
+      .closed
+      .then((_) {
+    // Only clear if a newer message hasn't already taken over.
+    if (_visibleQuickFeedback == message) _visibleQuickFeedback = null;
+  });
+  return true;
+}
+
+/// Test-only reset for the [showQuickFeedback] de-duplication state.
+@visibleForTesting
+void resetQuickFeedbackForTest() => _visibleQuickFeedback = null;
+
 /// A branded, selectable pill for filter bars (single-select categories or
 /// multi-toggle quick filters). Filled with [accent] (or primary) when
 /// selected; bordered otherwise. Consistent across feeds/editors.

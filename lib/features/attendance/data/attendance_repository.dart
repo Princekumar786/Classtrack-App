@@ -56,6 +56,7 @@ class AttendanceRepository {
     required DateTime date,
     required AttendanceStatus status,
     String slot = '',
+    AttendanceStatus? knownOldStatus,
   }) async {
     final dateId = DateUtilsX.dateId(date);
     // A specific class occurrence gets its own record ("{dateId}__{slot}") so a
@@ -66,11 +67,22 @@ class AttendanceRepository {
     final subjectRef = _subjectRef(subjectId);
     final recordRef = _col(subjectId).doc(recordId);
 
-    // Resolve the previous status without a network round-trip. A cache-first
-    // read is instant offline; on a cache miss we fall back to a normal read
-    // (which still serves from cache when offline) so re-marking an older,
-    // uncached day stays accurate. A brand-new mark resolves to `unmarked`.
-    final oldStatus = await _readStatus(recordRef);
+    // Resolve the PREVIOUS status. Prefer the caller-supplied [knownOldStatus],
+    // which comes from the live, already-loaded attendance records (the same
+    // local cache the aggregate counters live in) — it is both accurate and
+    // instant. Only when the caller doesn't know it (e.g. a cold-start
+    // notification mark before the stream has loaded) do we fall back to a
+    // cache-first read.
+    //
+    // Why this matters: the old code ALWAYS did a `Source.cache` read here,
+    // which returns "unmarked" on a cache MISS even when a record actually
+    // exists (uncached day, fresh cold start). That made the counter delta
+    // below non-idempotent — re-marking the same class then re-added its
+    // contribution via `FieldValue.increment`, so `attended`/`absent` drifted
+    // upward ("the count increases drastically"). Using the known status makes
+    // the delta a correct state-transition every time. It also removes an async
+    // round-trip before the write, so marks land instantly (no "late" update).
+    final oldStatus = knownOldStatus ?? await _readStatus(recordRef);
     if (oldStatus == status) return;
 
     final delta = attendanceCounterDelta(oldStatus, status);

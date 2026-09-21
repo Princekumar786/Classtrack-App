@@ -146,7 +146,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                     Text('Already have an account?',
                         style: theme.textTheme.bodyMedium),
                     TextButton(
-                      onPressed: () => context.pop(),
+                      onPressed: () => context.go('/login'),
                       child: const Text('Sign in'),
                     ),
                   ],

@@ -9,6 +9,13 @@ class AppUser {
   final String? displayName;
   final String? email;
   final String? photoUrl;
+
+  /// The selected profile character asset file name (e.g.
+  /// `icons8-batman-144.png`), stored under `assets/characters/`. Null falls
+  /// back to a deterministic default derived from [uid]. Replaces the old
+  /// first-letter avatar.
+  final String? avatarCharacter;
+
   final double targetAttendancePercent;
   final double monthlyBudget;
   final String currency;
@@ -74,6 +81,7 @@ class AppUser {
     this.displayName,
     this.email,
     this.photoUrl,
+    this.avatarCharacter,
     this.targetAttendancePercent = AppConstants.defaultTargetAttendance,
     this.monthlyBudget = 0,
     this.currency = '₹',
@@ -115,6 +123,7 @@ class AppUser {
     String? displayName,
     String? email,
     String? photoUrl,
+    String? avatarCharacter,
     double? targetAttendancePercent,
     double? monthlyBudget,
     String? currency,
@@ -139,6 +148,7 @@ class AppUser {
       displayName: displayName ?? this.displayName,
       email: email ?? this.email,
       photoUrl: photoUrl ?? this.photoUrl,
+      avatarCharacter: avatarCharacter ?? this.avatarCharacter,
       targetAttendancePercent:
           targetAttendancePercent ?? this.targetAttendancePercent,
       monthlyBudget: monthlyBudget ?? this.monthlyBudget,
@@ -166,6 +176,7 @@ class AppUser {
         'displayName': displayName,
         'email': email,
         'photoUrl': photoUrl,
+        'avatarCharacter': avatarCharacter,
         'targetAttendancePercent': targetAttendancePercent,
         'monthlyBudget': monthlyBudget,
         'currency': currency,
@@ -188,6 +199,7 @@ class AppUser {
       displayName: (cleanName == null || cleanName.isEmpty) ? null : cleanName,
       email: map['email'] as String?,
       photoUrl: map['photoUrl'] as String?,
+      avatarCharacter: map['avatarCharacter'] as String?,
       targetAttendancePercent:
           (map['targetAttendancePercent'] as num?)?.toDouble() ??
               AppConstants.defaultTargetAttendance,

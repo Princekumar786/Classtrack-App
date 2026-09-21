@@ -36,6 +36,11 @@ class ProFeatures {
       'A smart study & revision plan built from your exams, deadlines and free timetable slots — regenerate any time.',
     ),
     ProFeature(
+      Icons.explore_rounded,
+      'Unlimited opportunities & perks',
+      'Browse the full library of scholarships, internships and exclusive student discounts — free members only see the latest few. Search and filter everything.',
+    ),
+    ProFeature(
       Icons.insights_rounded,
       'Insights & predictions',
       'Attendance forecasts, safe-skip counts, spending projections and grade trends.',

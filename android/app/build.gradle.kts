@@ -87,4 +87,12 @@ flutter {
 dependencies {
     // Required by flutter_local_notifications for core library desugaring.
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+
+    // Force a fixed Google Sign-In backend. google_sign_in_android 6.2.1 pins
+    // play-services-auth 21.0.0, whose SignInHubActivity.onCreate crashes with
+    // a NullPointerException ("...getClass() on a null object reference") when
+    // the sign-in activity is recreated after process death. That bug is fixed
+    // in 21.2.0+, so we pin the newer, backward-compatible release. Gradle
+    // resolves to the highest version, so this overrides the transitive 21.0.0.
+    implementation("com.google.android.gms:play-services-auth:21.3.0")
 }

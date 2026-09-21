@@ -10,9 +10,11 @@ import '../../../../shared/widgets/ui_kit.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../../auth/presentation/screens/edit_profile_screen.dart';
 import '../../../cms/domain/marketing.dart';
+import '../../../subscription/presentation/providers/subscription_providers.dart';
 import '../../data/resource_repository.dart';
 import '../../domain/resource.dart';
 import '../providers/opportunities_providers.dart';
+import '../widgets/premium_gate.dart';
 import '../widgets/resource_card.dart';
 import 'resource_detail_screen.dart';
 import 'saved_opportunities_screen.dart';
@@ -46,8 +48,12 @@ class _DiscountsScreenState extends ConsumerState<DiscountsScreen> {
   void _open(Resource r) => Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => ResourceDetailScreen(resource: r)));
 
-  void _openAll(List<Resource> perks) => Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => _AllPerksScreen(perks: perks)),
+  void _openAll(List<Resource> perks, {int lockedCount = 0}) =>
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) =>
+              _AllPerksScreen(perks: perks, lockedCount: lockedCount),
+        ),
       );
 
   void _openSaved() => Navigator.of(context).push(
@@ -201,8 +207,22 @@ class _DiscountsScreenState extends ConsumerState<DiscountsScreen> {
           final featuredCarousel =
               featured.isNotEmpty ? featured : filtered.take(3).toList();
           final featuredIds = featuredCarousel.map((e) => e.id).toSet();
-          final deals =
+          final allDeals =
               filtered.where((d) => !featuredIds.contains(d.id)).toList();
+
+          // ── Premium gate ──────────────────────────────────────────────
+          // Free members browse only the 5 most-recently-updated perks. The
+          // allowed set is computed from the full active perk feed (not the
+          // filtered/searched list) so it can't be bypassed by search or a
+          // category. The featured carousel above stays a free teaser; the
+          // rest is unlocked with Premium via the upsell card appended below.
+          final isPro = ref.watch(isProProvider);
+          final allowedIds = freeAllowedIds(perks, isPro: isPro);
+          final lockedCount =
+              allowedIds == null ? 0 : perks.length - allowedIds.length;
+          final deals = allowedIds == null
+              ? allDeals
+              : allDeals.where((d) => allowedIds.contains(d.id)).toList();
 
           final totalSavings = perks.fold<num>(
               0, (sum, r) => sum + (_savingsAmount(r) ?? 0));
@@ -228,7 +248,14 @@ class _DiscountsScreenState extends ConsumerState<DiscountsScreen> {
               SectionHeader(
                 title: '🔥 Featured perks',
                 actionLabel: 'See all',
-                onAction: () => _openAll(filtered),
+                onAction: () => _openAll(
+                  allowedIds == null
+                      ? filtered
+                      : filtered
+                          .where((d) => allowedIds.contains(d.id))
+                          .toList(),
+                  lockedCount: lockedCount,
+                ),
               ),
               const SizedBox(height: 12),
               SizedBox(
@@ -267,14 +294,22 @@ class _DiscountsScreenState extends ConsumerState<DiscountsScreen> {
           ];
 
           // Lazy list: only visible deal rows (and their image streams) build.
+          final showUpsell = lockedCount > 0;
           return ListView.builder(
             padding: EdgeInsets.fromLTRB(
                 20, 8, 20, 32 + MediaQuery.viewPaddingOf(context).bottom),
-            itemCount: header.length + deals.length,
+            itemCount:
+                header.length + deals.length + (showUpsell ? 1 : 0),
             itemBuilder: (_, i) {
               if (i < header.length) return header[i];
-              final r = deals[i - header.length];
-              return _DealRow(resource: r, onTap: () => _open(r));
+              final idx = i - header.length;
+              if (idx < deals.length) {
+                final r = deals[idx];
+                return _DealRow(resource: r, onTap: () => _open(r));
+              }
+              return const PremiumUnlockCard(
+                noun: 'perks',
+              );
             },
           );
         },
@@ -779,18 +814,25 @@ class _DealRow extends ConsumerWidget {
 
 
 /// Full, scrollable list of every available perk (opened from "See all").
+/// For free members this is the same gated set as the main screen, with a
+/// Premium upsell footer when [lockedCount] perks are still locked.
 class _AllPerksScreen extends StatelessWidget {
   final List<Resource> perks;
-  const _AllPerksScreen({required this.perks});
+  final int lockedCount;
+  const _AllPerksScreen({required this.perks, this.lockedCount = 0});
 
   @override
   Widget build(BuildContext context) {
+    final showUpsell = lockedCount > 0;
     return Scaffold(
       appBar: AppBar(title: const Text('All perks')),
       body: ListView.builder(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
-        itemCount: perks.length,
+        itemCount: perks.length + (showUpsell ? 1 : 0),
         itemBuilder: (_, i) {
+          if (i >= perks.length) {
+            return const PremiumUnlockCard(noun: 'perks');
+          }
           final r = perks[i];
           return _DealRow(
             resource: r,

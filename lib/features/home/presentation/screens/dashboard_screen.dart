@@ -11,6 +11,8 @@ import '../../../../core/utils/url_launcher_util.dart';
 import '../../../../services/reminder_scheduler.dart';
 import '../../../../services/analytics_service.dart';
 import '../../../../shared/widgets/ui_kit.dart';
+import '../../../../shared/widgets/ai_mascot.dart';
+import '../../../../shared/widgets/character_avatar.dart';
 import '../../../../shared/widgets/placement_slot.dart';
 import '../../../../shared/widgets/placement_banner.dart';
 import '../../../../shared/widgets/placement_campaign.dart';
@@ -25,12 +27,10 @@ import '../../../chat/presentation/screens/chat_screen.dart';
 import '../../../exams/presentation/providers/exam_providers.dart';
 import '../../../exams/presentation/screens/exams_screen.dart';
 import '../../../expenses/presentation/screens/expenses_screen.dart';
-import '../../../focus/presentation/screens/focus_screen.dart';
 import '../../../grades/presentation/providers/grade_providers.dart';
 import '../../../grades/presentation/screens/grades_screen.dart';
 import '../../../habits/presentation/screens/habits_screen.dart';
 import '../../../import/presentation/screens/import_screen.dart';
-import '../../../planner/presentation/screens/weekly_planner_screen.dart';
 import '../../../notes/presentation/screens/notes_screen.dart';
 import '../../../opportunities/domain/resource.dart';
 import '../../../opportunities/presentation/providers/opportunities_providers.dart';
@@ -252,6 +252,7 @@ class _Header extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final alertCount = ref.watch(homeAlertsProvider).length;
+    final profile = ref.watch(userProfileProvider).valueOrNull;
     return Row(
       children: [
         Expanded(
@@ -263,22 +264,13 @@ class _Header extends ConsumerWidget {
               onTap: () => _push(context, const SettingsScreen()),
               child: Row(
                 children: [
-                  Container(
-                    width: 46,
-                    height: 46,
-                    decoration: const BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [AppColors.primaryLight, AppColors.primary],
-                      ),
-                      shape: BoxShape.circle,
-                    ),
-                    alignment: Alignment.center,
-                    child: Text(
-                      firstName.isNotEmpty ? firstName[0].toUpperCase() : '?',
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 18),
+                  CharacterAvatar(
+                    uid: profile?.uid ?? '',
+                    character: profile?.avatarCharacter,
+                    fallbackText: firstName,
+                    size: 46,
+                    gradient: const LinearGradient(
+                      colors: [AppColors.primaryLight, AppColors.primary],
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -351,13 +343,19 @@ class _Header extends ConsumerWidget {
         const SizedBox(width: 10),
         Semantics(
           button: true,
-          label: 'Ask the AI assistant',
-          child: RoundIconButton(
-            icon: Icons.auto_awesome_rounded,
-            size: 46,
-            background: AppColors.primary,
-            iconColor: Colors.white,
-            onTap: () => _push(context, const ChatScreen()),
+          label: 'Ask Kiro',
+          child: Material(
+            color: Colors.transparent,
+            shape: const CircleBorder(),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: () => _push(context, const ChatScreen()),
+              child: const SizedBox(
+                width: 46,
+                height: 46,
+                child: Center(child: AiMascot(size: 46)),
+              ),
+            ),
           ),
         ),
       ],
@@ -1034,16 +1032,15 @@ class _ClassTimelineTile extends ConsumerWidget {
   }
 
   void _mark(BuildContext context, WidgetRef ref, AttendanceStatus s) {
-    HapticFeedback.selectionClick();
     final c = scheduled;
-    final messenger = ScaffoldMessenger.of(context);
-    ref.read(attendanceControllerProvider).setForOccurrence(
+    // Only confirm (and only buzz) when the tap actually changed something.
+    // Re-tapping an already-marked class is a no-op, so firing a snackbar for
+    // it just made the bar flash without the numbers moving.
+    final changed = ref.read(attendanceControllerProvider).markOccurrence(
         c.subject.id, DateTime.now(), c.session.startTime, s);
-    messenger.removeCurrentSnackBar();
-    messenger.showSnackBar(SnackBar(
-      duration: const Duration(milliseconds: 1400),
-      content: Text('${s.label} · ${c.subject.name}'),
-    ));
+    if (!changed) return;
+    HapticFeedback.selectionClick();
+    showQuickFeedback(context, '${s.label} · ${c.subject.name}');
   }
 
   @override
@@ -1467,8 +1464,6 @@ class _QuickTool {
 Map<String, _QuickTool> _quickToolRegistry() => {
       'tasks': _QuickTool('Tasks', Icons.check_circle_outline_rounded,
           AppColors.primary, () => const TasksScreen()),
-      'planner': _QuickTool('Planner', Icons.auto_awesome_rounded,
-          AppColors.accent, () => const WeeklyPlannerScreen()),
       'perks': _QuickTool('Perks', Icons.redeem_rounded, AppColors.coral,
           () => const DiscountsScreen()),
       'grades': _QuickTool('Grades', Icons.school_rounded, AppColors.primary,
@@ -1479,12 +1474,12 @@ Map<String, _QuickTool> _quickToolRegistry() => {
           () => const NotesScreen()),
       'calendar': _QuickTool('Calendar', Icons.calendar_month_rounded,
           AppColors.accent, () => const CalendarScreen()),
-      'focus': _QuickTool('Focus', Icons.timer_outlined, AppColors.success,
-          () => const FocusScreen()),
       'habits': _QuickTool('Habits', Icons.local_fire_department_rounded,
           AppColors.coral, () => const HabitsScreen()),
       'expenses': _QuickTool('Expenses', Icons.account_balance_wallet_rounded,
           AppColors.success, () => const ExpensesScreen()),
+      'attendance': _QuickTool('Attendance', Icons.pie_chart_rounded,
+          AppColors.info, () => const AttendanceScreen()),
     };
 
 /// Home "Quick tools" — a clean, airy, user-managed grid of one-tap shortcuts.

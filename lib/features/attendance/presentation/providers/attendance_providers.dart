@@ -5,6 +5,7 @@ import '../../../../core/utils/date_utils.dart';
 import '../../../subjects/presentation/providers/subject_providers.dart';
 import '../../data/attendance_repository.dart';
 import '../../domain/attendance_record.dart';
+import '../../domain/pending_marks.dart';
 
 /// Aggregate stats for a single subject, derived from its attended/held counters.
 final subjectStatsProvider =
@@ -164,15 +165,53 @@ final dailyAttendanceProvider = Provider<Map<String, DayAttendance>>((ref) {
 /// and per-date marking (dashboard / today's classes).
 final attendanceControllerProvider = Provider<AttendanceController>((ref) {
   return AttendanceController(
+    ref,
     ref.watch(subjectRepositoryProvider),
     ref.watch(attendanceRepositoryProvider),
   );
 });
 
 class AttendanceController {
+  final Ref _ref;
   final dynamic _repo; // SubjectRepository (nullable)
   final AttendanceRepository? _attendance;
-  AttendanceController(this._repo, this._attendance);
+  AttendanceController(this._ref, this._repo, this._attendance);
+
+  /// Marks this client has issued but which the records stream may not have
+  /// echoed back yet. See [PendingMarks] for why this is required for the
+  /// counter deltas to stay correct under rapid taps.
+  final PendingMarks _pending = PendingMarks();
+
+  /// Resolves the status of a specific occurrence from the live, already-loaded
+  /// records (no network). Returns null when the records stream hasn't loaded
+  /// yet (cold start), letting the repository fall back to a cache read.
+  AttendanceStatus? _streamStatus(String subjectId, DateTime date, String slot) {
+    final records =
+        _ref.read(attendanceForSubjectProvider(subjectId)).valueOrNull;
+    if (records == null) return null; // not loaded — repo resolves it
+    final dateId = DateUtilsX.dateId(date);
+    for (final r in dedupeAttendanceRecords(records)) {
+      if (r.dateId == dateId && r.slot == slot) return r.status;
+    }
+    return AttendanceStatus.unmarked; // loaded, no record ⇒ genuinely unmarked
+  }
+
+  /// The occurrence's status accounting for marks issued but not yet confirmed.
+  AttendanceStatus? effectiveStatus(
+          String subjectId, DateTime date, String slot) =>
+      _pending.effectiveStatus(
+        subjectId: subjectId,
+        dateId: DateUtilsX.dateId(date),
+        slot: slot,
+        streamStatus: _streamStatus(subjectId, date, slot),
+      );
+
+  /// Slots on [date] for [subjectId] already marked by this client but possibly
+  /// not yet visible on the records stream. Callers union this into the set they
+  /// pass to [nextAttendanceSlot] so consecutive taps advance through a day's
+  /// classes instead of all re-targeting the first one.
+  Set<String> pendingSlots(String subjectId, DateTime date) =>
+      _pending.slotsFor(subjectId, DateUtilsX.dateId(date));
 
   // --- Quick counter adjustments (no specific date) ---------------------------
 
@@ -206,6 +245,46 @@ class AttendanceController {
 
   // --- Per-date marking (writes a dated record + reconciles counters) ---------
 
+  /// Marks one class occurrence and reports SYNCHRONOUSLY whether it changed
+  /// anything — `false` means the occurrence was already in [status] and
+  /// nothing was written.
+  ///
+  /// The decision comes from [effectiveStatus] (local intent) rather than from
+  /// the network, so it is both instant — callers can confirm without waiting
+  /// for connectivity — and safe against repeat taps. The write itself is
+  /// fire-and-forget: Firestore applies it to the local cache immediately and
+  /// syncs when online.
+  bool markOccurrence(
+    String subjectId,
+    DateTime date,
+    String slot,
+    AttendanceStatus status,
+  ) {
+    final attendance = _attendance;
+    if (attendance == null) return false;
+    final dateId = DateUtilsX.dateId(date);
+    final decision = _pending.requestMark(
+      subjectId: subjectId,
+      dateId: dateId,
+      slot: slot,
+      streamStatus: _streamStatus(subjectId, date, slot),
+      status: status,
+    );
+    if (!decision.changed) return false;
+    attendance
+        .setStatus(
+          subjectId: subjectId,
+          date: date,
+          slot: slot,
+          status: status,
+          knownOldStatus: decision.previousStatus,
+        )
+        .catchError((_) {
+      _pending.forget(subjectId: subjectId, dateId: dateId, slot: slot);
+    });
+    return true;
+  }
+
   /// Mark [subjectId] on [date] with [status]. Pass [AttendanceStatus.unmarked]
   /// to clear the day. Keeps the aggregate percentage in sync.
   Future<void> setForDate(
@@ -213,26 +292,18 @@ class AttendanceController {
     DateTime date,
     AttendanceStatus status,
   ) async =>
-      _attendance?.setStatus(
-        subjectId: subjectId,
-        date: date,
-        status: status,
-      );
+      markOccurrence(subjectId, date, '', status);
 
   /// Mark a specific class occurrence ([slot] = the session's start time, e.g.
   /// "09:00") on [date]. Idempotent per occurrence, so marking the same class
-  /// from any screen never double-counts, while two different sessions of the
-  /// same subject on the same day are counted separately.
+  /// from any screen — or tapping the same button repeatedly — never
+  /// double-counts, while two different sessions of the same subject on the
+  /// same day are counted separately.
   Future<void> setForOccurrence(
     String subjectId,
     DateTime date,
     String slot,
     AttendanceStatus status,
   ) async =>
-      _attendance?.setStatus(
-        subjectId: subjectId,
-        date: date,
-        slot: slot,
-        status: status,
-      );
+      markOccurrence(subjectId, date, slot, status);
 }

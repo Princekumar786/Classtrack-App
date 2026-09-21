@@ -33,7 +33,12 @@ class ResourceRepository {
   /// record (e.g. a mistyped field entered in the CMS) can never break the
   /// whole feed. Ordering is done client-side so the query needs no composite
   /// index (avoids a "requires an index" failure that would blank the screen).
-  Stream<List<Resource>> watchVisible({int limit = 200}) {
+  ///
+  /// NOTE: the limit must comfortably exceed the total number of visible
+  /// resources. Opportunities and Perks share this one stream, and the query
+  /// has no server-side ordering, so too small a limit lets one type (whichever
+  /// has lower document IDs) crowd the other out of the window.
+  Stream<List<Resource>> watchVisible({int limit = 1500}) {
     if (_visibleStatusKeys.isEmpty) {
       return Stream.value(const <Resource>[]);
     }

@@ -8,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/date_utils.dart';
+import '../../../../shared/widgets/ai_mascot.dart';
 import '../../../import/domain/parsed_schedule.dart';
 import '../../../import/presentation/screens/review_screen.dart';
 import '../../../subscription/presentation/screens/paywall_screen.dart';
@@ -434,24 +435,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             icon: const Icon(Icons.arrow_back_rounded),
             onPressed: () => Navigator.of(context).maybePop(),
           ),
-          Container(
-            width: 42,
-            height: 42,
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                colors: [AppColors.primaryLight, AppColors.primary],
-              ),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(Icons.auto_awesome_rounded,
-                color: Colors.white, size: 22),
-          ),
+          const AiMascot(size: 46),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Study Assistant', style: theme.textTheme.titleMedium),
+                Text('Kiro', style: theme.textTheme.titleMedium),
                 Row(
                   children: [
                     Container(
@@ -637,16 +627,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
-          width: 30,
-          height: 30,
-          margin: const EdgeInsets.only(top: 6, right: 8),
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-                colors: [AppColors.primaryLight, AppColors.primary]),
-            shape: BoxShape.circle,
-          ),
-          child: const Icon(Icons.auto_awesome_rounded,
-              size: 16, color: Colors.white),
+          margin: const EdgeInsets.only(top: 4, right: 8),
+          child: const AiMascot(size: 32, animate: false),
         ),
         Flexible(child: bubble),
       ],
@@ -911,16 +893,8 @@ class _TypingBubble extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
-          width: 30,
-          height: 30,
-          margin: const EdgeInsets.only(top: 6, right: 8),
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-                colors: [AppColors.primaryLight, AppColors.primary]),
-            shape: BoxShape.circle,
-          ),
-          child: const Icon(Icons.auto_awesome_rounded,
-              size: 16, color: Colors.white),
+          margin: const EdgeInsets.only(top: 4, right: 8),
+          child: const AiMascot(size: 32),
         ),
         Container(
           margin: const EdgeInsets.symmetric(vertical: 5),

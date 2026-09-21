@@ -22,6 +22,9 @@ import '../../../grades/domain/grade_item.dart';
 import '../../../grades/presentation/providers/grade_providers.dart';
 import '../../../habits/domain/habit.dart';
 import '../../../habits/presentation/providers/habit_providers.dart';
+import '../../../learning_planner/domain/learning_plan.dart';
+import '../../../learning_planner/domain/learning_plan_generator.dart';
+import '../../../learning_planner/presentation/providers/learning_planner_providers.dart';
 import '../../../notes/domain/note.dart';
 import '../../../notes/presentation/providers/note_providers.dart';
 import '../../../opportunities/domain/resource.dart';
@@ -54,7 +57,7 @@ class ChatState {
 
 const _welcome = ChatMessage(
   role: ChatRole.assistant,
-  text: "Hi! I'm your ClassTrack assistant. 👋\n\n"
+  text: "Hi! I'm Kiro, your study assistant. 👋\n\n"
       'Tell me your timetable in plain words (e.g. "Mon & Wed 9–10 DBMS in Room 204, '
       "Tue 11–12 Maths\") or attach a photo of it, and I'll build your schedule. "
       'You can also ask me for study or attendance tips.',
@@ -847,6 +850,15 @@ class ChatController extends StateNotifier<ChatState> {
           case 'update':
             outcome.record(await _updateEntity(a));
             break;
+          case 'createPlan':
+            outcome.record(await _createPlan(a));
+            break;
+          case 'adjustPlan':
+            outcome.record(await _adjustPlan(a));
+            break;
+          case 'completeTopic':
+            outcome.record(await _completeTopic(a));
+            break;
           case 'delete':
             outcome.recordCount(await _deleteEntity(a));
             break;
@@ -1190,6 +1202,129 @@ class ChatController extends StateNotifier<ChatState> {
     final h = _match(habits, q, (x) => x.title);
     if (h == null || h.doneToday) return false;
     await _ref.read(habitControllerProvider).toggleToday(h);
+    return true;
+  }
+
+  // --- Learning Planner actions ---------------------------------------------
+
+  KnowledgeLevel _parseLevel(dynamic v) {
+    switch ('$v'.toLowerCase().trim()) {
+      case 'zero':
+      case 'beginner':
+      case 'none':
+        return KnowledgeLevel.zero;
+      case 'intermediate':
+        return KnowledgeLevel.intermediate;
+      case 'advanced':
+        return KnowledgeLevel.advanced;
+      default:
+        return KnowledgeLevel.basics;
+    }
+  }
+
+  LearningGoal _parseGoal(dynamic v) {
+    switch ('$v'.toLowerCase().trim()) {
+      case 'syllabus':
+        return LearningGoal.syllabus;
+      case 'exam':
+        return LearningGoal.exam;
+      case 'interview':
+        return LearningGoal.interview;
+      case 'project':
+        return LearningGoal.project;
+      case 'explore':
+        return LearningGoal.explore;
+      default:
+        return LearningGoal.fundamentals;
+    }
+  }
+
+  StudyProgram _parseProgram(dynamic v) {
+    switch ('$v'.toLowerCase().trim()) {
+      case 'school':
+        return StudyProgram.school;
+      case 'undergraduate':
+      case 'undergrad':
+        return StudyProgram.undergraduate;
+      case 'postgraduate':
+      case 'mba':
+      case 'pg':
+        return StudyProgram.postgraduate;
+      case 'professional':
+        return StudyProgram.professional;
+      default:
+        return StudyProgram.general;
+    }
+  }
+
+  Set<int> _parseStudyDays(dynamic v) {
+    if (v is List) {
+      final out = <int>{};
+      for (final e in v) {
+        final d = Weekdays.parse('$e');
+        if (d != null) out.add(d);
+      }
+      if (out.isNotEmpty) return out;
+    }
+    return {1, 2, 3, 4, 5};
+  }
+
+  /// Creates a learning plan. Region is auto-derived from the student's profile
+  /// location so jurisdiction-sensitive subjects (law, tax, politics…) are
+  /// tailored automatically. Respects the free-plan limit.
+  Future<bool> _createPlan(Map<String, dynamic> a) async {
+    final subject = (a['subject'] as String?)?.trim();
+    if (subject == null || subject.isEmpty) return false;
+    if (!_ref.read(canCreatePlanProvider)) return false;
+    final country = _ref.read(userProfileProvider).valueOrNull?.country;
+    final region = StudyRegionX.fromCountryName(country);
+    final gen = _ref.read(learningPlanGeneratorProvider);
+    final plan = gen.generate(PlanRequest(
+      subject: subject,
+      specificTopic: a['specificTopic'] == true,
+      level: _parseLevel(a['level']),
+      goal: _parseGoal(a['goal']),
+      dailyMinutes: _toInt(a['dailyMinutes']) ?? 60,
+      studyDays: _parseStudyDays(a['days']),
+      targetDate: _parseDate(a['deadline'] as String?) ??
+          DateTime.now().add(const Duration(days: 14)),
+      region: region,
+      program: _parseProgram(a['program']),
+    ));
+    await _ref.read(learningPlansProvider.notifier).addPlan(plan);
+    return true;
+  }
+
+  /// Adjusts an existing plan's pace/deadline/days and reschedules.
+  Future<bool> _adjustPlan(Map<String, dynamic> a) async {
+    final q = (a['subject'] ?? a['match'] ?? a['plan']) as String?;
+    final plans = _ref.read(learningPlansProvider);
+    final plan = _match(plans, q, (p) => p.subject);
+    if (plan == null) return false;
+    final minutes = _toInt(a['dailyMinutes']);
+    final deadline = _parseDate(a['deadline'] as String?);
+    final days = a['days'] is List ? _parseStudyDays(a['days']) : null;
+    await _ref.read(learningPlansProvider.notifier).replan(
+          plan.id,
+          dailyMinutes: minutes,
+          studyDays: days,
+          targetDate: deadline,
+        );
+    return true;
+  }
+
+  /// Marks a topic within a plan complete.
+  Future<bool> _completeTopic(Map<String, dynamic> a) async {
+    final q = (a['subject'] ?? a['plan']) as String?;
+    final topicQ = (a['topic'] ?? a['title'] ?? a['match']) as String?;
+    final plans = _ref.read(learningPlansProvider);
+    final plan = _match(plans, q, (p) => p.subject);
+    if (plan == null || topicQ == null) return false;
+    final topic = _match(plan.topics, topicQ, (t) => t.title);
+    if (topic == null) return false;
+    await _ref
+        .read(learningPlansProvider.notifier)
+        .setTopicStatus(plan.id, topic.id, TopicStatus.completed);
     return true;
   }
 
@@ -1553,6 +1688,32 @@ class ChatController extends StateNotifier<ChatState> {
         await repo.delete(subjectId, t.id);
         _pendingUndo =
             PendingUndo('Deleted a class', () => repo.add(subjectId, t));
+        return 1;
+      case 'plan':
+      case 'learning plan':
+      case 'learningplan':
+      case 'planner':
+        final items = _ref.read(learningPlansProvider);
+        final ctrl = _ref.read(learningPlansProvider.notifier);
+        if (all) {
+          for (final p in items) {
+            await ctrl.deletePlan(p.id);
+          }
+          if (items.isNotEmpty) {
+            _pendingUndo = PendingUndo('Deleted ${items.length} plans',
+                () async {
+              for (final p in items) {
+                await ctrl.addPlan(p);
+              }
+            });
+          }
+          return items.length;
+        }
+        final p = _match(items, q, (x) => x.subject);
+        if (p == null) return 0;
+        await ctrl.deletePlan(p.id);
+        _pendingUndo =
+            PendingUndo('Deleted plan "${p.subject}"', () => ctrl.addPlan(p));
         return 1;
     }
     return 0;

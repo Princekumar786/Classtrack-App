@@ -10,10 +10,12 @@ import '../../../../shared/widgets/ui_kit.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../../auth/presentation/screens/edit_profile_screen.dart';
 import '../../../cms/domain/marketing.dart';
+import '../../../subscription/presentation/providers/subscription_providers.dart';
 import '../../data/resource_repository.dart';
 import '../../domain/resource.dart';
 import '../../domain/resource_type.dart';
 import '../providers/opportunities_providers.dart';
+import '../widgets/premium_gate.dart';
 import '../widgets/resource_card.dart';
 import 'discounts_screen.dart';
 import 'resource_detail_screen.dart';
@@ -320,6 +322,24 @@ class _OpportunitiesScreenState extends ConsumerState<OpportunitiesScreen> {
                       .take(8)
                       .toList();
 
+                  // ── Premium gate ────────────────────────────────────────
+                  // Free members browse only the 5 most-recently-updated
+                  // opportunities. The allowed set is computed from the full
+                  // active feed (not the filtered/searched list) so it can't be
+                  // bypassed by searching or filtering. The featured carousel
+                  // above stays a free teaser; the remaining catalogue is
+                  // unlocked with Premium via the upsell card appended below.
+                  final isPro = ref.watch(isProProvider);
+                  final allowedIds =
+                      freeAllowedIds(opportunities, isPro: isPro);
+                  final lockedCount = allowedIds == null
+                      ? 0
+                      : opportunities.length - allowedIds.length;
+                  if (allowedIds != null) {
+                    list =
+                        list.where((r) => allowedIds.contains(r.id)).toList();
+                  }
+
                   return _CategoryChips(
                     types: types,
                     selected: _type,
@@ -408,6 +428,7 @@ class _OpportunitiesScreenState extends ConsumerState<OpportunitiesScreen> {
                               ];
                               // Lazy list: only visible cards (and their image
                               // streams) are built, keeping scroll smooth.
+                              final showUpsell = lockedCount > 0;
                               return ListView.builder(
                                 padding: EdgeInsets.fromLTRB(
                                   20,
@@ -415,13 +436,21 @@ class _OpportunitiesScreenState extends ConsumerState<OpportunitiesScreen> {
                                   20,
                                   bottomClear,
                                 ),
-                                itemCount: header.length + list.length,
+                                itemCount: header.length +
+                                    list.length +
+                                    (showUpsell ? 1 : 0),
                                 itemBuilder: (_, i) {
                                   if (i < header.length) return header[i];
-                                  final r = list[i - header.length];
-                                  return _OpportunityCard(
-                                    resource: r,
-                                    onTap: () => _open(r),
+                                  final idx = i - header.length;
+                                  if (idx < list.length) {
+                                    final r = list[idx];
+                                    return _OpportunityCard(
+                                      resource: r,
+                                      onTap: () => _open(r),
+                                    );
+                                  }
+                                  return const PremiumUnlockCard(
+                                    noun: 'opportunities',
                                   );
                                 },
                               );

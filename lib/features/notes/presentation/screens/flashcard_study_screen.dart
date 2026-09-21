@@ -419,6 +419,11 @@ class NoteImageViewer extends StatelessWidget {
           child: Image.network(
             url,
             fit: BoxFit.contain,
+            // Cap the decoded bitmap size so full-resolution camera photos
+            // (12MP+) don't blow up memory — addresses the Play "bitmap
+            // downsampling" recommendation. 1600px stays crisp even when the
+            // InteractiveViewer is zoomed in on a phone screen.
+            cacheWidth: 1600,
             loadingBuilder: (context, child, progress) {
               if (progress == null) return child;
               return const CircularProgressIndicator(color: Colors.white);

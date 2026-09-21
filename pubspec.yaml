@@ -1,7 +1,7 @@
 name: classtrack
 description: "ClassTrack — Attendance & class schedule tracker with Gemini AI import."
 publish_to: "none"
-version: 1.0.39+41
+version: 1.0.46+48
 
 environment:
   sdk: ">=3.8.0 <4.0.0"
@@ -81,6 +81,11 @@ dependencies:
   # Crash + non-fatal error reporting. Paired with firebase_core 4.x.
   firebase_crashlytics: ^5.2.7
 
+  # Product analytics (PostHog, EU cloud): behaviour events, screen views, app
+  # lifecycle, user identify/reset and error tracking. Fans out alongside
+  # Firebase Analytics via AnalyticsService; initialised manually in main.dart.
+  posthog_flutter: ^5.26.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -93,6 +98,8 @@ flutter:
   assets:
     - assets/illustrations/
     - assets/fonts/
+    - assets/mascot/
+    - assets/characters/
 
   # Bundled fonts. Shipping the .ttf assets locally means the very first frame
   # renders in Poppins/Inter with NO runtime download — removing the launch

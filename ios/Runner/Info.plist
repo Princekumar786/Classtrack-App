@@ -72,5 +72,10 @@
 		<string>ClassTrack uses the camera so you can snap a photo of your timetable for AI import.</string>
 		<key>NSPhotoLibraryUsageDescription</key>
 		<string>ClassTrack needs photo access so you can pick a timetable screenshot to import.</string>
+		<!-- PostHog: manual initialisation. Configured from Dart in main.dart
+		     (_initPostHog); AUTO_INIT=false stops the native SDK self-starting
+		     from Info.plist before Dart runs. -->
+		<key>com.posthog.posthog.AUTO_INIT</key>
+		<false/>
 	</dict>
 </plist>

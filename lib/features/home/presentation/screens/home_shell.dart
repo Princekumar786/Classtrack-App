@@ -12,6 +12,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/providers/app_settings_provider.dart';
 import '../../../../core/utils/shared_intake.dart';
+import '../../../../shared/widgets/ui_kit.dart';
 import '../../../../services/analytics_service.dart';
 import '../../../../services/calendar_auto_sync.dart';
 import '../../../../services/notification_service.dart';
@@ -28,6 +29,8 @@ import '../../../tasks/presentation/screens/share_link_handler.dart';
 import '../../../opportunities/presentation/screens/opportunities_screen.dart';
 import '../../../attendance/presentation/screens/attendance_screen.dart';
 import '../../../attendance/presentation/providers/attendance_providers.dart';
+import '../../../learning_planner/presentation/screens/planner_home_screen.dart';
+import '../../../learning_planner/presentation/providers/learning_planner_providers.dart';
 import '../../../attendance/domain/attendance_record.dart';
 import '../../../subjects/presentation/providers/subject_providers.dart';
 import '../../../exams/presentation/screens/exams_screen.dart';
@@ -249,6 +252,12 @@ class _HomeShellState extends ConsumerState<HomeShell>
   /// initial-media and stream callbacks can otherwise overlap).
   bool _handlingShare = false;
 
+  /// Signature + time of the last attendance mark applied from a notification
+  /// action, used to ignore a re-delivered/replayed identical action so it
+  /// can't double-count during the cold-start window.
+  String? _lastMarkSig;
+  DateTime? _lastMarkAt;
+
   /// Signature of the last shared payload we actually handled, persisted so a
   /// stale cold-start re-delivery of the same link (see [SharedIntake]) is not
   /// processed again. `null` until loaded from disk.
@@ -262,7 +271,7 @@ class _HomeShellState extends ConsumerState<HomeShell>
     DashboardScreen(),
     ScheduleScreen(),
     OpportunitiesScreen(),
-    AttendanceScreen(),
+    PlannerHomeScreen(),
   ];
 
   @override
@@ -334,7 +343,7 @@ class _HomeShellState extends ConsumerState<HomeShell>
         TourStep(
           title: 'Move around',
           body:
-              'Switch between Home, Schedule, Opportunities and Attendance from '
+              'Switch between Home, Schedule, Explore and Planner from '
               'the bar at the bottom — it stays with you everywhere.',
           icon: Icons.dashboard_rounded,
         ),
@@ -467,24 +476,43 @@ class _HomeShellState extends ConsumerState<HomeShell>
       final status = mark.status == 'present'
           ? AttendanceStatus.present
           : AttendanceStatus.absent;
-      ref.read(attendanceControllerProvider).setForOccurrence(
-            mark.subjectId,
-            DateTime.now(),
-            mark.slot,
-            status,
-          );
+      // De-duplicate re-delivered action taps. Android can deliver the same
+      // notification-action response more than once (and the cold-start launch
+      // path can replay it), which — before the records stream has loaded —
+      // would each be treated as a fresh mark and over-count. Ignore an
+      // identical mark seen within a short window; the write itself is also
+      // idempotent once records are loaded, so this only guards the cold window.
+      final now = DateTime.now();
+      final sig = '${mark.subjectId}|${mark.slot}|${mark.status}';
+      final isDuplicate = sig == _lastMarkSig &&
+          _lastMarkAt != null &&
+          now.difference(_lastMarkAt!) < const Duration(seconds: 5);
+      _lastMarkSig = sig;
+      _lastMarkAt = now;
+      if (!isDuplicate) {
+        ref.read(attendanceControllerProvider).setForOccurrence(
+              mark.subjectId,
+              now,
+              mark.slot,
+              status,
+            );
+      }
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         final name = ref.read(subjectsByIdProvider)[mark.subjectId]?.name;
         final label = name != null && name.isNotEmpty ? ' for $name' : '';
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(status == AttendanceStatus.present
+        // De-duplicating feedback: Android can deliver the same action response
+        // more than once, and re-showing an identical confirmation made the bar
+        // visibly flash.
+        showQuickFeedback(
+            context,
+            status == AttendanceStatus.present
                 ? 'Marked present$label ✅'
-                : 'Marked absent$label'),
-          ),
+                : 'Marked absent$label');
+        setState(() => _index = 0);
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const AttendanceScreen()),
         );
-        setState(() => _index = 3); // Attendance tab
       });
       return;
     }
@@ -492,7 +520,11 @@ class _HomeShellState extends ConsumerState<HomeShell>
     // Plain tap on the check-in notification → open the Attendance tab to mark.
     if (payload.startsWith('${NotificationService.attendanceCheckInPrefix}|')) {
       NotificationService.selectedPayload.value = null;
-      if (mounted) setState(() => _index = 3);
+      if (mounted) {
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const AttendanceScreen()),
+        );
+      }
       return;
     }
 
@@ -513,6 +545,13 @@ class _HomeShellState extends ConsumerState<HomeShell>
       // Schedule tab (index 1) lists today's classes with their mark-attendance
       // controls.
       if (mounted) setState(() => _index = 1);
+      return;
+    }
+
+    if (payload == NotificationService.studyReminderPayload) {
+      NotificationService.selectedPayload.value = null;
+      // Planner tab (index 3) — the Today card shows what's due.
+      if (mounted) setState(() => _index = 3);
       return;
     }
   }
@@ -542,6 +581,8 @@ class _HomeShellState extends ConsumerState<HomeShell>
     // Keep task + exam reminders in sync with the latest data (no-op unless
     // the user has enabled reminders from Settings).
     ref.watch(reminderSyncProvider);
+    // Schedule/cancel the daily learning-planner study reminder.
+    ref.watch(plannerReminderSyncProvider);
     // Keep RevenueCat's identity tied to the signed-in Firebase user.
     ref.watch(subscriptionAuthLinkProvider);
     // Keep the device subscribed to its profile country's push topic.
@@ -581,7 +622,7 @@ class _HomeShellState extends ConsumerState<HomeShell>
           index: _index,
           onSelect: (i) {
             if (i != _index) {
-              const names = ['home', 'schedule', 'opportunities', 'attendance'];
+              const names = ['home', 'schedule', 'explore', 'planner'];
               ref.read(analyticsProvider).tab(names[i]);
             }
             setState(() => _index = i);
@@ -714,14 +755,14 @@ class _FloatingNavBar extends StatelessWidget {
             _NavItem(
               icon: Icons.explore_outlined,
               activeIcon: Icons.explore_rounded,
-              label: 'Opportunities',
+              label: 'Explore',
               selected: index == 2,
               onTap: () => onSelect(2),
             ),
             _NavItem(
-              icon: Icons.pie_chart_outline_rounded,
-              activeIcon: Icons.pie_chart_rounded,
-              label: 'Attendance',
+              icon: Icons.auto_awesome_outlined,
+              activeIcon: Icons.auto_awesome_rounded,
+              label: 'Planner',
               selected: index == 3,
               onTap: () => onSelect(3),
             ),

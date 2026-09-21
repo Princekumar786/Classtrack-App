@@ -125,6 +125,10 @@ class _BannerCard extends StatelessWidget {
                     image: ResizeImage(NetworkImage(banner.imageUrl!),
                         width: 1080),
                     fit: BoxFit.cover,
+                    // Swallow load failures (offline / dead URL) so a
+                    // NetworkImage SocketException/HttpException can't escape to
+                    // FlutterError.onError and be reported as a fatal crash.
+                    onError: (_, __) {},
                   )
                 : null,
           ),

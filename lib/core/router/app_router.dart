@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:firebase_analytics/firebase_analytics.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:posthog_flutter/posthog_flutter.dart';
 
 import '../../core/providers/app_settings_provider.dart';
 import '../../core/providers/firebase_providers.dart';
@@ -31,6 +35,18 @@ final routerProvider = Provider<GoRouter>((ref) {
       final nowLoggedIn = next.valueOrNull != null;
       if (wasLoggedIn && !nowLoggedIn) {
         ref.read(notificationServiceProvider).cancelAll();
+      }
+      // Keep PostHog's identity in sync with Firebase Auth: tie events to the
+      // user on login, and reset (back to an anonymous id, clearing stored
+      // person data) on logout so the next account on a shared device starts
+      // clean. Both are guarded — analytics must never break auth.
+      final user = next.valueOrNull;
+      if (nowLoggedIn && user != null) {
+        _identifyPostHog(user);
+      } else if (wasLoggedIn && !nowLoggedIn) {
+        try {
+          Posthog().reset();
+        } catch (_) {}
       }
     })
     ..listen(onboardingDoneProvider, (_, __) => refresh.value++)
@@ -73,6 +89,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       // login, home, …). Feature screens log their own events via
       // AnalyticsService. Safe if Analytics isn't reachable.
       FirebaseAnalyticsObserver(analytics: FirebaseAnalytics.instance),
+      // Mirror the same route changes into PostHog as `$screen` events (uses
+      // each GoRoute's `name`). Complements the manual openFeature/screen
+      // events fanned out by AnalyticsService.
+      PosthogObserver(),
     ],
     redirect: (context, state) {
       final auth = ref.read(authStateProvider);
@@ -112,13 +132,51 @@ final routerProvider = Provider<GoRouter>((ref) {
       return null;
     },
     routes: [
-      GoRoute(path: '/splash', builder: (_, __) => const SplashScreen()),
-      GoRoute(path: '/onboarding', builder: (_, __) => const OnboardingScreen()),
-      GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
-      GoRoute(path: '/signup', builder: (_, __) => const SignupScreen()),
       GoRoute(
-          path: '/verify-email', builder: (_, __) => const VerifyEmailScreen()),
-      GoRoute(path: '/home', builder: (_, __) => const HomeShell()),
+          path: '/splash',
+          name: 'Splash',
+          builder: (_, __) => const SplashScreen()),
+      GoRoute(
+          path: '/onboarding',
+          name: 'Onboarding',
+          builder: (_, __) => const OnboardingScreen()),
+      GoRoute(
+          path: '/login',
+          name: 'Login',
+          builder: (_, __) => const LoginScreen()),
+      GoRoute(
+          path: '/signup',
+          name: 'Signup',
+          builder: (_, __) => const SignupScreen()),
+      GoRoute(
+          path: '/verify-email',
+          name: 'Verify email',
+          builder: (_, __) => const VerifyEmailScreen()),
+      GoRoute(
+          path: '/home', name: 'Home', builder: (_, __) => const HomeShell()),
     ],
   );
 });
+
+/// Ties PostHog events to the signed-in Firebase user. Guarded + fire-and-forget
+/// so an analytics hiccup can never affect auth/navigation.
+void _identifyPostHog(User user) {
+  try {
+    final email = user.email;
+    final name = user.displayName;
+    final provider = user.providerData.isNotEmpty
+        ? user.providerData.first.providerId
+        : 'unknown';
+    unawaited(Posthog().identify(
+      userId: user.uid,
+      userProperties: {
+        if (email != null && email.isNotEmpty) 'email': email,
+        if (name != null && name.isNotEmpty) 'name': name,
+        'auth_provider': provider,
+        'email_verified': user.emailVerified,
+      },
+    ));
+  } catch (_) {
+    // Analytics must never break auth.
+  }
+}

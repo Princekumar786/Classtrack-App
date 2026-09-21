@@ -9,6 +9,7 @@ import '../../../../core/providers/app_settings_provider.dart';
 import '../../../../core/providers/firebase_providers.dart';
 import '../../../../core/providers/notification_prefs_provider.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../shared/widgets/character_avatar.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../../auth/presentation/screens/edit_profile_screen.dart';
 import '../../../exams/presentation/providers/exam_providers.dart';
@@ -22,8 +23,6 @@ import '../../../subjects/presentation/providers/subject_providers.dart';
 import '../../../tasks/presentation/providers/task_providers.dart';
 import '../../../../services/notification_service.dart';
 import '../../../../services/calendar_auto_sync.dart';
-import '../../../../services/google_calendar_service.dart';
-import '../../../calendar/presentation/providers/calendar_push_providers.dart';
 import '../../../import/presentation/screens/import_entry.dart';
 import '../../../subscription/domain/pro_constants.dart';
 import '../../../subscription/presentation/providers/subscription_providers.dart';
@@ -49,8 +48,9 @@ class SettingsScreen extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          _profileHeaderTappable(context, theme, profile?.displayName,
-              profile?.email, isPro),
+          _profileHeaderTappable(context, theme, profile?.uid,
+              profile?.displayName, profile?.email, profile?.avatarCharacter,
+              isPro),
           const SizedBox(height: 16),
           _sectionLabel(theme, 'ClassTrack Pro'),
           _proCard(context, ref, theme),
@@ -452,7 +452,8 @@ class SettingsScreen extends ConsumerWidget {
   }
 
   Widget _profileHeaderTappable(BuildContext context, ThemeData theme,
-      String? name, String? email, bool isPro) {
+      String? uid, String? name, String? email, String? avatarCharacter,
+      bool isPro) {
     return Semantics(
       button: true,
       label: 'Edit profile',
@@ -461,13 +462,13 @@ class SettingsScreen extends ConsumerWidget {
         onTap: () => Navigator.of(context).push(
           MaterialPageRoute(builder: (_) => const EditProfileScreen()),
         ),
-        child: _profileHeader(theme, name, email, isPro),
+        child: _profileHeader(theme, uid, name, email, avatarCharacter, isPro),
       ),
     );
   }
 
-  Widget _profileHeader(
-      ThemeData theme, String? name, String? email, bool isPro) {
+  Widget _profileHeader(ThemeData theme, String? uid, String? name,
+      String? email, String? avatarCharacter, bool isPro) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -487,21 +488,11 @@ class SettingsScreen extends ConsumerWidget {
       ),
       child: Row(
         children: [
-          Container(
-            width: 60,
-            height: 60,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.22),
-              shape: BoxShape.circle,
-            ),
-            alignment: Alignment.center,
-            child: Text(
-              (name?.isNotEmpty == true ? name![0] : '?').toUpperCase(),
-              style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 26,
-                  fontWeight: FontWeight.w700),
-            ),
+          CharacterAvatar(
+            uid: uid ?? '',
+            character: avatarCharacter,
+            fallbackText: name,
+            size: 60,
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -726,7 +717,6 @@ class SettingsScreen extends ConsumerWidget {
   Widget _googleAutoSyncCard(
       BuildContext context, WidgetRef ref, ThemeData theme) {
     final enabled = ref.watch(googleAutoSyncEnabledProvider);
-    final autoPush = ref.watch(googleAutoPushEnabledProvider);
     final connected = ref.watch(googleAutoSyncConnectedProvider);
     final isPro = ref.watch(isProProvider);
     return _card(
@@ -754,26 +744,26 @@ class SettingsScreen extends ConsumerWidget {
             },
           ),
           const Divider(height: 1),
-          // Two-way write-back push (Pro): auto-push toggle.
-          _proSwitchTile(
-            context,
-            theme,
-            title: 'Push to Google Calendar',
-            subtitle:
-                'Also add your classes, exams & deadlines into Google Calendar '
-                'on each daily sync',
-            value: autoPush && isPro,
-            isPro: isPro,
-            onChanged: (v) async {
-              if (!isPro) {
-                await showPaywall(context);
-                return;
-              }
-              await ref.read(googleAutoPushEnabledProvider.notifier).set(v);
-            },
+          // Two-way write-back push — coming soon.
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            enabled: false,
+            title: Row(
+              children: [
+                const Flexible(child: Text('Push to Google Calendar')),
+                const SizedBox(width: 8),
+                _comingSoonChip(theme),
+              ],
+            ),
+            subtitle: Text(
+              'Also add your classes, exams & deadlines into Google Calendar '
+              'on each daily sync',
+              style: theme.textTheme.bodySmall,
+            ),
+            trailing: const Switch(value: false, onChanged: null),
           ),
           const Divider(height: 1),
-          // Manual "push now" (Pro).
+          // Manual "push now" — coming soon.
           ListTile(
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.upload_rounded, color: AppColors.primary),
@@ -781,7 +771,7 @@ class SettingsScreen extends ConsumerWidget {
               children: [
                 const Flexible(child: Text('Push to Calendar now')),
                 const SizedBox(width: 8),
-                if (!isPro) _proChip(theme),
+                _comingSoonChip(theme),
               ],
             ),
             subtitle: Text(
@@ -789,12 +779,10 @@ class SettingsScreen extends ConsumerWidget {
               style: theme.textTheme.bodySmall,
             ),
             trailing: const Icon(Icons.chevron_right_rounded),
-            onTap: () async {
-              if (!ref.read(isProProvider)) {
-                await showPaywall(context);
-                return;
-              }
-              await _runCalendarPush(context, ref);
+            onTap: () {
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                  content:
+                      Text('Push to Google Calendar is coming soon.')));
             },
           ),
           const Divider(height: 1),
@@ -820,33 +808,6 @@ class SettingsScreen extends ConsumerWidget {
         ],
       ),
     );
-  }
-
-  /// Runs the two-way write-back with a blocking spinner and a result snackbar.
-  Future<void> _runCalendarPush(BuildContext context, WidgetRef ref) async {
-    final messenger = ScaffoldMessenger.of(context);
-    final navigator = Navigator.of(context);
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator()),
-    );
-    try {
-      final n = await ref.read(calendarPushControllerProvider).push();
-      navigator.pop();
-      messenger.showSnackBar(SnackBar(
-        content: Text(n == 0
-            ? 'Nothing to push yet — add some classes, exams or tasks first.'
-            : 'Pushed $n item${n == 1 ? '' : 's'} to your Google Calendar.'),
-      ));
-    } on GoogleCalendarCancelled {
-      navigator.pop();
-    } catch (e) {
-      navigator.pop();
-      messenger.showSnackBar(
-        SnackBar(content: Text('Couldn\'t push to Google Calendar: $e')),
-      );
-    }
   }
 
   // ── Notification preferences ────────────────────────────────────────────
@@ -972,6 +933,17 @@ class SettingsScreen extends ConsumerWidget {
         child: Text('PRO',
             style: theme.textTheme.labelSmall?.copyWith(
                 color: AppColors.primary, fontWeight: FontWeight.w700)),
+      );
+
+  Widget _comingSoonChip(ThemeData theme) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+        decoration: BoxDecoration(
+          color: theme.hintColor.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(5),
+        ),
+        child: Text('COMING SOON',
+            style: theme.textTheme.labelSmall?.copyWith(
+                color: theme.hintColor, fontWeight: FontWeight.w700)),
       );
 
   Future<void> _editQuietHours(BuildContext context, WidgetRef ref) async {

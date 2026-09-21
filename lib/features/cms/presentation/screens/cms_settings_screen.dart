@@ -27,7 +27,6 @@ class _CmsSettingsScreenState extends ConsumerState<CmsSettingsScreen> {
     ('countryMatch', 'Country match'),
     ('degreeMatch', 'Degree match'),
     ('departmentMatch', 'Department match'),
-    ('academicYear', 'Academic year match'),
     ('interestMatch', 'Interest match'),
     ('careerGoal', 'Career goal match'),
     ('deadlineRelevance', 'Deadline relevance'),

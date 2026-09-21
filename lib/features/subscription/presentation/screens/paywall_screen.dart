@@ -33,6 +33,11 @@ class _Outcome {
 
 const List<_Outcome> _outcomes = [
   _Outcome(
+    Icons.explore_rounded,
+    'Every opportunity & perk, unlocked',
+    'Free members only see the latest few. Go Pro to browse the whole library of scholarships, internships and student discounts — and search it all.',
+  ),
+  _Outcome(
     Icons.auto_awesome_rounded,
     'An AI study partner, always on',
     'Ask anything, anytime — plan your week, prep for exams, understand a topic. No monthly limit.',
@@ -156,7 +161,10 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _trustStrip(theme),
+                    _trustStrip(theme)
+                        .animate()
+                        .fadeIn(duration: 400.ms, delay: 120.ms)
+                        .slideY(begin: 0.15, end: 0, curve: Curves.easeOut),
                     const SizedBox(height: 24),
 
                     // Benefit-led outcomes — the reason to upgrade.
@@ -189,7 +197,16 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                           style: theme.textTheme.bodySmall
                               ?.copyWith(color: theme.hintColor)),
                       const SizedBox(height: 14),
-                      ..._packages.map(_planTile),
+                      ..._packages.asMap().entries.map(
+                            (e) => _planTile(e.value)
+                                .animate()
+                                .fadeIn(
+                                    duration: 320.ms, delay: (80 * e.key).ms)
+                                .slideY(
+                                    begin: 0.10,
+                                    end: 0,
+                                    curve: Curves.easeOut),
+                          ),
                     ],
 
                     if (_error != null) ...[
@@ -251,7 +268,25 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                 ],
               ),
               const SizedBox(height: 10),
-              const Center(child: PremiumIllustration(height: 140)),
+              Center(
+                child: const PremiumIllustration(height: 140)
+                    .animate()
+                    .fadeIn(duration: 500.ms)
+                    .scale(
+                      begin: const Offset(0.85, 0.85),
+                      end: const Offset(1, 1),
+                      duration: 500.ms,
+                      curve: Curves.easeOutBack,
+                    )
+                    // Gentle continuous float so the hero feels alive.
+                    .animate(onPlay: (c) => c.repeat(reverse: true))
+                    .moveY(
+                      begin: -6,
+                      end: 6,
+                      duration: 2600.ms,
+                      curve: Curves.easeInOut,
+                    ),
+              ),
               const SizedBox(height: 14),
               Text('Unlock your best\nsemester yet.',
                       style: theme.textTheme.headlineMedium?.copyWith(
@@ -824,7 +859,7 @@ class _GradientButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final active = enabled && !busy;
-    return Opacity(
+    final button = Opacity(
       opacity: active ? 1 : 0.6,
       child: Material(
         color: Colors.transparent,
@@ -876,5 +911,15 @@ class _GradientButton extends StatelessWidget {
         ),
       ),
     );
+    // A slow, periodic shimmer sweep on the live CTA keeps the eye drawn to the
+    // primary action without being distracting (only when it's actionable).
+    if (!active) return button;
+    return button
+        .animate(onPlay: (c) => c.repeat())
+        .shimmer(
+          delay: 1600.ms,
+          duration: 1500.ms,
+          color: Colors.white.withValues(alpha: 0.35),
+        );
   }
 }

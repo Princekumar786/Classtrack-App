@@ -25,14 +25,12 @@ class CmsResourcePreviewScreen extends ConsumerStatefulWidget {
 class _CmsResourcePreviewScreenState
     extends ConsumerState<CmsResourcePreviewScreen> {
   String? _country = 'India';
-  int? _year = 2;
   final Set<String> _interests = {'Technology'};
 
   AppUser get _previewUser => AppUser(
         uid: 'preview',
         displayName: 'Preview student',
         country: _country,
-        academicYear: _year,
         interests: _interests.toList(),
       );
 
@@ -133,37 +131,16 @@ class _CmsResourcePreviewScreenState
             ],
           ),
           const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: DropdownButtonFormField<String>(
-                  initialValue: _country,
-                  isExpanded: true,
-                  decoration: const InputDecoration(labelText: 'Country'),
-                  items: [
-                    const DropdownMenuItem(value: null, child: Text('Any')),
-                    ...ProfileOptions.countries.map(
-                        (c) => DropdownMenuItem(value: c, child: Text(c))),
-                  ],
-                  onChanged: (v) => setState(() => _country = v),
-                ),
-              ),
-              // Year only affects opportunity personalisation, not discounts.
-              if (!r.type.isDiscount) ...[
-                const SizedBox(width: 12),
-                Expanded(
-                  child: DropdownButtonFormField<int>(
-                    initialValue: _year,
-                    decoration: const InputDecoration(labelText: 'Year'),
-                    items: [
-                      for (var y = 1; y <= 5; y++)
-                        DropdownMenuItem(value: y, child: Text('Year $y')),
-                    ],
-                    onChanged: (v) => setState(() => _year = v),
-                  ),
-                ),
-              ],
+          DropdownButtonFormField<String>(
+            initialValue: _country,
+            isExpanded: true,
+            decoration: const InputDecoration(labelText: 'Country'),
+            items: [
+              const DropdownMenuItem(value: null, child: Text('Any')),
+              ...ProfileOptions.countries.map(
+                  (c) => DropdownMenuItem(value: c, child: Text(c))),
             ],
+            onChanged: (v) => setState(() => _country = v),
           ),
           // Interests only affect opportunity matching, not discounts.
           if (!r.type.isDiscount) ...[

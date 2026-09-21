@@ -837,7 +837,6 @@ class _CmsResourceEditorScreenState
                   _field('departments', 'Target departments'),
                   _field('interests', 'Target interests'),
                   _field('careerGoals', 'Target career goals'),
-                  _field('years', 'Target academic years (e.g. 1, 2, 3)'),
                   _field('tags', 'Tags'),
                   _field('relatedIds',
                       'Related resource IDs (comma-separated)'),

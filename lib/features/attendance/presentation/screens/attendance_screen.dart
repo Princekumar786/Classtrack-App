@@ -442,9 +442,6 @@ class _SubjectAttendanceCard extends ConsumerWidget {
   /// repeated quick marks each still count. Bulk/historical edits use the manual
   /// counts editor (tune icon).
   void _markNow(WidgetRef ref, AttendanceStatus status) {
-    // Tactile confirmation for the core daily action — a crisp selection tick
-    // makes marking feel registered and reinforces the habit loop.
-    HapticFeedback.selectionClick();
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final todayId = DateUtilsX.dateId(today);
@@ -463,19 +460,30 @@ class _SubjectAttendanceCard extends ConsumerWidget {
       // per-tap slot so several quick marks in a row each count.
       String two(int n) => n.toString().padLeft(2, '0');
       final slot = '${two(now.hour)}:${two(now.minute)}:${two(now.second)}';
-      controller.setForOccurrence(subject.id, now, slot, status);
+      if (controller.markOccurrence(subject.id, now, slot, status)) {
+        HapticFeedback.selectionClick();
+      }
       return;
     }
 
     // Mark the next unmarked scheduled occurrence using its session start time.
+    // The "already marked" set unions the records stream with the marks this
+    // client has just issued — without the pending half, two quick taps on a
+    // two-class day both saw an empty set and re-targeted the FIRST class.
     final records =
         ref.read(dedupedAttendanceForSubjectProvider(subject.id));
     final markedSlots = <String>{
       for (final r in records)
         if (r.dateId == todayId && r.slot.isNotEmpty) r.slot,
+      ...controller.pendingSlots(subject.id, today),
     };
     final slot = nextAttendanceSlot(todaySlots, markedSlots);
-    controller.setForOccurrence(subject.id, now, slot, status);
+    // Tactile confirmation for the core daily action — a crisp selection tick
+    // makes marking feel registered and reinforces the habit loop. Only fired
+    // when the mark actually changed state.
+    if (controller.markOccurrence(subject.id, now, slot, status)) {
+      HapticFeedback.selectionClick();
+    }
   }
 
   Future<void> _openEditor(BuildContext context, WidgetRef ref) async {

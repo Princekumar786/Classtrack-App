@@ -115,6 +115,10 @@ class _ResourceDetailScreenState extends ConsumerState<ResourceDetailScreen> {
     if (reason == null || !mounted) return;
 
     final repo = ref.read(reportRepositoryProvider);
+    // Capture ref-backed services BEFORE the await. Using `ref` again after the
+    // network write below would throw "Cannot use ref after the widget was
+    // disposed" if the user leaves this screen mid-request.
+    final analytics = ref.read(analyticsProvider);
     final messenger = ScaffoldMessenger.of(context);
     if (repo == null) {
       messenger.showSnackBar(
@@ -127,7 +131,7 @@ class _ResourceDetailScreenState extends ConsumerState<ResourceDetailScreen> {
         resourceTitle: r.title,
         reason: reason,
       );
-      ref.read(analyticsProvider).log(
+      analytics.log(
           'resource_reported', {'id': r.id, 'reason': reason.key});
       messenger.showSnackBar(const SnackBar(
           content: Text('Thanks — reported. Our team will review it.')));

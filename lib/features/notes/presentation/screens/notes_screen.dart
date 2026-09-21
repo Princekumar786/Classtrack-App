@@ -1167,6 +1167,10 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
               width: 92,
               height: 92,
               fit: BoxFit.cover,
+              // Decode at the tile's pixel size (not full camera resolution) to
+              // slash bitmap memory — addresses the Play "bitmap downsampling"
+              // recommendation. 276 ≈ 92dp × 3 (max sensible DPR).
+              cacheWidth: 276,
               loadingBuilder: (context, child, progress) => progress == null
                   ? child
                   : Container(

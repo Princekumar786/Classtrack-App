@@ -6,8 +6,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/providers/firebase_providers.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/validators.dart';
+import '../../../../shared/widgets/character_avatar.dart';
 import '../../../../shared/widgets/ui_kit.dart';
 import '../../domain/app_user.dart';
+import '../../domain/profile_avatars.dart';
 import '../../domain/profile_options.dart';
 import '../providers/auth_providers.dart';
 
@@ -41,6 +43,9 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   String? _country;
   String? _careerGoal;
   final Set<String> _interests = {};
+
+  String? _uid;
+  String? _avatarCharacter;
 
   bool _saving = false;
   bool _initialised = false;
@@ -77,6 +82,8 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     _graduationYear.text = user.graduationYear?.toString() ?? '';
     _country = user.country;
     _careerGoal = user.careerGoal;
+    _uid = user.uid;
+    _avatarCharacter = ProfileAvatars.resolve(user.avatarCharacter, user.uid);
     _interests
       ..clear()
       ..addAll(user.interests);
@@ -130,6 +137,10 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
       }
 
       await repo.updateProfileDetails(uid, {
+        'avatarCharacter':
+            (_avatarCharacter == null || _avatarCharacter!.isEmpty)
+                ? FieldValue.delete()
+                : _avatarCharacter,
         'country':
             (_country == null || _country!.isEmpty) ? FieldValue.delete() : _country,
         'stateRegion': _text(_state.text),
@@ -192,6 +203,14 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                         ? null
                         : Validators.name(v)),
               ],
+            ),
+            const SizedBox(height: 14),
+            _sectionCard(
+              theme,
+              icon: Icons.face_retouching_natural_rounded,
+              title: 'Profile character',
+              subtitle: 'Pick an avatar that represents you',
+              children: [_characterPicker(theme)],
             ),
             const SizedBox(height: 14),
             _sectionCard(
@@ -298,7 +317,6 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   /// A gradient identity preview at the top of the form.
   Widget _headerPreview(ThemeData theme, String? email) {
     final name = _name.text.trim();
-    final initial = (name.isNotEmpty ? name[0] : '?').toUpperCase();
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -312,19 +330,11 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
       ),
       child: Row(
         children: [
-          Container(
-            width: 58,
-            height: 58,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.22),
-              shape: BoxShape.circle,
-            ),
-            alignment: Alignment.center,
-            child: Text(initial,
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 24,
-                    fontWeight: FontWeight.w800)),
+          CharacterAvatar(
+            uid: _uid ?? '',
+            character: _avatarCharacter,
+            fallbackText: name.isEmpty ? '?' : name,
+            size: 58,
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -350,7 +360,200 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     );
   }
 
-  /// Pinned Cancel + Save bar so the primary action is always reachable.
+  /// Compact character summary: shows the current avatar with a "Change"
+  /// button that opens the full picker in a bottom sheet — so the form stays
+  /// short instead of listing every character inline.
+  Widget _characterPicker(ThemeData theme) {
+    final selected = ProfileAvatars.resolve(_avatarCharacter, _uid ?? '');
+    final baseColor = theme.brightness == Brightness.dark
+        ? AppColors.darkSurfaceAlt
+        : AppColors.lavenderSoft;
+    return Row(
+      children: [
+        _CharacterChoice(
+          path: '${ProfileAvatars.assetDir}/$selected',
+          selected: false,
+          baseColor: baseColor,
+          onTap: _openCharacterSheet,
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Text(
+            'Choose from ${ProfileAvatars.all.length} characters',
+            style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
+          ),
+        ),
+        const SizedBox(width: 8),
+        OutlinedButton.icon(
+          onPressed: _openCharacterSheet,
+          icon: const Icon(Icons.grid_view_rounded, size: 18),
+          label: const Text('Change'),
+          // The app's outlinedButtonTheme sets minimumSize: Size.fromHeight(54)
+          // (infinite width), which is fine inside an Expanded but throws
+          // "BoxConstraints forces an infinite width" in this Row. Pin a finite
+          // min width so the button sizes to its content instead.
+          style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.primary,
+              minimumSize: const Size(0, 44),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              side: const BorderSide(color: AppColors.primary)),
+        ),
+      ],
+    );
+  }
+
+  /// Opens a scrollable grid of every character. Selecting one updates the
+  /// live preview; "Save" persists just the avatar immediately (independent of
+  /// the rest of the form) and closes the sheet.
+  Future<void> _openCharacterSheet() async {
+    final theme = Theme.of(context);
+    final baseColor = theme.brightness == Brightness.dark
+        ? AppColors.darkSurfaceAlt
+        : AppColors.lavenderSoft;
+    // Remember what was set before, so Cancel can revert the live preview.
+    final previous = _avatarCharacter;
+
+    final saved = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: theme.scaffoldBackgroundColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetCtx) {
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.7,
+          minChildSize: 0.45,
+          maxChildSize: 0.95,
+          builder: (sheetCtx, controller) {
+            return StatefulBuilder(
+              builder: (sheetCtx, setSheet) {
+                final selected =
+                    ProfileAvatars.resolve(_avatarCharacter, _uid ?? '');
+                return Column(
+                  children: [
+                    const SizedBox(height: 10),
+                    Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: theme.dividerColor,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 14, 20, 6),
+                      child: Row(
+                        children: [
+                          Text('Choose your character',
+                              style: theme.textTheme.titleMedium
+                                  ?.copyWith(fontWeight: FontWeight.w700)),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: GridView.builder(
+                        controller: controller,
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                        gridDelegate:
+                            const SliverGridDelegateWithMaxCrossAxisExtent(
+                          maxCrossAxisExtent: 74,
+                          mainAxisSpacing: 12,
+                          crossAxisSpacing: 12,
+                        ),
+                        itemCount: ProfileAvatars.all.length,
+                        itemBuilder: (ctx, i) {
+                          final file = ProfileAvatars.all[i];
+                          return Center(
+                            child: _CharacterChoice(
+                              path: '${ProfileAvatars.assetDir}/$file',
+                              selected: file == selected,
+                              baseColor: baseColor,
+                              onTap: () {
+                                setState(() => _avatarCharacter = file);
+                                setSheet(() {});
+                              },
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    SafeArea(
+                      top: false,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton(
+                                onPressed: () =>
+                                    Navigator.of(sheetCtx).pop(false),
+                                style: OutlinedButton.styleFrom(
+                                    minimumSize: const Size.fromHeight(48)),
+                                child: const Text('Cancel'),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              flex: 2,
+                              child: FilledButton.icon(
+                                style: FilledButton.styleFrom(
+                                    backgroundColor: AppColors.primary,
+                                    minimumSize: const Size.fromHeight(48)),
+                                onPressed: () =>
+                                    Navigator.of(sheetCtx).pop(true),
+                                icon: const Icon(Icons.check_rounded),
+                                label: const Text('Save'),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            );
+          },
+        );
+      },
+    );
+
+    if (saved == true) {
+      await _persistCharacter();
+    } else {
+      // Reverted: restore the preview to what it was before opening the sheet.
+      if (mounted) setState(() => _avatarCharacter = previous);
+    }
+  }
+
+  /// Persists only the chosen avatar character (a lightweight merge-write) so
+  /// the picker has its own save, separate from the full "Save profile" action.
+  Future<void> _persistCharacter() async {
+    final uid = ref.read(currentUidProvider);
+    if (uid == null) return;
+    final repo = ref.read(authRepositoryProvider);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await repo.updateProfileDetails(uid, {
+        'avatarCharacter': (_avatarCharacter == null || _avatarCharacter!.isEmpty)
+            ? FieldValue.delete()
+            : _avatarCharacter,
+      });
+      if (!mounted) return;
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Character updated ✓')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        const SnackBar(content: Text("Couldn't update character. Try again.")),
+      );
+    }
+  }
+
+
   Widget _saveBar(ThemeData theme) {
     return Container(
       decoration: BoxDecoration(
@@ -551,6 +754,78 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                           ? Colors.white
                           : theme.textTheme.bodyLarge?.color,
                       fontWeight: FontWeight.w600)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+
+
+/// A single tappable character in the picker: the artwork on a soft circular
+/// backing, with a primary ring + check badge when it's the selected avatar.
+class _CharacterChoice extends StatelessWidget {
+  const _CharacterChoice({
+    required this.path,
+    required this.selected,
+    required this.baseColor,
+    required this.onTap,
+  });
+
+  final String path;
+  final bool selected;
+  final Color baseColor;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    const size = 58.0;
+    return Semantics(
+      button: true,
+      selected: selected,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(size),
+        child: Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            color: baseColor,
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: selected ? AppColors.primary : Colors.transparent,
+              width: 2.4,
+            ),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Stack(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(8),
+                child: Image.asset(
+                  path,
+                  fit: BoxFit.contain,
+                  filterQuality: FilterQuality.medium,
+                  errorBuilder: (_, __, ___) =>
+                      const Icon(Icons.person_rounded, color: Colors.white),
+                ),
+              ),
+              if (selected)
+                Positioned(
+                  right: 2,
+                  bottom: 2,
+                  child: Container(
+                    padding: const EdgeInsets.all(2),
+                    decoration: const BoxDecoration(
+                      color: AppColors.primary,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.check_rounded,
+                        size: 12, color: Colors.white),
+                  ),
+                ),
             ],
           ),
         ),

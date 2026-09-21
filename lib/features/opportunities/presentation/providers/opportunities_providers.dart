@@ -33,6 +33,40 @@ final visibleResourcesProvider = StreamProvider<List<Resource>>((ref) {
   return ref.watch(resourceRepositoryProvider).watchVisible();
 });
 
+/// How many opportunities / perks a FREE (non-Pro) member may browse in each
+/// feed. They see the [kFreeResourceLimit] most-recently-updated of each; the
+/// rest of the catalog requires Premium.
+const int kFreeResourceLimit = 5;
+
+/// Returns [items] sorted newest-first by [Resource.updatedAt] (falling back to
+/// publishedAt, then createdAt), with undated items last. Pure + order-stable
+/// so it can back the free-tier "latest N" preview and be unit-tested.
+List<Resource> sortByRecency(List<Resource> items) {
+  DateTime? key(Resource r) => r.updatedAt ?? r.publishedAt ?? r.createdAt;
+  final out = [...items];
+  out.sort((a, b) {
+    final ka = key(a);
+    final kb = key(b);
+    if (ka == null && kb == null) return 0;
+    if (ka == null) return 1; // undated → last
+    if (kb == null) return -1;
+    return kb.compareTo(ka); // newest first
+  });
+  return out;
+}
+
+/// The set of resource ids a free member may access from [items]: the
+/// [kFreeResourceLimit] most-recently-updated. Returns null when [isPro] (no
+/// limit) or when there's nothing to lock (≤ limit), so callers can treat null
+/// as "show everything".
+Set<String>? freeAllowedIds(List<Resource> items, {required bool isPro}) {
+  if (isPro || items.length <= kFreeResourceLimit) return null;
+  return sortByRecency(items)
+      .take(kFreeResourceLimit)
+      .map((r) => r.id)
+      .toSet();
+}
+
 /// A single resource by id (for detail pages / deep links).
 final resourceByIdProvider =
     StreamProvider.family<Resource?, String>((ref, id) {

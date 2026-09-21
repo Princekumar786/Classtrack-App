@@ -1,35 +1,46 @@
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:posthog_flutter/posthog_flutter.dart';
 
 /// App-wide access to [AnalyticsService].
 final analyticsProvider = Provider<AnalyticsService>(
   (ref) => AnalyticsService(),
 );
 
-/// Thin, crash-proof wrapper around Firebase Analytics so feature code can log
-/// usage without touching the SDK directly — and so a logging failure can
-/// NEVER break the app (every call is guarded).
+/// Thin, crash-proof wrapper that fans every event out to BOTH Firebase
+/// Analytics and PostHog (EU cloud), so feature code logs usage once without
+/// touching either SDK directly — and so a logging failure can NEVER break the
+/// app (every call is individually guarded).
 ///
 /// We use a small set of high-signal events to answer "which features do users
 /// actually use": tab switches, feature-screen opens, quick-add usage, AI
-/// messages and schedule imports. View them in Firebase Console → Analytics
-/// (DebugView for live testing from a single device).
+/// messages and schedule imports. View them in Firebase Console → Analytics or
+/// in PostHog → Activity / Product analytics.
 class AnalyticsService {
   FirebaseAnalytics get _fa => FirebaseAnalytics.instance;
 
-  /// Logs a custom event. Parameter values must be String or num (no bools).
+  /// Logs a custom event. Parameter values must be String or num (no bools) —
+  /// a Firebase constraint we keep so the same map is safe for both sinks.
   Future<void> log(String name, [Map<String, Object>? params]) async {
     try {
       await _fa.logEvent(name: name, parameters: params);
     } catch (_) {
       // Analytics must never surface as an app error.
     }
+    try {
+      await Posthog().capture(eventName: name, properties: params);
+    } catch (_) {
+      // PostHog is opted-out in debug / not set up on some surfaces — ignore.
+    }
   }
 
-  /// Logs a screen/feature view.
+  /// Logs a screen/feature view to both sinks.
   Future<void> screen(String name) async {
     try {
       await _fa.logScreenView(screenName: name);
+    } catch (_) {}
+    try {
+      await Posthog().screen(screenName: name);
     } catch (_) {}
   }
 
@@ -41,6 +52,54 @@ class AnalyticsService {
       log('open_feature', {'feature': name});
 
   Future<void> quickAdd(String type) => log('quick_add', {'type': type});
+
+  // --- Learning Planner ----------------------------------------------------
+  // High-signal planner events for PostHog/Firebase product analytics. Screen
+  // views are captured automatically via named routes (RouteSettings) picked
+  // up by the Firebase + PostHog navigator observers.
+
+  /// A plan creation flow was started. [mode] is 'ai' or 'manual'.
+  Future<void> plannerCreateStarted(String mode) =>
+      log('planner_create_started', {'mode': mode});
+
+  /// A plan was created. [source] is 'ai' | 'library' | 'manual'.
+  Future<void> plannerPlanCreated({
+    required String source,
+    required String subject,
+    required String level,
+    required String goal,
+    required String program,
+    required String region,
+    required int topics,
+    required int estMinutes,
+    required bool hasSyllabus,
+  }) =>
+      log('planner_plan_created', {
+        'source': source,
+        'subject': subject,
+        'level': level,
+        'goal': goal,
+        'program': program,
+        'region': region,
+        'topics': topics,
+        'est_minutes': estMinutes,
+        'has_syllabus': hasSyllabus ? 1 : 0,
+      });
+
+  Future<void> plannerTopicCompleted() => log('planner_topic_completed');
+
+  Future<void> plannerDayCompleted() => log('planner_day_completed');
+
+  Future<void> plannerFocusLogged(int minutes) =>
+      log('planner_focus_logged', {'minutes': minutes});
+
+  Future<void> plannerRecalibrated(double pace) =>
+      log('planner_recalibrated', {'pace_pct': (pace * 100).round()});
+
+  Future<void> plannerAdjusted(String type) =>
+      log('planner_adjusted', {'type': type});
+
+  Future<void> plannerDeleted() => log('planner_deleted');
 
   Future<void> aiMessage({bool hasImage = false}) =>
       log('ai_message', {'has_image': hasImage ? 1 : 0});

@@ -79,6 +79,11 @@ class _BannerCard extends StatelessWidget {
                     image: ResizeImage(NetworkImage(banner.imageUrl!),
                         width: 1080),
                     fit: BoxFit.cover,
+                    // Swallow load failures (offline / dead URL). Without an
+                    // onError, a NetworkImage SocketException/HttpException here
+                    // escapes to FlutterError.onError and is reported as a
+                    // fatal crash; the banner simply falls back to its gradient.
+                    onError: (_, __) {},
                   )
                 : null,
           ),

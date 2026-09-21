@@ -59,6 +59,14 @@
             android:name="flutterEmbedding"
             android:value="2" />
 
+        <!-- PostHog: use MANUAL initialisation. The SDK is configured from Dart
+             in main.dart (_initPostHog) so we control the host, debug/opt-out
+             gating and error tracking. AUTO_INIT=false stops the native SDK
+             from self-initialising from manifest meta-data before Dart runs. -->
+        <meta-data
+            android:name="com.posthog.posthog.AUTO_INIT"
+            android:value="false" />
+
         <!-- Firebase Cloud Messaging: channel used to display pushes received
              while the app is in the background/terminated. Must match
              kPushChannelId in lib/services/push_messaging_service.dart, which
@@ -114,6 +122,24 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/classtrack_widget_info" />
         </receiver>
+
+        <!-- Neutralise the unused Glance widget action trampolines.
+             `home_widget` transitively bundles androidx.glance:glance-appwidget,
+             whose InvisibleActionTrampolineActivity crashes with
+             "List adapter activity trampoline invoked without specifying target
+             intent" when a launcher (or a stale/foreign PendingIntent) fires it
+             without the expected target-intent extra — the recurring
+             androidx.glance.appwidget.action.ActionTrampoline IllegalArgumentException.
+             ClassTrack uses ONLY classic RemoteViews (ClassTrackWidgetProvider),
+             so no Glance widget exists and these trampolines are never
+             legitimately invoked. Remove them from the merged manifest so the
+             stray invocation can't take the app down. -->
+        <activity
+            android:name="androidx.glance.appwidget.action.InvisibleActionTrampolineActivity"
+            tools:node="remove" />
+        <activity
+            android:name="androidx.glance.appwidget.action.ActionTrampolineActivity"
+            tools:node="remove" />
     </application>
     <queries>
         <intent>

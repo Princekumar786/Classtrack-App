@@ -7,9 +7,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:posthog_flutter/posthog_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app.dart';
+import 'core/constants/app_constants.dart';
 import 'core/providers/app_settings_provider.dart';
 import 'features/subscription/data/subscription_service.dart';
 import 'features/subscription/presentation/providers/subscription_providers.dart';
@@ -114,6 +116,8 @@ Future<void> main() async {
         } else {
           crashlytics.recordFlutterFatalError(details);
         }
+        // Mirror real defects into PostHog error tracking too.
+        _capturePosthogException(details.exception, details.stack);
       };
       // Errors that escape the Flutter framework (e.g. in a platform callback).
       PlatformDispatcher.instance.onError = (error, stack) {
@@ -122,9 +126,14 @@ Future<void> main() async {
           stack,
           fatal: !_isNonFatalInfraError(error),
         );
+        _capturePosthogException(error, stack);
         return true;
       };
     }
+
+    // Product analytics + error tracking (PostHog, EU cloud). Runs on all
+    // platforms (web bridges to the posthog-js snippet in web/index.html).
+    await _initPostHog();
 
     await _bootstrap();
   }, (error, stack) {
@@ -136,7 +145,46 @@ Future<void> main() async {
       // ignore: avoid_print
       print('Uncaught zone error: $error\n$stack');
     }
+    _capturePosthogException(error, stack);
   });
+}
+
+/// Mirrors a fatal error into PostHog's error tracking, alongside Crashlytics.
+///
+/// Guarded and fire-and-forget so it can NEVER block or throw inside a crash
+/// handler. Environmental/transient infra errors (offline sockets, unavailable
+/// Firestore, timeouts) are skipped — the same ones Crashlytics reports as
+/// non-fatal — so PostHog's error dashboard only shows genuine defects.
+void _capturePosthogException(Object error, StackTrace? stack) {
+  if (_isNonFatalInfraError(error)) return;
+  try {
+    unawaited(Posthog().captureException(error: error, stackTrace: stack));
+  } catch (_) {
+    // Never let error reporting cause a secondary failure.
+  }
+}
+
+/// Initialises PostHog (EU cloud) for behaviour analytics, screen views, app
+/// lifecycle events and error tracking. Manual init — the native manifests set
+/// `com.posthog.posthog.AUTO_INIT=false` so this Dart call is authoritative and
+/// lets us control config. Opted OUT in debug (mirroring the Crashlytics
+/// collection gate) so local/dev runs never pollute the production project.
+/// Never throws — analytics must not block or break app launch.
+Future<void> _initPostHog() async {
+  try {
+    final config = PostHogConfig(AppConstants.posthogApiKey)
+      ..host = AppConstants.posthogHost
+      ..debug = kDebugMode
+      // No data is sent in debug builds; flip this to always-on if you want to
+      // watch events land while developing.
+      ..optOut = kDebugMode
+      // App Opened / Backgrounded / Installed / Updated, captured natively.
+      ..captureApplicationLifecycleEvents = true
+      ..personProfiles = PostHogPersonProfiles.identifiedOnly;
+    await Posthog().setup(config);
+  } catch (_) {
+    // Never let analytics setup break app launch.
+  }
 }
 
 /// Whether [error] is an environmental/transient failure rather than a code
@@ -169,7 +217,36 @@ bool _isNonFatalInfraError(Object error) {
   if (error is MissingPluginException) return true;
   // Our own bounded operations (getToken/subscribeToTopic/etc.) that timed out.
   if (error is TimeoutException) return true;
+  // Environmental network/IO failures — a dropped/blocked connection, a reset
+  // socket, a TLS handshake abort, a DNS miss, or an HTTP error on an image
+  // fetch. These bubble up most often from NetworkImage loads (feed logos,
+  // banners, favicons) when the device is offline or on a captive/flaky
+  // network. They are NOT code defects and were being reported as FATAL,
+  // wrecking the crash-free-users metric (the recurring
+  // "SocketException"/"HttpException" crashes on the dashboard). Treat them as
+  // non-fatal so they stay diagnosable without counting as crashes.
+  if (_isNetworkIoError(error)) return true;
   return false;
+}
+
+/// Whether [error] is a transient network / socket / TLS / image-fetch failure.
+///
+/// Matched by runtime type NAME (not `is` against `dart:io` types) on purpose:
+/// `main.dart` is compiled for web too, where importing `dart:io` fails to
+/// compile. The names below are stable across the Dart SDK and Flutter's
+/// painting layer, and are safe to match on every platform.
+bool _isNetworkIoError(Object error) {
+  switch (error.runtimeType.toString()) {
+    case 'SocketException': // connection abort/refused/reset, DNS failure
+    case 'HttpException': // malformed/aborted HTTP response
+    case 'HandshakeException': // TLS negotiation failed
+    case 'TlsException': // other TLS-layer failure
+    case 'NetworkImageLoadException': // NetworkImage got a non-200 (also web)
+    case 'ClientException': // package:http transport failure
+      return true;
+    default:
+      return false;
+  }
 }
 
 /// Builds services and starts the app. Split out of [main] so it runs inside

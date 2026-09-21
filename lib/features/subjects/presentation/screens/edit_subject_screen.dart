@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -318,7 +317,12 @@ class _EditSubjectScreenState extends ConsumerState<EditSubjectScreen> {
           await sessionRepo.add(subjectId, session);
         }
       }
-      if (mounted) context.pop();
+      // Opened via Navigator.push, so dismiss through the real Navigator.
+      // go_router's context.pop() here could empty the match list on the last
+      // page → the "Bad state: No element" crash + black screen.
+      if (mounted && Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
@@ -355,7 +359,12 @@ class _EditSubjectScreenState extends ConsumerState<EditSubjectScreen> {
     if (repo == null) return;
     try {
       await repo.delete(subject.id);
-      if (mounted) context.pop();
+      // Opened via Navigator.push, so dismiss through the real Navigator.
+      // go_router's context.pop() here could empty the match list on the last
+      // page → the "Bad state: No element" crash + black screen.
+      if (mounted && Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)

@@ -6,6 +6,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/utils/validators.dart';
 import '../domain/app_user.dart';
+import '../domain/profile_avatars.dart';
 
 /// Handles authentication and the users/{uid} profile document.
 class AuthRepository {
@@ -120,6 +121,9 @@ class AuthRepository {
         displayName: Validators.sanitizeName(displayName ?? user.displayName),
         email: user.email,
         photoUrl: user.photoURL,
+        // Give every new account a distinct character avatar from the start
+        // (deterministic on uid) instead of a plain name initial.
+        avatarCharacter: ProfileAvatars.defaultForUid(user.uid),
       );
       await ref.set(profile.toMap());
     }

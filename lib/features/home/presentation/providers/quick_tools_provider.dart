@@ -8,16 +8,15 @@ import '../../../../core/providers/app_settings_provider.dart';
 /// this list is the single source of truth for *which* tools exist and their
 /// default ordering. Keys are stable — never rename one (only add/remove).
 const List<String> kDefaultQuickToolOrder = <String>[
+  'attendance',
   'tasks',
-  'planner',
-  'perks',
-  'grades',
   'exams',
+  'grades',
   'notes',
   'calendar',
-  'focus',
   'habits',
   'expenses',
+  'perks',
 ];
 
 /// The user's personalised Quick-tools configuration: an explicit [order] over
