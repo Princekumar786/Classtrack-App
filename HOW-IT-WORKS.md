@@ -33,12 +33,17 @@ A student app (Android, iOS and web) for tracking attendance, class timetables, 
 - `node_modules/` (downloaded libraries) is also ignored.
 
 ## Where the code lives
-- `origin`: github.com/killersbEE08/Classtrack-App
-- `playstore`: github.com/Princekumar786/classtracks-play-store
+- `origin`: github.com/killersbEE08/Classtrack-App (the default for `git push`)
+- `playstore`: github.com/killersbEE08/classtrack-play-store (push with `git push playstore main`)
 
 ---
 
 ## Change log (newest first)
+
+### 2026-10-08 — Pushed full codebase to classtrack-play-store
+- **What:** Pushed the whole project to github.com/killersbEE08/classtrack-play-store (remote name `playstore`).
+- **Why:** You wanted a separate copy of the repo for the Play Store work.
+- **Action needed:** The old `origin` repo doesn't have these 2 commits yet. Run `git push` if you want them there too.
 
 ### 2026-10-08 — Readable guide added
 - **What:** Created this file and set a rule that it gets updated after every change.
@@ -46,7 +51,7 @@ A student app (Android, iOS and web) for tracking attendance, class timetables, 
 ### 2026-10-08 — Repo prep for the new GitHub account
 - **What:** Saved all pending work as one commit (`33326bd`), added `node_modules/` to `.gitignore`, and connected the new `playstore` repo.
 - **Why:** So the whole project can be pushed to the Princekumar786 account.
-- **Status:** Not pushed yet. Needs a sign-in as Princekumar786.
+- **Status:** Later changed to push to the killersbEE08 account instead (see above).
 
 ### 2026-10-08 — Gemini AI settings update
 - **What:** In `functions/index.js`, each Gemini model now gets the right "thinking" setting. Older 2.5 models get `thinkingBudget`; newer models get `thinkingLevel`.
