@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
 import '../../../../core/theme/app_colors.dart';
-import '../../../subscription/presentation/screens/paywall_screen.dart';
+import '../../../subscription/presentation/widgets/upgrade_prompt.dart';
 
 /// Upsell card shown at the end of a gated free-tier feed. Free members see
 /// only the latest few items; this invites them to unlock the rest with
@@ -45,7 +45,7 @@ class PremiumUnlockCard extends StatelessWidget {
                 child: const Icon(Icons.lock_open_rounded,
                     color: Colors.white, size: 24),
               )
-                  .animate(onPlay: (c) => c.repeat(reverse: true))
+                  .animate(onPlay: (c) => c.repeat(reverse: true, count: 4))
                   .scaleXY(
                       begin: 1,
                       end: 1.08,
@@ -85,7 +85,8 @@ class PremiumUnlockCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(14),
                 ),
               ),
-              onPressed: () => showPaywall(context),
+              onPressed: () =>
+                  showUpgradePrompt(context, UpgradeReason.opportunities),
               child: const Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [

@@ -26,8 +26,8 @@ import '../../../../services/calendar_auto_sync.dart';
 import '../../../import/presentation/screens/import_entry.dart';
 import '../../../subscription/domain/pro_constants.dart';
 import '../../../subscription/presentation/providers/subscription_providers.dart';
-import '../../../subscription/presentation/screens/paywall_screen.dart';
 import '../../../subscription/presentation/screens/pro_status_screen.dart';
+import '../../../subscription/presentation/widgets/upgrade_prompt.dart';
 import '../../../tips/presentation/screens/tips_screen.dart';
 import 'privacy_policy_screen.dart';
 
@@ -66,11 +66,10 @@ class SettingsScreen extends ConsumerWidget {
                   'Attendance forecasts, spending & grade trends'),
               trailing: const Icon(Icons.chevron_right_rounded),
               onTap: () async {
-                if (ref.read(isProProvider)) {
+                if (await requirePro(context, ref, UpgradeReason.insights) &&
+                    context.mounted) {
                   Navigator.of(context).push(MaterialPageRoute(
                       builder: (_) => const InsightsScreen()));
-                } else {
-                  await showPaywall(context);
                 }
               },
             ),
@@ -104,11 +103,10 @@ class SettingsScreen extends ConsumerWidget {
                   'A smart briefing of your day — read it & download as PDF'),
               trailing: const Icon(Icons.chevron_right_rounded),
               onTap: () async {
-                if (ref.read(isProProvider)) {
+                if (await requirePro(context, ref, UpgradeReason.dailySummary) &&
+                    context.mounted) {
                   Navigator.of(context).push(MaterialPageRoute(
                       builder: (_) => const DailyAgendaScreen()));
-                } else {
-                  await showPaywall(context);
                 }
               },
             ),
@@ -122,8 +120,8 @@ class SettingsScreen extends ConsumerWidget {
               children: [
                 Row(
                   children: [
-                    const Text('Default attendance target'),
-                    const Spacer(),
+                    const Expanded(child: Text('Default attendance target')),
+                    const SizedBox(width: 8),
                     Text('${target.toStringAsFixed(0)}%',
                         style: theme.textTheme.titleMedium
                             ?.copyWith(color: AppColors.primary)),
@@ -619,7 +617,7 @@ class SettingsScreen extends ConsumerWidget {
 
     Future<void> pick(Color c) async {
       if (!isPro) {
-        await showPaywall(context);
+        await showUpgradePrompt(context, UpgradeReason.accentColor);
         return;
       }
       // Tapping the default purple clears the custom accent.
@@ -671,7 +669,12 @@ class SettingsScreen extends ConsumerWidget {
               const Icon(Icons.color_lens_outlined,
                   size: 18, color: AppColors.primary),
               const SizedBox(width: 8),
-              Text('Accent color', style: theme.textTheme.titleSmall),
+              Flexible(
+                child: Text('Accent color',
+                    style: theme.textTheme.titleSmall,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis),
+              ),
               const SizedBox(width: 8),
               if (!isPro) _proChip(theme),
               const Spacer(),
@@ -708,6 +711,37 @@ class SettingsScreen extends ConsumerWidget {
               style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
             ),
           ),
+          const Divider(height: 1),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              const Icon(Icons.schedule_rounded, size: 18, color: AppColors.primary),
+              const SizedBox(width: 8),
+              Expanded(child: Text('Time format', style: theme.textTheme.titleSmall)),
+            ],
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: SegmentedButton<TimeFormatPref>(
+              showSelectedIcon: false,
+              segments: [
+                for (final f in TimeFormatPref.values)
+                  ButtonSegment(value: f, label: Text(f.label, maxLines: 1, overflow: TextOverflow.ellipsis)),
+              ],
+              selected: {ref.watch(timeFormatProvider)},
+              onSelectionChanged: (s) =>
+                  ref.read(timeFormatProvider.notifier).set(s.first),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(top: 8, bottom: 8),
+            child: Text(
+              'Shows every class and reminder time as ${const TimeOfDay(hour: 14, minute: 30).format(context)}. '
+              'Auto follows your phone’s clock setting.',
+              style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
+            ),
+          ),
         ],
       ),
     );
@@ -737,7 +771,7 @@ class SettingsScreen extends ConsumerWidget {
             isPro: isPro,
             onChanged: (v) async {
               if (!isPro) {
-                await showPaywall(context);
+                await showUpgradePrompt(context, UpgradeReason.calendarSync);
                 return;
               }
               await ref.read(googleAutoSyncEnabledProvider.notifier).set(v);
@@ -1052,15 +1086,22 @@ class SettingsScreen extends ConsumerWidget {
       );
 
   Widget _card(ThemeData theme, {required Widget child}) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
         decoration: BoxDecoration(
-          color: theme.cardColor,
           borderRadius: BorderRadius.circular(22),
           boxShadow: theme.brightness == Brightness.light
               ? AppColors.softShadow(opacity: 0.05, blur: 18)
               : null,
         ),
-        child: child,
+        // Material (not a coloured box) so the ListTiles' tap ripple shows.
+        child: Material(
+          color: theme.cardColor,
+          borderRadius: BorderRadius.circular(22),
+          clipBehavior: Clip.antiAlias,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
+            child: child,
+          ),
+        ),
       );
 }
 
@@ -1113,12 +1154,16 @@ class _ThemeModeTile extends StatelessWidget {
                   Icon(Icons.check_circle_rounded, size: 14, color: accent),
                   const SizedBox(width: 4),
                 ],
-                Text(label,
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      fontWeight:
-                          selected ? FontWeight.w700 : FontWeight.w500,
-                      color: selected ? accent : null,
-                    )),
+                Flexible(
+                  child: Text(label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        fontWeight:
+                            selected ? FontWeight.w700 : FontWeight.w500,
+                        color: selected ? accent : null,
+                      )),
+                ),
               ],
             ),
           ],

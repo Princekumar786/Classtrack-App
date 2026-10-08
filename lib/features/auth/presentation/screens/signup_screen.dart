@@ -6,6 +6,7 @@ import '../../../../core/utils/validators.dart';
 import '../../../../shared/widgets/buttons.dart';
 import '../auth_errors.dart';
 import '../providers/auth_providers.dart';
+import '../providers/onboarding_draft_provider.dart';
 
 class SignupScreen extends ConsumerStatefulWidget {
   const SignupScreen({super.key});
@@ -16,10 +17,17 @@ class SignupScreen extends ConsumerStatefulWidget {
 
 class _SignupScreenState extends ConsumerState<SignupScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _name = TextEditingController();
+  // Pre-filled from onboarding so the student never types their name twice.
+  late final TextEditingController _name;
   final _email = TextEditingController();
   final _password = TextEditingController();
   bool _obscure = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _name = TextEditingController(text: ref.read(onboardingDraftProvider).name);
+  }
 
   @override
   void dispose() {
@@ -61,6 +69,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
   Widget build(BuildContext context) {
     final loading = ref.watch(authControllerProvider).isLoading;
     final theme = Theme.of(context);
+    final draft = ref.watch(onboardingDraftProvider);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Create account')),
@@ -73,10 +82,17 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text('Let’s get you set up',
+                Text(
+                    draft.hasName
+                        ? 'Almost there, ${draft.firstName}'
+                        : 'Let’s get you set up',
                     style: theme.textTheme.headlineMedium),
                 const SizedBox(height: 4),
-                Text('Create an account to start tracking attendance.',
+                Text(
+                    draft.isEmpty
+                        ? 'Create an account to start tracking attendance.'
+                        : 'Create an account to save your setup and sync it '
+                            'across devices.',
                     style: theme.textTheme.bodyMedium),
                 const SizedBox(height: 28),
                 TextFormField(
@@ -140,8 +156,9 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                 const SizedBox(height: 16),
                 GoogleButton(onPressed: _google, loading: loading),
                 const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     Text('Already have an account?',
                         style: theme.textTheme.bodyMedium),

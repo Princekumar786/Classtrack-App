@@ -47,3 +47,6 @@ coverage/
 # Firebase CLI logs
 firebase-debug.log
 *.log
+
+# Node
+node_modules/

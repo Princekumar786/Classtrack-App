@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/date_utils.dart';
 import '../../../subscription/presentation/providers/subscription_providers.dart';
-import '../../../subscription/presentation/screens/paywall_screen.dart';
+import '../../../subscription/presentation/widgets/upgrade_prompt.dart';
 import '../../domain/weekly_plan.dart';
 import '../providers/planner_providers.dart';
 
@@ -34,7 +34,8 @@ class WeeklyPlannerScreen extends ConsumerWidget {
       body: !isPro
           ? _LockedView(
               onUnlock: () async {
-                final ok = await showPaywall(context);
+                final ok =
+                    await showUpgradePrompt(context, UpgradeReason.weeklyPlanner);
                 if (ok && context.mounted) {
                   ref.read(weeklyPlannerControllerProvider.notifier).generate();
                 }

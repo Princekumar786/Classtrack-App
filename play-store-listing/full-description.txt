@@ -1,0 +1,55 @@
+Never drop below 75% attendance again. ClassTrack is the student planner that tracks your attendance, organises your class timetable and reminds you of every assignment and exam, with AI that sets it all up in seconds.
+
+📸 SNAP YOUR TIMETABLE, SET UP IN 30 SECONDS
+Take a photo of your timetable, upload a PDF or paste the text. ClassTrack's AI reads it and builds your whole weekly class schedule. Review, tweak, save. No typing 40 classes by hand.
+
+✅ ATTENDANCE TRACKER + BUNK CALCULATOR
+• Mark present, absent or cancelled in one tap
+• Attendance percentage for every subject and overall, with colour-coded progress rings
+• Bunk calculator: see exactly how many classes you can safely skip, or how many you must attend to get back above 75% (or any target you set)
+• Risk alerts the evening before a class if skipping it would drop you below your target (Pro)
+• Attendance forecasts and safe-skip predictions (Pro)
+
+📅 CLASS SCHEDULE & TIMETABLE
+• Weekly recurring timetable with Day, Week and Month calendar views
+• Add rooms, professors, class links and one-off extra classes
+• Reminders before class and a nudge to mark attendance after it
+• Home screen widget with today's classes and tasks
+• Two-way Google Calendar sync (Pro)
+
+📝 HOMEWORK, ASSIGNMENTS & EXAMS
+• To-do list for homework, assignments and projects with due dates and reminders
+• Exam countdowns so nothing sneaks up on you
+• AI weekly planner: a study and revision plan built around your free slots, exams and deadlines (Pro)
+• Daily agenda: a morning summary of today's classes, deadlines and exams (Pro)
+
+🤖 AI STUDY ASSISTANT
+Plan your week, break down a syllabus, build a learning plan or get study tips. The free plan includes 10 AI messages every month; Pro is unlimited.
+
+🎓 GRADES & GPA CALCULATOR
+Log your marks, see your GPA and find out what you need to score to hit your target.
+
+📚 NOTES, FLASHCARDS & FOCUS
+• Focus timer to log your study sessions
+• Habit tracker to build a daily study streak
+• Student budget and expense tracker
+• Smart lecture notes with formatting, image and PDF attachments and flashcards (Pro)
+
+🚀 SCHOLARSHIPS, INTERNSHIPS & STUDENT DISCOUNTS
+One feed for scholarships, internships, hackathons, competitions, free courses, certifications and exclusive student discounts. Free members see the latest picks; Pro unlocks the full library with search and filters.
+
+📤 EXPORT & SHARE
+Export attendance as PDF or CSV and your timetable as a calendar (.ics) file (Pro). Share your attendance and GPA milestones with friends.
+
+🔒 PRIVATE AND SECURE
+Sign in with Google or email and your data syncs securely across devices. Only you can see it, and you can delete your account at any time from Settings.
+
+WHO IS CLASSTRACK FOR?
+College and university students, engineering, medical and diploma students, school and high school students, and anyone who has to keep attendance above a minimum requirement.
+
+CLASSTRACK PRO
+Unlimited AI assistant, unlimited AI timetable imports, AI weekly planner, smart notes and flashcards, insights and predictions, Google Calendar sync, attendance risk alerts, daily agenda, data export, quiet hours and custom accent colours. The attendance tracker, bunk calculator, timetable and to-do list are free.
+
+Download ClassTrack and take control of your semester.
+
+Feedback or feature ideas? Tap Send feedback in Settings or email support@classtracks.app. We read every message.

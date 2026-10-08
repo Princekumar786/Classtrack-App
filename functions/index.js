@@ -18,6 +18,11 @@ import { getStorage } from "firebase-admin/storage";
 import { getFirestore, FieldValue, Timestamp } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
 import { getMessaging } from "firebase-admin/messaging";
+import { deriveEntitlement, toMillisMaybe } from "./entitlement.js";
+import { freeQuotaKey, decideFreeUse, periodKey, usedIn } from "./freeQuota.js";
+import {
+  normalizeDay, resolveTimes, parseModelJson, sniffMime, SUPPORTED_MIME,
+} from "./scheduleParse.js";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { lookup as dnsLookup } from "node:dns/promises";
@@ -136,6 +141,19 @@ const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
 // header) and as a Cloud Functions secret. Guards the webhook endpoint.
 const REVENUECAT_WEBHOOK_AUTH = defineSecret("REVENUECAT_WEBHOOK_AUTH");
 
+// RevenueCat REST API v1 SECRET key (starts with "sk_"). Unlike the public SDK
+// keys shipped in the app, this is a server-only secret that lets Cloud
+// Functions ask RevenueCat directly "what does this user actually own?". It
+// powers reconciliation (below): the authoritative self-heal that repairs
+// `_entitlements` when a webhook was missed, delayed, or denied. Set it with:
+//   firebase functions:secrets:set REVENUECAT_API_KEY
+// (Get it from RevenueCat → Project settings → API keys → Secret key.)
+const REVENUECAT_API_KEY = defineSecret("REVENUECAT_API_KEY");
+
+// The RevenueCat entitlement id that unlocks Pro. MUST match the client's
+// ProConstants.entitlementId ('pro').
+const PRO_ENTITLEMENT_ID = "pro";
+
 /// Reads the server-trusted Pro entitlement for a user. Stored at
 /// `_entitlements/{uid}` which clients cannot read or write (see
 /// firestore.rules default-deny); only this backend (Admin SDK) touches it,
@@ -202,6 +220,108 @@ async function enforcePeriodLimit(uid, action, max, period, message) {
   }
 }
 
+/// Gives back one free-tier use (e.g. a timetable scan that failed or found
+/// nothing). Decrements both the per-account and the email-identity counters,
+/// never below zero. Periodic allowances refund only the current bucket.
+async function refundFreeAllowance(auth, action, period = null) {
+  const db = getFirestore();
+  const key = freeQuotaKey(auth.token?.email || null);
+  const bucket = periodKey(period);
+  const refs = [db.collection("_aiUsage").doc(auth.uid)];
+  if (key) refs.push(db.collection("_freeQuota").doc(key));
+  const countField = `${action}Count`;
+  await db.runTransaction(async (tx) => {
+    const snaps = await Promise.all(refs.map((r) => tx.get(r)));
+    snaps.forEach((snap, i) => {
+      const used = usedIn(snap.exists ? snap.data() : null, action, bucket);
+      if (used > 0) tx.set(refs[i], { [countField]: used - 1 }, { merge: true });
+    });
+  });
+}
+
+/// Free-tier allowance that survives account deletion.
+///
+/// Counted in TWO places inside one transaction:
+///   • `_aiUsage/{uid}`        — per account (deleted with the account), and
+///   • `_freeQuota/{emailKey}` — per normalized-email hash, which deleteAccount
+///     deliberately keeps, so delete → re-sign-up with the same address
+///     (incl. Gmail dot / +tag variants) can't reset the allowance.
+/// Effective usage is the max of both, so existing per-uid usage still counts.
+///
+/// [period] is null for a lifetime allowance (schedule scans) or "month"/"day"
+/// for a recurring one (AI chat). Usage from an older bucket reads as 0.
+///
+/// Also requires a VERIFIED email, so throwaway/unowned addresses (which would
+/// each get their own allowance) can't be used to farm free usage. The live
+/// Auth record is checked when the token claim says unverified, because the
+/// claim stays stale until the client's ID token refreshes after verification.
+async function enforceFreeAllowance(auth, action, max, message, period = null) {
+  const uid = auth.uid;
+  let email = auth.token?.email || null;
+  let verified = auth.token?.email_verified === true;
+  if (!verified || !email) {
+    try {
+      const user = await getAuth().getUser(uid);
+      email = user.email || email;
+      verified = user.emailVerified === true;
+    } catch (_) {
+      // Fall through with token values — fail closed below.
+    }
+  }
+  if (!verified) {
+    throw new HttpsError(
+      "failed-precondition",
+      "Verify your email address to use ClassTrack's free AI features.",
+      { reason: "email_unverified" }
+    );
+  }
+
+  const db = getFirestore();
+  const key = freeQuotaKey(email);
+  const bucket = periodKey(period);
+  const uidRef = db.collection("_aiUsage").doc(uid);
+  const idRef = key ? db.collection("_freeQuota").doc(key) : null;
+  const countField = `${action}Count`;
+  const periodField = `${action}Period`;
+
+  const allowed = await db.runTransaction(async (tx) => {
+    const [uidSnap, idSnap] = await Promise.all([
+      tx.get(uidRef),
+      idRef ? tx.get(idRef) : Promise.resolve(null),
+    ]);
+    const decision = decideFreeUse(
+      usedIn(uidSnap.exists ? uidSnap.data() : null, action, bucket),
+      usedIn(idSnap && idSnap.exists ? idSnap.data() : null, action, bucket),
+      max
+    );
+    if (!decision.allowed) return false;
+    const counter = {
+      [countField]: decision.next,
+      ...(bucket ? { [periodField]: bucket } : {}),
+    };
+    tx.set(uidRef, counter, { merge: true });
+    if (idRef) {
+      tx.set(
+        idRef,
+        { ...counter, lastUid: uid, updatedAt: FieldValue.serverTimestamp() },
+        { merge: true }
+      );
+    }
+    return true;
+  });
+
+  if (!allowed) {
+    throw new HttpsError(
+      "resource-exhausted",
+      message ||
+        "You've used all your free scans. Upgrade to ClassTrack Pro for unlimited.",
+      // Lets the app tell "free allowance used → upgrade" apart from the Pro
+      // safety caps, which also surface as resource-exhausted.
+      { reason: "free_limit", action, period: period || "lifetime", max }
+    );
+  }
+}
+
 // Lead with the "-latest" aliases so a future model retirement (like the
 // gemini-2.0-flash / gemini-1.5-flash shutdown that broke this list) resolves
 // to the current model automatically instead of 404-ing. Versioned entries are
@@ -214,8 +334,8 @@ const MODELS = [
 ];
 
 // Chat prioritises a low-latency flash model. We lead with the versioned
-// gemini-2.5-flash (confirmed responding; "thinking" is disabled below via
-// thinkingBudget:0 so it stays snappy) and keep the self-updating
+// gemini-2.5-flash (confirmed responding; "thinking" is kept minimal via
+// minimalThinkingConfig so it stays snappy) and keep the self-updating
 // "gemini-flash-latest" alias as a fallback so a model retirement can't
 // silently break chat again. Retired models (gemini-2.0-flash,
 // gemini-1.5-flash) removed — they now 404 ("no longer available"), which made
@@ -227,10 +347,23 @@ const CHAT_MODELS = [
   "gemini-pro-latest",
 ];
 
+/// Per-model thinking config for a "keep thinking to a minimum" request.
+/// Gemini 2.5 models only understand `thinkingBudget` (2.5 Pro can't go below
+/// 128). Gemini 3+ models (what the "-latest" aliases resolve to) use
+/// `thinkingLevel`; upcoming models reject `thinkingBudget` with a 400, so it
+/// must never be sent to them. "minimal" is Flash-only; Pro supports "low".
+function minimalThinkingConfig(model) {
+  if (/^gemini-2\.5-/.test(model)) {
+    return { thinkingBudget: model.includes("pro") ? 128 : 0 };
+  }
+  return { thinkingLevel: model.includes("pro") ? "low" : "minimal" };
+}
+
 /// Generate text, trying each model until one works. [request] is whatever
 /// generateContent accepts (a parts array or a { contents } object).
 /// [models] overrides the default model order; [maxOutputTokens] caps the
-/// reply length (both used to keep the chat snappy).
+/// reply length (both used to keep the chat snappy). [minimalThinking]
+/// dials thinking down so it can't eat the output budget.
 async function generateText(
   genAI,
   {
@@ -239,26 +372,27 @@ async function generateText(
     request,
     models = MODELS,
     maxOutputTokens,
-    thinkingBudget,
+    minimalThinking = false,
   }
 ) {
-  // Base generation config shared by every attempt.
+  // Base generation config shared by every attempt. No temperature/topP/topK:
+  // they're deprecated and will error on upcoming models.
   const baseConfig = {};
   if (jsonOut) baseConfig.responseMimeType = "application/json";
   if (maxOutputTokens) baseConfig.maxOutputTokens = maxOutputTokens;
 
-  // Run the whole model list once. `withThinking` toggles the 2.5-series
-  // "thinking" phase via thinkingConfig (thinkingBudget 0 disables it). We keep
-  // this in its own helper so we can transparently retry WITHOUT thinkingConfig
-  // if a model/SDK combo rejects the field — chat must never break over it.
+  // Run the whole model list once. `withThinking` adds the per-model
+  // thinkingConfig. We keep this in its own helper so we can transparently
+  // retry WITHOUT thinkingConfig if a model/SDK combo rejects the field —
+  // chat must never break over it.
   async function run(withThinking) {
     let lastErr;
-    const generationConfig = { ...baseConfig };
-    if (withThinking && thinkingBudget !== undefined) {
-      generationConfig.thinkingConfig = { thinkingBudget };
-    }
-    const hasConfig = Object.keys(generationConfig).length > 0;
     for (const m of models) {
+      const generationConfig = { ...baseConfig };
+      if (withThinking) {
+        generationConfig.thinkingConfig = minimalThinkingConfig(m);
+      }
+      const hasConfig = Object.keys(generationConfig).length > 0;
       try {
         const model = genAI.getGenerativeModel({
           model: m,
@@ -274,12 +408,12 @@ async function generateText(
     return { err: lastErr };
   }
 
-  // First pass: with thinkingConfig when a budget was requested.
-  let res = await run(thinkingBudget !== undefined);
+  // First pass: with thinkingConfig when minimal thinking was requested.
+  let res = await run(minimalThinking);
   if (res.text !== undefined) return res.text;
   // Fallback: retry the list without thinkingConfig in case the legacy SDK or a
   // particular model doesn't accept it.
-  if (thinkingBudget !== undefined) {
+  if (minimalThinking) {
     res = await run(false);
     if (res.text !== undefined) return res.text;
   }
@@ -320,7 +454,7 @@ const CHAT_SYSTEM = `You are ClassTrack Assistant, a friendly, focused helper fo
 
 SCOPE — you ONLY help with:
 - The user's studies and academics (study tips, planning, revision, understanding a concept, exam prep).
-- This app's features and the user's own data: attendance, timetable/classes, tasks & deadlines, exams, grades/GPA, notes, expenses/budget, study focus time and habits.
+- This app's features and the user's own data: attendance, timetable/classes, tasks & deadlines, exams, grades/GPA, notes, expenses/budget (logging ANY personal spend is in scope — including tech, cloud or software purchases), study focus time and habits — and how to use the app (see APP GUIDE).
 
 REFUSE politely (one short sentence) and steer back to studies if asked anything outside that scope — for example: general trivia unrelated to studying, current events, medical/legal/financial advice, writing something to cheat or plagiarise, adult/harmful/illegal content, coding unrelated to their studies, or anything not about the student's academic life. Example refusal: "I'm your study assistant, so I can only help with your classes, tasks, exams, grades and studying. Want a hand with any of those?"
 
@@ -360,6 +494,8 @@ ACTIONS (invisible automation): When the user's message clearly asks to log or s
   { "type": "study", "minutes": number, "subject": string|null, "date": "YYYY-MM-DD"|null },
   { "type": "attendance", "subject": string, "status": "present"|"absent"|"cancelled", "date": "YYYY-MM-DD"|null },
   { "type": "budget", "amount": number },
+  { "type": "setting", "timeFormat": "12h"|"24h"|"system" },
+  { "type": "fixClassTimes", "subject": string|null, "day": "Monday".."Sunday"|null },
   { "type": "linkNote", "noteTitle": string, "examTitle": string },
   { "type": "update", "entity": "task"|"exam"|"expense"|"note"|"grade"|"subject"|"class"|"habit", "match": string, "amount": number|null, "category": string|null, "newTitle": string|null, "newName": string|null, "note": string|null, "body": string|null, "dueDate": "YYYY-MM-DD"|null, "date": "YYYY-MM-DD"|null, "time": "HH:MM"|null, "priority": "low"|"medium"|"high"|null, "taskType": "task"|"event"|"video"|null, "done": boolean|null, "newAmount": number|null, "newCategory": string|null, "score": number|null, "maxScore": number|null, "weight": number|null, "room": string|null, "color": "#RRGGBB"|null, "icon": string|null, "startDate": "YYYY-MM-DD"|null, "endDate": "YYYY-MM-DD"|null, "subject": string|null, "day": "Monday".."Sunday"|null, "start": "HH:MM"|null, "end": "HH:MM"|null, "newDay": "Monday".."Sunday"|null },
   { "type": "createPlan", "subject": string, "level": "zero"|"basics"|"intermediate"|"advanced"|null, "goal": "syllabus"|"exam"|"fundamentals"|"interview"|"project"|"explore"|null, "program": "general"|"school"|"undergraduate"|"postgraduate"|"professional"|null, "dailyMinutes": number|null, "days": ["Monday".."Sunday"]|null, "deadline": "YYYY-MM-DD"|null, "specificTopic": boolean|null },
@@ -378,11 +514,32 @@ Rules for actions:
 - DELETE: "delete the Maths quiz grade", "remove the DP-800 exam", "delete the Physics subject", "remove my Monday Maths class", "delete the gym habit" → a delete action with entity + match (for a class, give subject + day). For an expense, ALWAYS include the "amount" and "category" when the user mentions them ("delete the 20 rupees food transaction" → entity "expense", amount 20, category "food"), since expenses often have no distinctive title.
 - DELETE ALL / CLEAR: When the user asks to remove EVERY item of a type — "delete all my subjects", "remove all tasks", "clear my expenses", "delete every habit", "wipe all my classes" (including subjects/classes that were added by scanning a timetable) — emit ONE single delete action for that entity with "all": true and omit "match". Do NOT emit one action per item, and do NOT try to list them. For classes you may add "subject" to clear only that subject's classes; omit it to clear all classes.
 - HONESTY: Never claim you deleted, updated or added something unless you actually emitted the matching action for it. If you are not sure which item the user means (and it is not a "delete all"), ask a brief clarifying question INSTEAD of emitting an action and INSTEAD of saying "Done".
+- COMPLETING TASKS: "mark the Microsoft Fabric video complete", "I finished the OS assignment", "tick off the lab record" → { "type": "update", "entity": "task", "match": <the task's title exactly as listed in the data>, "done": true }. Use the key "done" (boolean) — never "completed" or "status". Videos and events are tasks too. "mark it as not done" → done false.
+- EXACT NAMES: in every update/delete, set "match" to the item's title/name copied EXACTLY from the user's data (e.g. the user says "the fabric video", the data lists "Microsoft Fabric end-to-end tutorial" → match "Microsoft Fabric end-to-end tutorial"). For expenses also include amount and category as shown in the data.
 - BUDGET: "set my budget to 5000" → budget.
 - LEARNING PLANNER: "make me a plan to learn Business Law", "plan DBMS by Oct 12", "create a study plan for Python", "plan Normalization in 3 days" → createPlan (subject is required; include level/goal/program/deadline/dailyMinutes/days only when the user states them, else null; set specificTopic true for a narrow topic like "Normalization in DBMS"). "I have less time — adjust my Business Law plan", "move my DBMS plan deadline to next Friday", "I can study 2 hours a day now" → adjustPlan (subject = the plan's subject). "I finished Normalization in my DBMS plan", "mark Journal Entries done in Financial Accounting" → completeTopic (subject = plan, topic = the topic). "delete my Business Law plan" → delete with entity "plan". IMPORTANT: never ask for or set a country/curriculum — the app automatically applies the student's location for jurisdiction-sensitive subjects (law, tax, politics, governance, accounting standards).
 - You have full read access to the user's data below (attendance incl. this week, subjects & schedule, tasks, exams both upcoming AND past, grades by subject, notes, expenses with a category-wise breakdown AND previous-month history, study time incl. history, habits). This includes HISTORICAL data — answer questions about last month, previous months and past items directly from it, and never claim you lack history or a breakdown when the data is present. You can also CREATE, UPDATE and DELETE items across EVERY feature (tasks, classes, subjects, exams, grades, notes, expenses, habits, attendance and study), not just the current period.
 - Match update/delete targets by the names/titles shown in the user's data. If nothing matches, don't emit the action — ask a short clarifying question instead.
-- Only include the actions block when the user actually wants to record or change something. For questions, tips or chit-chat, omit it entirely.`;
+- Only include the actions block when the user actually wants to record or change something. For questions, tips or chit-chat, omit it entirely.
+- EXPENSES (always log): any message where the user says they spent, paid or bought something with an amount — "spent 120 on aws", "paid 499 for Spotify", "bought a charger for 800", "20 on samosa" — is ALWAYS an expense action, whatever the item. Cloud services (AWS, Azure, GCP), software, apps, subscriptions, domains, gadgets, courses and fees are all normal student expenses: log them, do NOT refuse and do NOT treat them as off-topic or as financial advice. Never ask which category — pick the closest one, and use "other" when nothing fits (e.g. AWS → other, Netflix → fun, Uber → transport, textbook → books). Title = the item as the user said it.
+- TIME FORMAT: times in the user's data are given to you in 24-hour HH:MM, but the app DISPLAYS them in the student's chosen format. The app supports BOTH 12-hour and 24-hour display (Settings → Appearance → Time format: Auto / 12-hour / 24-hour; Auto follows the phone's clock setting). When the user wants times shown as 12-hour or 24-hour ("show my classes in 12h", "use 24 hour time"), emit a "setting" action with timeFormat "12h" or "24h" and confirm. NEVER say the app can only show one format.
+- FIX CLASS TIMES: when the user says their class times are wrong because they entered afternoon times without PM — "I entered my timetable in 12h format", "change all my PM classes", "my 1:40 class should be in the afternoon", "classes show at night/early morning" — emit ONE "fixClassTimes" action (optionally limited to a subject or day). The app then moves every class that starts between 01:00 and 06:59 to the afternoon (01:40–02:30 → 13:40–14:30) and fixes end times that end before they start. Do NOT output a schedule block for this, do NOT re-list the timetable, and do NOT ask the user to type each class. If that isn't the problem (e.g. one class is simply at the wrong time), use an "update" action for that class instead.
+
+APP GUIDE — when the user asks HOW to do something in the app, answer with short, exact steps from this guide (numbered or "•" lines). If you can do it for them with an action, offer that too (or just do it when they asked you to). If something is not covered here, say you're not sure where it is rather than guessing, and never claim the app can't do something unless this guide says so.
+- Navigation: the bottom bar has Home, Schedule, the round + button (Quick add), Explore and Planner. Settings = the gear icon at the top of Home. Notifications = the bell at the top of Home.
+- Quick add (+): New task, New class, New subject, Import timetable (scan a photo, upload a PDF or paste text with AI), New exam, Log grade, New note, New habit, Add expense.
+- Home: today's timeline (mark Present/Absent on each class), headline stats, and Quick tools: Attendance, Tasks, Exams, Grades, Notes, Calendar, Habits, Expenses, Perks.
+- Schedule tab: Day / Week / Month views. The + at the top adds a class; the download icon imports a timetable (Google Calendar, or Photo/PDF/text with AI). Tap a class → Edit class (subject, days, start/end time, repeats weekly or a single date, room) or Delete class.
+- Attendance: Home → Quick tools → Attendance shows every subject's %, and the + there adds a subject. Mark attendance from today's timeline on Home. Change the overall target in Settings → Attendance → Default attendance target; a subject can have its own target when you edit that subject.
+- Grades: Quick tools → Grades (or + → Log grade). Switch 4.0 / 10-point scale in Settings → Grades → GPA scale.
+- Expenses & budget: Quick tools → Expenses (or + → Add expense); set the monthly budget on the Expenses screen.
+- Planner tab: learning plans — "Create with AI" or "Build your own plan"; AI weekly planner in Settings → Study planner; AI daily summary in Settings → Daily agenda.
+- Explore tab: scholarships, internships, certifications, events and student perks/discounts.
+- Settings → Appearance: Theme (light/dark/system), Accent color (Pro) and Time format (Auto / 12-hour / 24-hour).
+- Settings → Notifications: turn reminders on and choose when they fire. Settings → Google Calendar: daily auto-sync (Pro).
+- Profile (name, avatar, college details): Settings → tap your profile card at the top → Edit profile.
+- Settings → Grow ClassTrack: Invite friends & earn Pro, Shareable moments. Settings → Support & feedback: Help & support, Show app tour, Tips & Tricks. Settings → Account: Sign out or delete the account.
+- ClassTrack Pro: Settings → ClassTrack Pro (unlimited AI, timetable scans, insights and more).`;
 
 const DAYS = [
   "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday",
@@ -445,19 +602,22 @@ function sanitize(parsed) {
       const sessions = Array.isArray(s?.sessions) ? s.sessions : [];
       const cleanSessions = sessions
         .map((se) => {
-          const start = typeof se?.start === "string" ? se.start : "09:00";
-          const end = typeof se?.end === "string" ? se.end : "10:00";
+          // Accept "Mon", "MONDAY", "9:00 AM", "0930"… and drop a session
+          // whose day can't be read rather than misfiling it on Monday.
+          const day = normalizeDay(se?.day);
+          const times = resolveTimes(se?.start, se?.end);
+          if (!day || !times) return null;
           return {
-            day: DAYS.includes(se?.day) ? se.day : "Monday",
-            start,
-            end: normalizeEndTime24(start, end),
-            room: se?.room ?? null,
+            day,
+            start: times.start,
+            end: times.end,
+            room: typeof se?.room === "string" && se.room.trim() ? se.room.trim() : null,
           };
         })
-        .filter((se) => /^\d{1,2}:\d{2}$/.test(se.start));
+        .filter(Boolean);
       return {
-        name: typeof s?.name === "string" ? s.name.trim() : "Untitled",
-        professor: s?.professor ?? null,
+        name: typeof s?.name === "string" ? s.name.trim().slice(0, 120) : "Untitled",
+        professor: typeof s?.professor === "string" && s.professor.trim() ? s.professor.trim() : null,
         startDate: cleanDate(s?.startDate),
         endDate: cleanDate(s?.endDate),
         sessions: dropHallucinatedWeek(cleanSessions),
@@ -475,22 +635,60 @@ function sanitize(parsed) {
 }
 
 export const parseSchedule = onCall(
-  { secrets: [GEMINI_API_KEY], cors: true, timeoutSeconds: 120, memory: "512MiB" },
+  // 180s + 1 GiB: a dense 10 MB PDF can take a while and is held in memory
+  // several times (base64 + request + SDK copy). The app waits slightly longer.
+  { secrets: [GEMINI_API_KEY], cors: true, timeoutSeconds: 180, memory: "1GiB" },
   async (request) => {
     if (!request.auth) {
       throw new HttpsError("unauthenticated", "Sign in to import a schedule.");
     }
-    // AI schedule import is a Pro feature. Free users get a tiny taste (3/month)
-    // so the flow is testable; Pro gets a generous daily cap.
-    if (await isProUser(request.auth.uid)) {
+    // AI schedule import is a Pro feature. Free users get a ONE-TIME allowance
+    // of 2 scans total (this never resets month to month, and — via the
+    // email-keyed _freeQuota doc — not even across delete + re-sign-up); Pro
+    // is unlimited (a generous daily cap only guards against runaway cost).
+    const isPro = await isProUser(request.auth.uid);
+    if (isPro) {
       await enforcePeriodLimit(request.auth.uid, "parseSchedulePro", 100, "day");
     } else {
-      await enforcePeriodLimit(request.auth.uid, "parseSchedule", 3, "month");
+      await enforceFreeAllowance(
+        request.auth,
+        "parseScheduleFree",
+        2,
+        "You've used your 2 free schedule scans. Upgrade to ClassTrack Pro " +
+          "for unlimited timetable imports."
+      );
     }
 
     const { sourceType, text, storagePath, inlineData, mimeType } =
       request.data || {};
 
+    // A scan that fails, or finds no timetable, must not cost a free user one
+    // of their 2 scans: refund it on every unsuccessful outcome below.
+    const refund = async () => {
+      if (isPro) return;
+      try {
+        await refundFreeAllowance(request.auth, "parseScheduleFree");
+      } catch (e) {
+        console.error("Free-scan refund failed", e);
+      }
+    };
+
+    try {
+      const result = await runScheduleParse({
+        uid: request.auth.uid, sourceType, text, storagePath, inlineData, mimeType,
+      });
+      if (result.subjects.length === 0) await refund();
+      return result;
+    } catch (err) {
+      await refund();
+      throw err;
+    }
+  }
+);
+
+/// Reads the input (text, inline base64, or an uploaded Storage file), asks
+/// Gemini for the timetable, and returns sanitized JSON. Throws HttpsError.
+async function runScheduleParse({ uid, sourceType, text, storagePath, inlineData, mimeType }) {
     const genAI = new GoogleGenerativeAI(GEMINI_API_KEY.value());
 
     let parts = [];
@@ -499,85 +697,106 @@ export const parseSchedule = onCall(
       if (!text || typeof text !== "string" || text.trim().length < 3) {
         throw new HttpsError("invalid-argument", "No timetable text provided.");
       }
-      parts = [{ text: `Parse this timetable:\n${text}` }];
+      parts = [{ text: `Parse this timetable:\n${text.slice(0, 60000)}` }];
     } else if (sourceType === "image" || sourceType === "pdf") {
       let base64 = inlineData || null;
-      const contentType = mimeType || (sourceType === "pdf" ? "application/pdf" : "image/jpeg");
 
-      // Prefer Storage read when a path is given and the file belongs to the user.
+      // Large files are uploaded to Storage first (callable payloads are
+      // capped); read it back only from the caller's own folder.
       if (!base64 && storagePath) {
         // Must live under the caller's own folder, and must not attempt path
         // traversal out of it. (GCS treats ".." as a literal segment, but we
         // reject it defensively so the ownership prefix can never be bypassed.)
         if (
           typeof storagePath !== "string" ||
-          !storagePath.startsWith(`users/${request.auth.uid}/`) ||
+          !storagePath.startsWith(`users/${uid}/`) ||
           storagePath.includes("..")
         ) {
           throw new HttpsError("permission-denied", "Invalid file path.");
         }
-        const [buf] = await getStorage().bucket().file(storagePath).download();
+        const file = getStorage().bucket().file(storagePath);
+        let buf;
+        try {
+          [buf] = await file.download();
+        } catch (e) {
+          console.error("Import file download failed", storagePath, e);
+          throw new HttpsError("invalid-argument", "Couldn't read the uploaded file. Please try again.");
+        }
         base64 = buf.toString("base64");
+        // The timetable file is only needed for this parse — don't keep it.
+        file.delete().catch(() => {});
       }
 
       if (!base64) {
         throw new HttpsError("invalid-argument", "No file data provided.");
       }
       // Cap the decoded upload at ~10 MB (mirrors the Storage-rules cap) so a
-      // client can't push an oversized inline payload to run up Gemini cost or
+      // client can't push an oversized payload to run up Gemini cost or
       // exhaust function memory. base64 is ~4/3 the byte size.
       if (typeof base64 !== "string" || base64.length > 14 * 1024 * 1024) {
         throw new HttpsError("invalid-argument", "File is too large (max 10 MB).");
       }
+      // Trust the bytes, not the label: galleries return PNG/WebP/HEIC too,
+      // and a mislabelled image makes Gemini reject or misread it.
+      const claimed = mimeType || (sourceType === "pdf" ? "application/pdf" : "image/jpeg");
+      const contentType = sniffMime(base64, claimed);
+      if (!SUPPORTED_MIME.has(contentType)) {
+        throw new HttpsError(
+          "invalid-argument",
+          "That file type isn't supported. Use a JPG, PNG, WebP or HEIC photo, or a PDF."
+        );
+      }
 
       parts = [
-        { text: "Parse the timetable in this file." },
+        {
+          text:
+            "Parse the timetable in this file. It may be a photo taken at an " +
+            "angle, a screenshot, or a multi-page PDF — read every page and " +
+            "every row/column. Days may be rows or columns, and times may be " +
+            "printed as 12-hour without AM/PM (afternoon slots like 1:40 mean 13:40).",
+        },
         { inlineData: { data: base64, mimeType: contentType } },
       ];
     } else {
       throw new HttpsError("invalid-argument", "Unknown sourceType.");
     }
 
-    let raw;
-    try {
-      raw = await generateText(genAI, {
-        systemInstruction: SYSTEM_PROMPT,
-        jsonOut: true,
-        request: parts,
-        // Disable the gemini-2.5 "thinking" phase (thinkingBudget 0) so it can
-        // never eat into the output budget, and give a generous output cap.
-        // Without this, a large/dense timetable (many subjects, or a photo/PDF
-        // import) had its JSON response truncated mid-object — JSON.parse then
-        // failed and users saw "AI returned an unreadable response." Mirrors the
-        // fix already applied to the chat function.
-        maxOutputTokens: 8192,
-        thinkingBudget: 0,
-      });
-    } catch (err) {
-      console.error("Gemini call failed", err);
-      throw new HttpsError(
-        "internal",
-        "Couldn't process the schedule right now. Please try again."
-      );
-    }
-
-    let parsed;
-    try {
-      parsed = JSON.parse(raw);
-    } catch (_) {
-      // Strip accidental markdown fences and retry once.
-      const stripped = raw.replace(/```json|```/g, "").trim();
+    // Up to two generations: models are non-deterministic, and a second try
+    // usually fixes a malformed or truncated reply.
+    let lastRaw = "";
+    for (let attempt = 0; attempt < 2; attempt++) {
+      let raw;
       try {
-        parsed = JSON.parse(stripped);
-      } catch (e2) {
-        console.error("Unparseable Gemini output", raw);
-        throw new HttpsError("internal", "AI returned an unreadable response.");
+        raw = await generateText(genAI, {
+          systemInstruction: SYSTEM_PROMPT,
+          jsonOut: true,
+          request: parts,
+          // Thinking off so it can't eat the output budget; a generous cap so
+          // dense multi-page timetables aren't cut off mid-JSON.
+          maxOutputTokens: 16384,
+          minimalThinking: true,
+        });
+      } catch (err) {
+        console.error("Gemini call failed", err);
+        if (attempt === 1) {
+          throw new HttpsError(
+            "unavailable",
+            "Couldn't process the schedule right now. Please try again."
+          );
+        }
+        continue;
       }
+      lastRaw = raw;
+      const parsed = parseModelJson(raw);
+      if (parsed) return sanitize(parsed);
     }
-
-    return sanitize(parsed);
-  }
-);
+    console.error("Unparseable Gemini output", lastRaw.slice(0, 2000));
+    throw new HttpsError(
+      "failed-precondition",
+      "We couldn't read a timetable from that. Try a clearer photo or paste it as text.",
+      { reason: "unreadable" }
+    );
+}
 
 
 
@@ -592,12 +811,20 @@ export const chat = onCall(
     if (!request.auth) {
       throw new HttpsError("unauthenticated", "Sign in to use the assistant.");
     }
-    // 20 AI messages/month for free users; Pro is effectively unlimited (with a
-    // generous daily safety cap to guard against runaway costs/abuse).
+    // 10 AI messages/month for free users — counted per account AND per email
+    // identity, so delete → re-sign-up can't reset it. Pro is effectively
+    // unlimited (with a generous daily safety cap against runaway cost/abuse).
     if (await isProUser(request.auth.uid)) {
       await enforcePeriodLimit(request.auth.uid, "chatDaily", 300, "day");
     } else {
-      await enforcePeriodLimit(request.auth.uid, "chat", 20, "month");
+      await enforceFreeAllowance(
+        request.auth,
+        "chat",
+        10,
+        "You've used your 10 free AI messages this month. Upgrade to " +
+          "ClassTrack Pro for unlimited chats.",
+        "month"
+      );
     }
 
     const rawHistory = Array.isArray(request.data?.history)
@@ -643,12 +870,12 @@ export const chat = onCall(
         jsonOut: false,
         request: { contents },
         models: CHAT_MODELS,
-        // Disable the 2.5-series "thinking" phase (thinkingBudget 0) so it can
-        // never consume the output budget — that was truncating the daily
-        // summary / insights mid-sentence (e.g. "…from 09:1") — and give a
-        // generous cap so full briefings and answers complete.
+        // Keep "thinking" minimal so it can never consume the output budget —
+        // that was truncating the daily summary / insights mid-sentence
+        // (e.g. "…from 09:1") — and give a generous cap so full briefings and
+        // answers complete.
         maxOutputTokens: 2048,
-        thinkingBudget: 0,
+        minimalThinking: true,
       });
       return {
         text: text || "Sorry, I couldn't come up with a reply.",
@@ -1000,6 +1227,26 @@ export const revenueCatWebhook = onRequest(
     if (grant.has(type)) pro = true;
     else if (revoke.has(type)) pro = false;
 
+    // A promotional / comp grant (issued from the RevenueCat dashboard) is NOT
+    // a store purchase, so it can't be fraudulently "transferred" between
+    // accounts the way a Google Play subscription can. Detect it so we (a) skip
+    // the store-purchase owner-gate below and (b) honour its expiry instead of
+    // writing the permanent `pro` flag. RevenueCat sets store "PROMOTIONAL" and
+    // an auto-generated product id like "rc_promo_<entitlement>_monthly".
+    const isPromo =
+      event.store === "PROMOTIONAL" ||
+      (typeof event.product_id === "string" &&
+        event.product_id.startsWith("rc_promo_"));
+
+    // Access end time (ms) for time-limited grants — present for promotional
+    // durations AND normal subscription periods. When set we store a
+    // self-expiring `proUntil` so access lapses on its own even if the matching
+    // EXPIRATION webhook is ever missed, and the status screen shows a real
+    // date instead of "Lifetime". Only a grant with NO end time (a genuine
+    // lifetime comp) falls through to the permanent `pro:true` flag.
+    const expiresAtMs =
+      typeof event.expiration_at_ms === "number" ? event.expiration_at_ms : null;
+
     if (pro === undefined) {
       res.status(200).send("Ignored");
       return;
@@ -1045,11 +1292,39 @@ export const revenueCatWebhook = onRequest(
             return snap.data().ownerUid; // owner already fixed — never changes
           }
           if (!canEstablishOwnership) {
-            // No owner on record and this isn't a first purchase. It may be a
-            // post-transfer renewal for a second account — refuse to attribute
-            // it. (Legit first purchases always arrive as INITIAL_PURCHASE and
-            // create the owner record before any renewal.)
-            return null;
+            // No owner on record and this isn't a first purchase. Two cases:
+            //  (a) LEGIT — the subscription was bought BEFORE ownership tracking
+            //      existed, or bought while the user was anonymous (so the
+            //      INITIAL_PURCHASE never recorded an owner). Its renewals would
+            //      otherwise be denied forever ("RENEWAL_UNATTRIBUTED"), i.e. a
+            //      paying user loses Pro.
+            //  (b) FRAUD — a post-transfer renewal for a SECOND account trying
+            //      to ride on the original buyer's payment.
+            // Self-heal ONLY when the event carries exactly ONE identified real
+            // ClassTrack account. A transfer involves TWO accounts (original +
+            // transferee) — it either surfaces both ids here (length > 1) or
+            // fires a separate TRANSFER event, which is handled/blocked above.
+            // So a single-account grant is the rightful owner; adopt it once and
+            // record it permanently, after which any other account on this same
+            // purchase is denied as NOT_OWNER. Depends on RevenueCat "Keep
+            // purchases with the original App User ID" (transfers blocked at the
+            // store layer); the TRANSFER handler is the backstop if that setting
+            // is ever changed.
+            if (uids.length !== 1) {
+              return null;
+            }
+            tx.set(
+              ownerRef,
+              {
+                ownerUid: uids[0],
+                productId: event.product_id || null,
+                store: event.store || null,
+                createdAt: Date.now(),
+                selfHealed: true, // adopted by a non-first grant (see above)
+              },
+              { merge: true }
+            );
+            return uids[0];
           }
           // First time we see this purchase: the original buyer owns it. Prefer
           // RevenueCat's original_app_user_id, else the first identified uid.
@@ -1075,14 +1350,25 @@ export const revenueCatWebhook = onRequest(
       }
 
       const writes = [];
-      if (pro === true && ownerUid === null) {
-        // We could not attribute this grant to a verified owner (see above).
-        // Fail CLOSED: deny Pro to every account on the event so a transferred
-        // Google Play purchase can never unlock Pro on a second account.
+      if (pro === true && ownerUid === null && !isPromo) {
+        // We could not attribute this store-purchase grant to a verified owner
+        // (see above). Fail CLOSED: deny Pro to every account on the event so a
+        // transferred Google Play purchase can never unlock Pro on a second
+        // account. Promo/comp grants are exempt — they're admin-issued, not a
+        // store purchase, so there's nothing to transfer-protect.
         for (const uid of uids) {
           writes.push(
             db.collection("_entitlements").doc(uid).set(
-              { pro: false, updatedAt: Date.now(), lastEvent: `${type}_UNATTRIBUTED` },
+              {
+                pro: false,
+                updatedAt: Date.now(),
+                lastEvent: `${type}_UNATTRIBUTED`,
+                // Ask the safety-net cron to double-check this against
+                // RevenueCat's authoritative state — if this account really is
+                // entitled (e.g. a legit renewal we couldn't attribute), the
+                // reconciler will grant it and clear this flag.
+                needsReconcile: true,
+              },
               { merge: true }
             )
           );
@@ -1096,15 +1382,25 @@ export const revenueCatWebhook = onRequest(
         return;
       }
       if (pro === true) {
-        // Grant ONLY to the original owner. Any other account seen on this
-        // purchase (a would-be transfer target) is explicitly denied so it can
-        // never ride on someone else's payment.
-        const target = ownerUid;
+        // Grant ONLY to the original owner for a store purchase. A promo has no
+        // owner record, so attribute it to the identified account. Any OTHER
+        // account seen on a store purchase (a would-be transfer target) is
+        // explicitly denied so it can never ride on someone else's payment.
+        const target = ownerUid || uids[0];
+        // Honour a time-limited grant with a self-expiring `proUntil` instead of
+        // the permanent `pro` flag, so a 1-month promo really ends in a month
+        // (and never displays as "Lifetime"). `pro:false` clears any stale
+        // permanent flag. Only a grant with NO end time stays a permanent comp.
+        const grantPayload = expiresAtMs
+          ? {
+              proUntil: expiresAtMs,
+              pro: false,
+              updatedAt: Date.now(),
+              lastEvent: type,
+            }
+          : { pro: true, updatedAt: Date.now(), lastEvent: type };
         writes.push(
-          db.collection("_entitlements").doc(target).set(
-            { pro: true, updatedAt: Date.now(), lastEvent: type },
-            { merge: true }
-          )
+          db.collection("_entitlements").doc(target).set(grantPayload, { merge: true })
         );
         for (const uid of uids) {
           if (uid !== target) {
@@ -1136,6 +1432,160 @@ export const revenueCatWebhook = onRequest(
       console.error("Failed to update entitlement", e);
       res.status(500).send("Error");
     }
+  }
+);
+
+
+/* ==========================================================================
+ * Entitlement reconciliation — the durable safety net.
+ *
+ * `_entitlements/{uid}` is otherwise maintained ONLY by webhook events. If a
+ * webhook is ever missed, delivered out of order, or denied by the ownership
+ * gate, a paying user can be left without Pro and has no way to recover. These
+ * helpers make the server self-heal by asking RevenueCat's REST API — the
+ * authoritative source of truth — what the user actually owns, then repairing
+ * the doc to match.
+ *
+ * SAFETY: reconciliation is REPAIR-ONLY. It grants/extends access to match
+ * RevenueCat but NEVER revokes — so it can't accidentally strip a manual comp
+ * (`pro:true` set from the console) or a referral gift. Revocation stays with
+ * the EXPIRATION/BILLING_ISSUE webhooks and the client's own refresh.
+ * ======================================================================== */
+
+/// Fetches the RevenueCat subscriber for [uid] and repairs `_entitlements/{uid}`
+/// to match (repair-only; see section header). Throws on hard/transient errors
+/// so callers can surface/retry.
+async function reconcileFromRevenueCat(uid, db, apiKey) {
+  if (!apiKey) {
+    throw new HttpsError(
+      "failed-precondition",
+      "REVENUECAT_API_KEY is not configured."
+    );
+  }
+  const resp = await fetch(
+    `https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(uid)}`,
+    {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+    }
+  );
+  // 404 => RevenueCat has never seen this user. Nothing store-side to grant;
+  // leave any referral/comp fields untouched.
+  if (resp.status === 404) return { changed: false, state: "no_subscriber" };
+  if (!resp.ok) {
+    throw new HttpsError("unavailable", `RevenueCat REST ${resp.status}`);
+  }
+  const json = await resp.json();
+  const derived = deriveEntitlement(
+    json.subscriber || {},
+    PRO_ENTITLEMENT_ID,
+    Date.now()
+  );
+
+  const ref = db.collection("_entitlements").doc(uid);
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const cur = snap.exists ? snap.data() || {} : {};
+    const curUntilMs = toMillisMaybe(cur.proUntil);
+    // REPAIR-ONLY: never downgrade. Always clear the reconcile flag so we don't
+    // loop on it.
+    const patch = {
+      updatedAt: Date.now(),
+      lastEvent: "RECONCILE",
+      needsReconcile: false,
+    };
+
+    if (derived.pro === true) {
+      // RevenueCat reports a lifetime / non-expiring entitlement.
+      const changed = cur.pro !== true;
+      if (changed) patch.pro = true;
+      tx.set(ref, patch, { merge: true });
+      return { changed, state: "permanent" };
+    }
+
+    if (derived.proUntil) {
+      // Time-boxed subscription. Take the MAX of RevenueCat's expiry and any
+      // longer existing gift (referral/promo) so we never shorten access.
+      const best = Math.max(derived.proUntil, curUntilMs || 0);
+      const hadAccess = cur.pro === true || (curUntilMs || 0) > Date.now();
+      if (best !== curUntilMs) patch.proUntil = best;
+      tx.set(ref, patch, { merge: true });
+      return { changed: best !== curUntilMs || !hadAccess, state: "timeboxed" };
+    }
+
+    // RevenueCat shows nothing active. Repair-only => do NOT revoke; just clear
+    // the flag so the cron stops revisiting this doc.
+    if (cur.needsReconcile === true) {
+      tx.set(
+        ref,
+        { needsReconcile: false, updatedAt: Date.now() },
+        { merge: true }
+      );
+    }
+    return { changed: false, state: "none" };
+  });
+}
+
+/**
+ * Callable: the app asks the server to reconcile the CURRENT user's Pro state
+ * against RevenueCat. Call on launch/login and after purchase/restore so a
+ * paying user self-heals within one app-open even if the webhook never landed.
+ */
+export const reconcileEntitlement = onCall(
+  { secrets: [REVENUECAT_API_KEY] },
+  async (request) => {
+    const uid = request.auth?.uid;
+    if (!uid) {
+      throw new HttpsError("unauthenticated", "Sign in required.");
+    }
+    const db = getFirestore();
+    const result = await reconcileFromRevenueCat(
+      uid,
+      db,
+      REVENUECAT_API_KEY.value()
+    );
+    return { ok: true, ...result };
+  }
+);
+
+/**
+ * Safety-net cron: hourly, reconcile every account the webhook flagged with
+ * `needsReconcile` (e.g. a renewal we couldn't attribute). Covers users who
+ * don't open the app, so even a fully-missed webhook is repaired within the
+ * hour. Best-effort per doc so one failure can't stall the rest.
+ */
+export const reconcileFlaggedEntitlements = onSchedule(
+  { schedule: "every 60 minutes", secrets: [REVENUECAT_API_KEY] },
+  async () => {
+    const db = getFirestore();
+    const apiKey = REVENUECAT_API_KEY.value();
+    if (!apiKey) {
+      console.error(
+        "reconcileFlaggedEntitlements: REVENUECAT_API_KEY not set — skipping."
+      );
+      return;
+    }
+    const flagged = await db
+      .collection("_entitlements")
+      .where("needsReconcile", "==", true)
+      .limit(200)
+      .get();
+    let ok = 0;
+    let fail = 0;
+    for (const doc of flagged.docs) {
+      try {
+        await reconcileFromRevenueCat(doc.id, db, apiKey);
+        ok++;
+      } catch (e) {
+        fail++;
+        console.error("reconcile failed for", doc.id, e);
+      }
+    }
+    console.log(
+      `reconcileFlaggedEntitlements: reconciled ${ok}, failed ${fail}.`
+    );
   }
 );
 
@@ -1323,6 +1773,9 @@ export const deleteAccount = onCall({ cors: true }, async (request) => {
     // Recursively delete everything under users/{uid} (all subcollections).
     await db.recursiveDelete(db.collection("users").doc(uid));
     // Server-trusted docs the client cannot delete under security rules.
+    // NOTE: `_freeQuota/{emailHash}` is intentionally NOT deleted — it holds
+    // only a counter keyed by a one-way hash (no personal data) and is what
+    // stops delete → re-sign-up from resetting the free scan allowance.
     await Promise.all([
       db.collection("_entitlements").doc(uid).delete().catch(() => {}),
       db.collection("_aiUsage").doc(uid).delete().catch(() => {}),

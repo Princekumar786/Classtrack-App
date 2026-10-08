@@ -11,7 +11,7 @@ import '../../../../core/utils/date_utils.dart';
 import '../../../../shared/widgets/ai_mascot.dart';
 import '../../../import/domain/parsed_schedule.dart';
 import '../../../import/presentation/screens/review_screen.dart';
-import '../../../subscription/presentation/screens/paywall_screen.dart';
+import '../../../subscription/presentation/widgets/upgrade_prompt.dart';
 import '../../domain/chat_message.dart';
 import '../providers/chat_providers.dart';
 import '../providers/chat_usage_providers.dart';
@@ -94,7 +94,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     if (!needs || !mounted) return;
     // Defer so we don't push a route during a build/listener callback.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) showPaywall(context);
+      if (mounted) showUpgradePrompt(context, UpgradeReason.aiChat);
     });
   }
 
@@ -444,7 +444,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 Text('Kiro', style: theme.textTheme.titleMedium),
                 Row(
                   children: [
-                    Container(
+                    Flexible(
+                      child: Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 2),
                       decoration: BoxDecoration(
@@ -457,15 +458,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                           const Icon(Icons.auto_awesome_rounded,
                               size: 11, color: AppColors.primary),
                           const SizedBox(width: 4),
-                          Text('Powered by AI',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                  color: AppColors.primary,
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 11)),
+                          Flexible(
+                            child: Text('Powered by AI',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                    color: AppColors.primary,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 11)),
+                          ),
                         ],
                       ),
+                    ),
                     ),
                     Builder(builder: (_) {
                       final remaining = ref.watch(chatRemainingProvider);

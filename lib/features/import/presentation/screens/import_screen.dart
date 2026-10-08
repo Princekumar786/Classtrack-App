@@ -1,6 +1,9 @@
 import 'dart:async';
 
+import 'dart:io';
+
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
@@ -9,8 +12,9 @@ import 'package:classtrack/core/theme/app_icons.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../services/analytics_service.dart';
-import '../../../subscription/presentation/providers/subscription_providers.dart';
-import '../../../subscription/presentation/screens/paywall_screen.dart';
+import '../../../../services/gemini_service.dart' show sniffMimeType;
+import '../../../chat/domain/ai_errors.dart';
+import '../../../subscription/presentation/widgets/upgrade_prompt.dart';
 import '../../../tips/domain/discoverable_feature.dart';
 import '../../../tips/presentation/providers/tips_providers.dart';
 import '../../domain/parsed_schedule.dart';
@@ -96,9 +100,9 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   /// Turns a thrown error into a friendly, actionable outcome — and NEVER
   /// leaks a raw exception/stack trace to the user. Returns a coarse reason
   /// category for the import funnel. Firebase Functions errors carry a `code`
-  /// we can map: the monthly AI quota (`resource-exhausted`) routes to the Pro
-  /// paywall, a rejected/garbled input shows the inline "not a timetable"
-  /// helper, and connectivity blips get a retry hint.
+  /// we can map: the free scan allowance (`resource-exhausted`) routes to the
+  /// Pro upgrade prompt, a rejected/garbled input shows the inline "not a
+  /// timetable" helper, and connectivity blips get a retry hint.
   Future<String> _handleError(Object error) async {
     if (!mounted) return 'unknown';
     if (error is FirebaseFunctionsException) {
@@ -111,15 +115,27 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
           return 'unauthenticated';
         case 'invalid-argument':
         case 'failed-precondition':
+          if (aiErrorReason(error) == 'email_unverified') {
+            _fail('Verify your email address to use free schedule scans.');
+            return 'email_unverified';
+          }
           _showNotATimetableHint();
           return 'not_a_timetable';
         case 'unavailable':
+          _fail('The AI is busy right now — please try again in a moment.');
+          return 'unavailable';
         case 'deadline-exceeded':
-          _fail('Network hiccup — check your connection and try again.');
-          return 'network';
+          _fail('That took too long. Try again, or use a clearer photo or a '
+              'smaller PDF.');
+          return 'timeout';
       }
       _fail('Import failed. Please try again.');
       return error.code;
+    }
+    if (error is FirebaseException) {
+      // e.g. the large-file upload to Storage failed (offline mid-upload).
+      _fail('Couldn’t upload the file — check your connection and try again.');
+      return 'upload';
     }
     _fail('Import failed. Please try again.');
     return 'unknown';
@@ -169,38 +185,12 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     });
   }
 
-  /// Free monthly AI allowance is used up: offer the Pro upgrade and, if the
-  /// user accepts, open the paywall/pricing screen.
+  /// The free schedule-scan allowance (a one-time, lifetime allowance — it does
+  /// NOT reset monthly) is used up: show the standard upgrade prompt, which
+  /// opens the pricing page tailored to scans.
   Future<void> _showLimitReached() async {
     if (!mounted) return;
-    final upgrade = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        icon: const Icon(
-          Icons.workspace_premium_rounded,
-          color: AppColors.primary,
-        ),
-        title: const Text('You’ve reached your free AI limit'),
-        content: const Text(
-          'You’ve used all your free AI imports for this month. Upgrade to '
-          'ClassTrack Pro for unlimited timetable imports and AI help — or try '
-          'again next month.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Not now'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Upgrade to Pro'),
-          ),
-        ],
-      ),
-    );
-    if (upgrade == true && mounted) {
-      await showPaywall(context);
-    }
+    await showUpgradePrompt(context, UpgradeReason.timetableScans);
   }
 
   Future<void> _run(
@@ -222,9 +212,10 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     // build a timetable manually or via the chat assistant's monthly free
     // messages. When [freeAccess] is set (e.g. launched from the Attendance
     // tab) the paywall is skipped so photo upload is free.
-    if (!widget.freeAccess && !ref.read(isProProvider)) {
-      final becamePro = await showPaywall(context);
-      if (!becamePro || !mounted) return;
+    if (!widget.freeAccess &&
+        (!await requirePro(context, ref, UpgradeReason.timetableScans) ||
+            !mounted)) {
+      return;
     }
     setState(() {
       _loading = true;
@@ -301,9 +292,20 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     if (result == null || result.files.isEmpty) return; // user cancelled
 
     final picked = result.files.first;
-    final bytes = picked.bytes;
+    var bytes = picked.bytes;
+    // Some Android pickers return a path but no in-memory bytes (notably for
+    // larger files) — read from disk instead of failing.
+    if ((bytes == null || bytes.isEmpty) && picked.path != null) {
+      try {
+        bytes = await File(picked.path!).readAsBytes();
+      } catch (_) {}
+    }
     if (bytes == null || bytes.isEmpty) {
       _fail('Couldn’t read that PDF. Please try another file.');
+      return;
+    }
+    if (sniffMimeType(bytes, '') != 'application/pdf') {
+      _fail('That file isn’t a valid PDF. Please pick a PDF timetable.');
       return;
     }
     // The backend caps uploads at 10 MB; reject oversized PDFs up front with a
@@ -313,9 +315,10 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       _fail('That PDF is too large (max 10 MB). Try exporting a smaller file.');
       return;
     }
+    final pdf = bytes;
     await _run(
       'pdf',
-      () => ref.read(importRepositoryProvider)!.parsePdf(bytes),
+      () => ref.read(importRepositoryProvider)!.parsePdf(pdf),
     );
   }
 

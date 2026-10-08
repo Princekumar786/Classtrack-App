@@ -223,6 +223,55 @@ final themeModeProvider =
   return ThemeModeController(ref.watch(scopedPrefsProvider));
 });
 
+/// How times are shown everywhere in the app (schedule, home, reminders UI).
+enum TimeFormatPref {
+  /// Follow the phone's 12/24-hour clock setting (the previous behaviour).
+  system,
+  twelveHour,
+  twentyFourHour;
+
+  String get wire => switch (this) {
+        TimeFormatPref.system => 'system',
+        TimeFormatPref.twelveHour => '12h',
+        TimeFormatPref.twentyFourHour => '24h',
+      };
+
+  String get label => switch (this) {
+        TimeFormatPref.system => 'Auto',
+        TimeFormatPref.twelveHour => '12-hour',
+        TimeFormatPref.twentyFourHour => '24-hour',
+      };
+
+  static TimeFormatPref parse(String? v) => switch (v?.trim().toLowerCase()) {
+        '12h' || '12' || '12-hour' || 'twelvehour' => TimeFormatPref.twelveHour,
+        '24h' || '24' || '24-hour' || 'twentyfourhour' => TimeFormatPref.twentyFourHour,
+        _ => TimeFormatPref.system,
+      };
+
+  /// Value for MediaQuery.alwaysUse24HourFormat, or null to keep the phone's.
+  bool? get use24 => switch (this) {
+        TimeFormatPref.system => null,
+        TimeFormatPref.twelveHour => false,
+        TimeFormatPref.twentyFourHour => true,
+      };
+}
+
+class TimeFormatController extends StateNotifier<TimeFormatPref> {
+  final ScopedPrefs _prefs;
+  TimeFormatController(this._prefs)
+      : super(TimeFormatPref.parse(_prefs.getString(AppConstants.prefsTimeFormat)));
+
+  Future<void> set(TimeFormatPref value) async {
+    state = value;
+    await _prefs.setString(AppConstants.prefsTimeFormat, value.wire);
+  }
+}
+
+final timeFormatProvider =
+    StateNotifierProvider<TimeFormatController, TimeFormatPref>((ref) {
+  return TimeFormatController(ref.watch(scopedPrefsProvider));
+});
+
 /// On-device Gemini API key (entered by the user in Settings). Per user, so one
 /// account can never read or reuse another account's key on a shared device.
 class GeminiKeyController extends StateNotifier<String?> {

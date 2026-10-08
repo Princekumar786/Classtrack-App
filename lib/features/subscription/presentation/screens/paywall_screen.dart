@@ -1,3 +1,6 @@
+import 'dart:async';
+
+
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,61 +9,88 @@ import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/constants/app_constants.dart';
+import '../../../../core/providers/firebase_providers.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../services/analytics_service.dart';
 import '../../../../shared/widgets/illustrations.dart';
+import '../../../../shared/widgets/sweep_shimmer.dart';
 import '../../data/subscription_service.dart';
+import '../../domain/paywall_pricing.dart';
 import '../../domain/pro_constants.dart';
 import '../../domain/pro_features.dart';
+import '../../domain/upgrade_reason.dart';
 import '../providers/subscription_providers.dart';
 
-/// Opens the ClassTrack Pro paywall. Returns true if the user became Pro.
-Future<bool> showPaywall(BuildContext context) async {
+export '../../domain/upgrade_reason.dart' show UpgradeReason;
+
+// TODO(paywall conversion — do later): higher-impact levers to A/B test:
+//   1. Replace the generic 5-star "Loved by students everywhere" pill with a
+//      REAL, specific stat (e.g. "Join 12,000+ students" or "4.8★ on Google
+//      Play") — specific proof converts far better than generic praise.
+//   2. Add a free-trial timeline ("Today: full access → Day 5: reminder →
+//      Day 7: billed") to remove billing anxiety and lift trial starts.
+//   3. Add a compact Free-vs-Pro comparison (loss aversion beats a plain
+//      benefits list).
+//   4. Add gentle urgency for the discount (e.g. "offer ends soon").
+//   5. Make the hero sell an outcome ("Never drop below 75% again") rather
+//      than being purely decorative; quantify benefit copy.
+// NOTE: the free-trial toggle was intentionally removed per product decision.
+
+/// Opens the ClassTrack Pro pricing page. Returns true if the user became Pro.
+///
+/// [reason] tailors the headline and highlights the matching Free-vs-Pro row,
+/// so a student who hit a limit sees exactly what Pro changes for them.
+/// Prefer [showUpgradePrompt] (upgrade_prompt.dart) at limit/gate call sites —
+/// it explains the limit first, then calls this.
+Future<bool> showPaywall(BuildContext context,
+    {UpgradeReason reason = UpgradeReason.general}) async {
   final result = await Navigator.of(context).push<bool>(
     MaterialPageRoute(
-        builder: (_) => const PaywallScreen(), fullscreenDialog: true),
+        settings: RouteSettings(name: 'Paywall', arguments: reason.id),
+        builder: (_) => PaywallScreen(reason: reason),
+        fullscreenDialog: true),
   );
   return result ?? false;
 }
 
-/// Outcome-led value statements — what Pro actually *does for you*, not a
-/// feature dump. Kept short and benefit-first for conversion.
-class _Outcome {
-  final IconData icon;
-  final String title;
-  final String text;
-  const _Outcome(this.icon, this.title, this.text);
+/// A paid, time-limited introductory discount surfaced by the store — e.g.
+/// "50% off your first year". This is the offer a user would otherwise only see
+/// on the store's purchase sheet; we detect it up front so it's visible right
+/// on the paywall. Distinct from a free trial (price 0), handled separately.
+class _IntroOffer {
+  /// Whole-number percent off the normal price, e.g. 50 for "50% off".
+  final int percentOff;
+
+  /// Localized, store-provided discounted price string, e.g. "₹499".
+  final String priceString;
+
+  const _IntroOffer({required this.percentOff, required this.priceString});
 }
 
-const List<_Outcome> _outcomes = [
-  _Outcome(
-    Icons.explore_rounded,
-    'Every opportunity & perk, unlocked',
-    'Free members only see the latest few. Go Pro to browse the whole library of scholarships, internships and student discounts — and search it all.',
-  ),
-  _Outcome(
-    Icons.auto_awesome_rounded,
-    'An AI study partner, always on',
-    'Ask anything, anytime — plan your week, prep for exams, understand a topic. No monthly limit.',
-  ),
-  _Outcome(
-    Icons.document_scanner_rounded,
-    'Your timetable, built in seconds',
-    'Snap a photo, upload a PDF or paste text and let AI turn it into your schedule — as many as you like.',
-  ),
-  _Outcome(
-    Icons.shield_moon_rounded,
-    'Never drop below your target',
-    'Know exactly how many classes you can safely skip, and get warned the night before you’d slip.',
-  ),
-  _Outcome(
-    Icons.insights_rounded,
-    'See where you’re headed',
-    'Attendance forecasts, grade trends and spending projections — your whole semester at a glance.',
-  ),
+/// The short, scannable value checklist — benefit-first, one line each, so the
+/// whole offer reads at a glance.
+const List<_Benefit> _benefits = [
+  _Benefit(Icons.auto_awesome_rounded,
+      'Unlimited AI study assistant — ask anything, anytime'),
+  _Benefit(Icons.document_scanner_rounded,
+      'Unlimited timetable scans from a photo, PDF or text'),
+  _Benefit(Icons.shield_moon_rounded,
+      'Attendance risk alerts & safe-skip counts'),
+  _Benefit(Icons.explore_rounded,
+      'Scholarships, perks, insights & Google Calendar sync'),
 ];
 
+class _Benefit {
+  final IconData icon;
+  final String text;
+  const _Benefit(this.icon, this.text);
+}
+
 class PaywallScreen extends ConsumerStatefulWidget {
-  const PaywallScreen({super.key});
+  const PaywallScreen({super.key, this.reason = UpgradeReason.general});
+
+  /// What brought the student here (tailors hero + comparison highlight).
+  final UpgradeReason reason;
 
   @override
   ConsumerState<PaywallScreen> createState() => _PaywallScreenState();
@@ -76,6 +106,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   @override
   void initState() {
     super.initState();
+    ref.read(analyticsProvider).log('paywall_viewed', {'reason': widget.reason.id});
     _load();
   }
 
@@ -90,9 +121,15 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     });
   }
 
+  /// Annual is pre-selected: it's the best-value, most-popular plan, and
+  /// pre-selecting it nudges toward the higher-value choice. Falls back to
+  /// monthly, then the first package, when no annual plan is configured.
   Package _preferAnnual(List<Package> packages) => packages.firstWhere(
         (p) => p.packageType == PackageType.annual,
-        orElse: () => packages.first,
+        orElse: () => packages.firstWhere(
+          (p) => p.packageType == PackageType.monthly,
+          orElse: () => packages.first,
+        ),
       );
 
   Future<void> _buy() async {
@@ -107,6 +144,14 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           await ref.read(subscriptionServiceProvider).purchase(selected);
       if (!mounted) return;
       if (ok) {
+        ref.read(analyticsProvider).log('paywall_purchased', {
+          'reason': widget.reason.id,
+          'package': selected.packageType.name,
+        });
+        // Self-heal the server-trusted flag immediately rather than waiting on
+        // the RevenueCat webhook, so gated features unlock right away.
+        unawaited(reconcileServerEntitlement(
+            ref.read(firebaseFunctionsProvider)));
         Navigator.of(context).pop(true);
       } else {
         setState(() => _busy = false); // user cancelled
@@ -130,6 +175,8 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     final result = await ref.read(subscriptionServiceProvider).restore();
     if (!mounted) return;
     if (result.isPro) {
+      unawaited(reconcileServerEntitlement(
+          ref.read(firebaseFunctionsProvider)));
       Navigator.of(context).pop(true);
     } else {
       setState(() {
@@ -145,40 +192,38 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
 
   bool get _canBuy => _selected != null && !_busy && ProConstants.enabled;
 
+  /// True when the currently selected plan has a free trial available.
+  bool get _selectedHasTrial =>
+      _selected != null && _freeTrialLabel(_selected!.storeProduct) != null;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final plansReady =
+        !_loading && ProConstants.enabled && _packages.isNotEmpty;
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       body: SafeArea(
-        bottom: false,
-        child: CustomScrollView(
-          slivers: [
-            SliverToBoxAdapter(child: _hero(theme)),
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+        child: Column(
+          children: [
+            _topBar(theme),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(22, 4, 22, 18),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _trustStrip(theme)
-                        .animate()
-                        .fadeIn(duration: 400.ms, delay: 120.ms)
-                        .slideY(begin: 0.15, end: 0, curve: Curves.easeOut),
-                    const SizedBox(height: 24),
-
-                    // Benefit-led outcomes — the reason to upgrade.
-                    _sectionTitle(theme, 'Everything you need to stay ahead'),
-                    const SizedBox(height: 14),
-                    ..._outcomes.asMap().entries.map((e) => _outcomeRow(
-                          theme,
-                          e.value,
-                        ).animate().fadeIn(
-                            duration: 320.ms, delay: (90 * e.key).ms)
-                        .slideX(begin: 0.08, end: 0, curve: Curves.easeOut)),
-                    const SizedBox(height: 26),
-
-                    // Plans.
+                    if (widget.reason == UpgradeReason.general) ...[
+                      _socialProof(theme),
+                      const SizedBox(height: 6),
+                      _heroIllustration(theme),
+                    ] else
+                      _contextHero(theme),
+                    const SizedBox(height: 6),
+                    _title(theme),
+                    const SizedBox(height: 16),
+                    _benefitList(theme),
+                    const SizedBox(height: 22),
                     if (_loading)
                       const Padding(
                         padding: EdgeInsets.symmetric(vertical: 28),
@@ -190,386 +235,293 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                     else if (_packages.isEmpty)
                       _notice(theme,
                           'No plans available right now. Please check back shortly.')
-                    else ...[
-                      _sectionTitle(theme, 'Choose your plan'),
-                      const SizedBox(height: 4),
-                      Text('Cancel anytime. Upgrade, downgrade or stop whenever you like.',
-                          style: theme.textTheme.bodySmall
-                              ?.copyWith(color: theme.hintColor)),
+                    else
+                      _plansStacked(theme),
+                    if (plansReady) ...[
                       const SizedBox(height: 14),
-                      ..._packages.asMap().entries.map(
-                            (e) => _planTile(e.value)
-                                .animate()
-                                .fadeIn(
-                                    duration: 320.ms, delay: (80 * e.key).ms)
-                                .slideY(
-                                    begin: 0.10,
-                                    end: 0,
-                                    curve: Curves.easeOut),
-                          ),
+                      _reassurance(theme),
                     ],
-
                     if (_error != null) ...[
                       const SizedBox(height: 12),
                       _errorBanner(theme, _error!),
                     ],
-
                     const SizedBox(height: 22),
-                    _everythingIncluded(theme),
-                    const SizedBox(height: 18),
-                    _guarantee(theme),
+                    _comparison(theme),
                     const SizedBox(height: 16),
-                    _legal(theme),
-                    const SizedBox(height: 12),
+                    _everythingIncluded(theme),
                   ],
                 ),
               ),
             ),
+            _bottomBar(theme),
           ],
         ),
       ),
-      bottomNavigationBar: _stickyCta(theme),
     );
   }
 
-  // --- Hero -----------------------------------------------------------------
+  // --- Top bar (close + restore) -------------------------------------------
 
-  Widget _hero(ThemeData theme) {
-    return Stack(
-      children: [
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.fromLTRB(24, 20, 24, 30),
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              colors: [AppColors.primaryDark, AppColors.primary, AppColors.primaryLight],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.only(
-              bottomLeft: Radius.circular(34),
-              bottomRight: Radius.circular(34),
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  _proBadge(theme),
-                  const Spacer(),
-                  IconButton(
-                    style: IconButton.styleFrom(
-                      backgroundColor: Colors.white.withValues(alpha: 0.18),
-                    ),
-                    icon: const Icon(Icons.close_rounded, color: Colors.white),
-                    onPressed: () => Navigator.of(context).pop(false),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Center(
-                child: const PremiumIllustration(height: 140)
-                    .animate()
-                    .fadeIn(duration: 500.ms)
-                    .scale(
-                      begin: const Offset(0.85, 0.85),
-                      end: const Offset(1, 1),
-                      duration: 500.ms,
-                      curve: Curves.easeOutBack,
-                    )
-                    // Gentle continuous float so the hero feels alive.
-                    .animate(onPlay: (c) => c.repeat(reverse: true))
-                    .moveY(
-                      begin: -6,
-                      end: 6,
-                      duration: 2600.ms,
-                      curve: Curves.easeInOut,
-                    ),
-              ),
-              const SizedBox(height: 14),
-              Text('Unlock your best\nsemester yet.',
-                      style: theme.textTheme.headlineMedium?.copyWith(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w800,
-                          height: 1.12))
-                  .animate()
-                  .fadeIn(delay: 100.ms, duration: 400.ms)
-                  .slideY(begin: 0.2, end: 0, curve: Curves.easeOut),
-              const SizedBox(height: 10),
-              Text(
-                'Let AI, smart insights and timely reminders do the heavy '
-                'lifting — so you never miss a class, deadline or safe skip.',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                    color: Colors.white.withValues(alpha: 0.92), height: 1.4),
-              ).animate().fadeIn(delay: 200.ms, duration: 400.ms),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _proBadge(ThemeData theme) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.22),
-          borderRadius: BorderRadius.circular(30),
-        ),
+  Widget _topBar(ThemeData theme) => Padding(
+        padding: const EdgeInsets.fromLTRB(8, 6, 12, 0),
         child: Row(
-          mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.auto_awesome_rounded,
-                color: Colors.white, size: 15),
-            const SizedBox(width: 6),
-            Text('CLASSTRACK PRO',
-                style: theme.textTheme.labelSmall?.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.8)),
-          ],
-        ),
-      );
-
-  // --- Trust strip ----------------------------------------------------------
-
-  Widget _trustStrip(ThemeData theme) {
-    Widget item(IconData icon, String label) => Expanded(
-          child: Column(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(icon, color: AppColors.primary, size: 20),
+            IconButton(
+              style: IconButton.styleFrom(
+                backgroundColor: theme.cardColor,
+                shape: const CircleBorder(),
               ),
-              const SizedBox(height: 7),
-              Text(label,
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.labelSmall?.copyWith(
-                      fontWeight: FontWeight.w600, height: 1.2)),
-            ],
-          ),
-        );
-    return Row(
-      children: [
-        item(Icons.lock_outline_rounded, 'Secure\ncheckout'),
-        const SizedBox(width: 10),
-        item(Icons.event_available_rounded, 'Cancel\nanytime'),
-        const SizedBox(width: 10),
-        item(Icons.flash_on_rounded, 'Instant\nunlock'),
-        const SizedBox(width: 10),
-        item(Icons.workspace_premium_rounded, 'All future\nupdates'),
-      ],
-    );
-  }
-
-  // --- Outcomes -------------------------------------------------------------
-
-  Widget _sectionTitle(ThemeData theme, String text) => Text(
-        text,
-        style: theme.textTheme.titleMedium
-            ?.copyWith(fontWeight: FontWeight.w800),
-      );
-
-  Widget _outcomeRow(ThemeData theme, _Outcome o) => Padding(
-        padding: const EdgeInsets.only(bottom: 14),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    AppColors.primary.withValues(alpha: 0.16),
-                    AppColors.primaryLight.withValues(alpha: 0.10),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(13),
-              ),
-              child: Icon(o.icon, color: AppColors.primary, size: 21),
+              icon: Icon(Icons.close_rounded, color: theme.hintColor, size: 22),
+              onPressed: () => Navigator.of(context).pop(false),
             ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(o.title,
-                      style: theme.textTheme.bodyLarge?.copyWith(
-                          fontWeight: FontWeight.w700, height: 1.25)),
-                  const SizedBox(height: 3),
-                  Text(o.text,
-                      style: theme.textTheme.bodySmall
-                          ?.copyWith(color: theme.hintColor, height: 1.35)),
-                ],
-              ),
+            const Spacer(),
+            TextButton(
+              onPressed: _busy ? null : _restore,
+              child: const Text('Restore'),
             ),
           ],
         ),
       );
 
-  // --- Everything included (full feature list, collapsed) ------------------
+  // --- Social proof ---------------------------------------------------------
 
-  Widget _everythingIncluded(ThemeData theme) => Container(
-        decoration: BoxDecoration(
-          color: theme.cardColor,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: theme.dividerColor.withValues(alpha: 0.6)),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: Theme(
-          data: theme.copyWith(dividerColor: Colors.transparent),
-          child: ExpansionTile(
-            tilePadding: const EdgeInsets.symmetric(horizontal: 16),
-            childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-            leading: const Icon(Icons.checklist_rounded,
-                color: AppColors.primary),
-            title: Text('Everything included in Pro',
-                style: theme.textTheme.titleSmall
-                    ?.copyWith(fontWeight: FontWeight.w700)),
+  /// A gentle social-proof pill (five stars + a short line). Customize the copy
+  /// with a real rating/stat once you have one to show.
+  Widget _socialProof(ThemeData theme) => Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+          decoration: BoxDecoration(
+            color: AppColors.lavender,
+            borderRadius: BorderRadius.circular(30),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              for (final f in ProFeatures.all)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 7),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Icon(Icons.check_circle_rounded,
-                          color: AppColors.success, size: 20),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(f.title,
-                                style: theme.textTheme.bodyMedium?.copyWith(
-                                    fontWeight: FontWeight.w700)),
-                            Text(f.subtitle,
-                                style: theme.textTheme.bodySmall
-                                    ?.copyWith(color: theme.hintColor)),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+              for (var i = 0; i < 5; i++)
+                const Icon(Icons.star_rounded,
+                    color: AppColors.accent, size: 16),
+              const SizedBox(width: 8),
+              Text('Loved by students everywhere',
+                  style: theme.textTheme.labelMedium
+                      ?.copyWith(fontWeight: FontWeight.w700)),
             ],
           ),
         ),
-      );
+      ).animate().fadeIn(duration: 400.ms);
 
-  Widget _guarantee(ThemeData theme) => Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: AppColors.success.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: AppColors.success.withValues(alpha: 0.25)),
-        ),
-        child: Row(
-          children: [
-            const Icon(Icons.verified_rounded,
-                color: AppColors.success, size: 22),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                'No lock-in. Manage or cancel your subscription anytime in your '
-                'store account — your data always stays yours.',
-                style: theme.textTheme.bodySmall?.copyWith(height: 1.35),
-              ),
-            ),
-          ],
-        ),
-      );
+  // --- Hero: a student-life illustration (no logo, no mascot) ---------------
 
-  Widget _legal(ThemeData theme) => Column(
+  Widget _heroIllustration(ThemeData theme) => const AuthIllustration(
+        height: 168,
+      ).animate().fadeIn(duration: 500.ms);
+
+  Widget _title(ThemeData theme) => Column(
         children: [
           Text(
-            'Subscriptions renew automatically until cancelled.',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
-          ),
-          const SizedBox(height: 2),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              TextButton(
-                onPressed: () => _openUrl(AppConstants.termsUrl),
-                child: const Text('Terms'),
-              ),
-              Text('•',
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: theme.hintColor)),
-              TextButton(
-                onPressed: () => _openUrl(AppConstants.privacyPolicyUrl),
-                child: const Text('Privacy Policy'),
-              ),
-            ],
-          ),
+              widget.reason == UpgradeReason.general
+                  ? 'ClassTrack Pro'
+                  : widget.reason.copy.paywallHeadline,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.headlineMedium
+                  ?.copyWith(fontWeight: FontWeight.w800, height: 1.1)),
+          const SizedBox(height: 6),
+          Text(
+              widget.reason == UpgradeReason.general
+                  ? 'Unlock your best semester yet.'
+                  : 'ClassTrack Pro unlocks this — and everything else.',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium
+                  ?.copyWith(color: theme.hintColor, height: 1.35)),
         ],
       );
 
-  // --- Sticky CTA bar -------------------------------------------------------
+  // --- Contextual hero (opened from a limit / gate) -------------------------
 
-  Widget _stickyCta(ThemeData theme) {
-    // Nothing actionable to show until plans have loaded.
-    if (_loading || !ProConstants.enabled || _packages.isEmpty) {
-      return const SizedBox.shrink();
+  Widget _contextHero(ThemeData theme) {
+    final copy = widget.reason.copy;
+    Widget medal = Container(
+      width: 92,
+      height: 92,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color.lerp(copy.color, Colors.white, 0.25)!, copy.color],
+        ),
+        boxShadow: [
+          BoxShadow(color: copy.color.withValues(alpha: 0.35), blurRadius: 28, offset: const Offset(0, 12)),
+        ],
+      ),
+      child: Icon(copy.icon, color: Colors.white, size: 44),
+    );
+    if (!MediaQuery.of(context).disableAnimations) {
+      medal = medal.animate().scaleXY(begin: 0.7, duration: 520.ms, curve: Curves.easeOutBack).fadeIn(duration: 260.ms);
     }
-    final sub = _ctaSubcaption();
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 14),
+      child: Column(children: [
+        Stack(alignment: Alignment.center, children: [
+          Container(
+            width: 150,
+            height: 150,
+            decoration: BoxDecoration(shape: BoxShape.circle, color: copy.color.withValues(alpha: 0.08)),
+          ),
+          medal,
+        ]),
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: copy.color.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Text(copy.highlight,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.labelMedium?.copyWith(color: copy.color, fontWeight: FontWeight.w700)),
+        ),
+      ]),
+    );
+  }
+
+  // --- Free vs Pro comparison ----------------------------------------------
+
+  Widget _comparison(ThemeData theme) {
+    final highlight = widget.reason;
+    final border = theme.dividerColor.withValues(alpha: 0.5);
+    Widget cell(String? v, {required bool pro}) {
+      if (v == null) {
+        return Icon(Icons.remove_rounded, size: 18, color: theme.hintColor.withValues(alpha: 0.6));
+      }
+      if (v == 'Included') {
+        return Icon(Icons.check_circle_rounded, size: 18, color: pro ? AppColors.primary : AppColors.success);
+      }
+      return Text(v,
+          textAlign: TextAlign.center,
+          style: theme.textTheme.bodySmall?.copyWith(
+            fontWeight: pro ? FontWeight.w800 : FontWeight.w500,
+            color: pro ? AppColors.primary : null,
+          ));
+    }
+
     return Container(
       decoration: BoxDecoration(
         color: theme.cardColor,
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.ink.withValues(alpha: 0.10),
-            blurRadius: 22,
-            offset: const Offset(0, -6),
-          ),
-        ],
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: border),
       ),
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 14, 20, 10),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _GradientButton(
-                enabled: _canBuy,
-                busy: _busy,
-                label: _ctaLabel(),
-                onTap: _buy,
-              ),
-              if (sub != null) ...[
-                const SizedBox(height: 8),
-                Text(sub,
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                        fontWeight: FontWeight.w600, color: theme.hintColor)),
-              ],
-              TextButton(
-                onPressed: _busy ? null : _restore,
-                child: const Text('Restore purchases'),
-              ),
-            ],
-          ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(children: [
+        Container(
+          color: AppColors.primary.withValues(alpha: 0.06),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          child: Row(children: [
+            Expanded(flex: 5, child: Text('Compare plans', style: theme.textTheme.labelLarge)),
+            Expanded(flex: 3, child: Text('Free', textAlign: TextAlign.center, style: theme.textTheme.labelMedium)),
+            Expanded(
+              flex: 3,
+              child: Text('Pro',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.labelLarge?.copyWith(color: AppColors.primary, fontWeight: FontWeight.w800)),
+            ),
+          ]),
         ),
-      ),
+        for (final row in planComparison)
+          Semantics(
+            label: '${row.feature}: Free ${row.free ?? 'not included'}, Pro ${row.pro}',
+            child: ExcludeSemantics(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: row.reason == highlight ? highlight.copy.color.withValues(alpha: 0.10) : null,
+                  border: Border(top: BorderSide(color: border)),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                child: Row(children: [
+                  Expanded(
+                    flex: 5,
+                    child: Text(row.feature,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontWeight: row.reason == highlight ? FontWeight.w800 : FontWeight.w600,
+                        )),
+                  ),
+                  Expanded(flex: 3, child: Center(child: cell(row.free, pro: false))),
+                  Expanded(flex: 3, child: Center(child: cell(row.pro, pro: true))),
+                ]),
+              ),
+            ),
+          ),
+      ]),
     );
   }
 
-  // --- Plans ----------------------------------------------------------------
+  // --- Benefit checklist ----------------------------------------------------
 
-  Widget _planTile(Package package) {
-    final theme = Theme.of(context);
+  Widget _benefitList(ThemeData theme) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final b in _benefits)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 5),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 26,
+                    height: 26,
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(b.icon, color: AppColors.primary, size: 15),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 3),
+                      child: Text(b.text,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w600, height: 1.3)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      );
+
+  // --- Plans (stacked full-width cards) ------------------------------------
+
+  Widget _plansStacked(ThemeData theme) {
+    final plans = _orderedPackages();
+    return Column(
+      children: [
+        for (final p in plans)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _planTile(theme, p),
+          ),
+      ],
+    );
+  }
+
+  /// Best plan first (annual), then other cadences, with lifetime last.
+  List<Package> _orderedPackages() {
+    int rank(PackageType t) => switch (t) {
+          PackageType.annual => 0,
+          PackageType.sixMonth => 1,
+          PackageType.threeMonth => 2,
+          PackageType.twoMonth => 3,
+          PackageType.monthly => 4,
+          PackageType.weekly => 5,
+          PackageType.lifetime => 6,
+          _ => 4,
+        };
+    final list = [..._packages];
+    list.sort((a, b) => rank(a.packageType).compareTo(rank(b.packageType)));
+    return list;
+  }
+
+  Widget _planTile(ThemeData theme, Package package) {
     final selected = identical(package, _selected) ||
         package.identifier == _selected?.identifier;
     final product = package.storeProduct;
@@ -578,110 +530,119 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     final savings = _badgeFor(package);
     final perMonth = _perMonthLabel(package);
     final trial = _freeTrialLabel(product);
+    final offer = _introOffer(package);
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(20),
-        onTap: () => setState(() => _selected = package),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          clipBehavior: Clip.antiAlias,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: selected
-                  ? AppColors.primary
-                  : (popular
-                      ? AppColors.primary.withValues(alpha: 0.45)
-                      : theme.dividerColor),
-              width: selected ? 2 : 1.2,
-            ),
+    return InkWell(
+      borderRadius: BorderRadius.circular(20),
+      onTap: () => setState(() => _selected = package),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
             color: selected
-                ? AppColors.primary.withValues(alpha: 0.06)
-                : theme.cardColor,
-            boxShadow: selected
-                ? AppColors.softShadow(opacity: 0.10, blur: 20)
-                : null,
+                ? AppColors.primary
+                : (popular
+                    ? AppColors.primary.withValues(alpha: 0.45)
+                    : theme.dividerColor),
+            width: selected ? 2 : 1.2,
           ),
-          child: Column(
-            children: [
-              if (popular)
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 6),
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [AppColors.primary, AppColors.primaryLight],
-                    ),
+          color: selected
+              ? AppColors.primary.withValues(alpha: 0.06)
+              : theme.cardColor,
+          boxShadow:
+              selected ? AppColors.softShadow(opacity: 0.10, blur: 20) : null,
+        ),
+        child: Column(
+          children: [
+            if (popular)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [AppColors.primary, AppColors.primaryLight],
                   ),
-                  child: Text('⭐  MOST POPULAR  ·  BEST VALUE',
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.labelSmall?.copyWith(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.6)),
                 ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(14, 14, 16, 14),
-                child: Row(
-                  children: [
-                    Icon(
-                      selected
-                          ? Icons.radio_button_checked_rounded
-                          : Icons.radio_button_unchecked_rounded,
-                      color: selected ? AppColors.primary : theme.hintColor,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Flexible(
-                                child: Text(_periodLabel(package.packageType),
-                                    style: theme.textTheme.titleMedium
-                                        ?.copyWith(
-                                            fontWeight: FontWeight.w800)),
-                              ),
-                              if (trial != null) ...[
-                                const SizedBox(width: 8),
-                                _pill('FREE TRIAL', AppColors.success, theme),
-                              ] else if (savings != null) ...[
-                                const SizedBox(width: 8),
-                                _pill(savings, AppColors.success, theme),
-                              ],
-                            ],
-                          ),
-                          if (_planSubtitle(package, trial, perMonth) !=
-                              null) ...[
-                            const SizedBox(height: 3),
-                            Text(_planSubtitle(package, trial, perMonth)!,
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                    color: theme.textTheme.bodySmall?.color)),
-                          ],
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
+                child: Text('⭐  MOST POPULAR  ·  BEST VALUE',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.6)),
+              ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 14, 16, 14),
+              child: Row(
+                children: [
+                  Icon(
+                    selected
+                        ? Icons.radio_button_checked_rounded
+                        : Icons.radio_button_unchecked_rounded,
+                    color: selected ? AppColors.primary : theme.hintColor,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Localized, store-provided price — never hardcoded.
-                        Text(product.priceString,
-                            style: theme.textTheme.titleLarge?.copyWith(
-                                fontWeight: FontWeight.w800, height: 1.05)),
-                        Text(_perPeriodWord(package.packageType),
-                            style: theme.textTheme.bodySmall
-                                ?.copyWith(color: theme.hintColor)),
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(_periodLabel(package.packageType),
+                                  style: theme.textTheme.titleMedium
+                                      ?.copyWith(fontWeight: FontWeight.w800)),
+                            ),
+                            if (trial != null) ...[
+                              const SizedBox(width: 8),
+                              _pill('FREE TRIAL', AppColors.success, theme),
+                            ] else if (offer != null) ...[
+                              const SizedBox(width: 8),
+                              _pill('SAVE ${offer.percentOff}%',
+                                  AppColors.danger, theme),
+                            ] else if (savings != null) ...[
+                              const SizedBox(width: 8),
+                              _pill(savings, AppColors.success, theme),
+                            ],
+                          ],
+                        ),
+                        if (_planSubtitle(package, trial, perMonth) !=
+                            null) ...[
+                          const SizedBox(height: 3),
+                          Text(_planSubtitle(package, trial, perMonth)!,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.textTheme.bodySmall?.color)),
+                        ],
                       ],
                     ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(width: 8),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      // Localized, store-provided price — never hardcoded.
+                      // When a discounted intro offer exists, show the offer
+                      // price prominently with the normal price struck out.
+                      if (offer != null)
+                        Text(product.priceString,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.hintColor,
+                                decoration: TextDecoration.lineThrough)),
+                      Text(offer?.priceString ?? product.priceString,
+                          style: theme.textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.w800,
+                              height: 1.05,
+                              color: offer != null ? AppColors.primary : null)),
+                      Text(_perPeriodWord(package.packageType),
+                          style: theme.textTheme.bodySmall
+                              ?.copyWith(color: theme.hintColor)),
+                    ],
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -705,6 +666,10 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     if (trial != null) {
       return '$trial, then ${product.priceString} ${_perPeriodWord(package.packageType)}';
     }
+    final offer = _introOffer(package);
+    if (offer != null) {
+      return '${offer.priceString} now, then ${product.priceString} ${_perPeriodWord(package.packageType)}';
+    }
     if (perMonth != null) {
       return 'Just $perMonth · billed yearly';
     }
@@ -715,12 +680,158 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     return null;
   }
 
+  // --- Reassurance ----------------------------------------------------------
+
+  Widget _reassurance(ThemeData theme) {
+    Widget item(IconData icon, String label) => Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: AppColors.success, size: 16),
+            const SizedBox(width: 5),
+            Text(label,
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(fontWeight: FontWeight.w600)),
+          ],
+        );
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        item(Icons.verified_rounded, 'Cancel anytime'),
+        if (_selectedHasTrial) ...[
+          const SizedBox(width: 16),
+          item(Icons.lock_open_rounded, 'No payment due today'),
+        ],
+      ],
+    );
+  }
+
+  // --- Everything included (full feature list, collapsed) — kept at the end -
+
+  Widget _everythingIncluded(ThemeData theme) => Material(
+        // Material (not a coloured Container) so the tile's ink renders.
+        color: theme.cardColor,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+          side: BorderSide(color: theme.dividerColor.withValues(alpha: 0.6)),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Theme(
+          data: theme.copyWith(dividerColor: Colors.transparent),
+          child: ExpansionTile(
+            tilePadding: const EdgeInsets.symmetric(horizontal: 16),
+            childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+            leading:
+                const Icon(Icons.checklist_rounded, color: AppColors.primary),
+            title: Text('Everything included in Pro',
+                style: theme.textTheme.titleSmall
+                    ?.copyWith(fontWeight: FontWeight.w700)),
+            children: [
+              for (final f in ProFeatures.all)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 7),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.check_circle_rounded,
+                          color: AppColors.success, size: 20),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(f.title,
+                                style: theme.textTheme.bodyMedium
+                                    ?.copyWith(fontWeight: FontWeight.w700)),
+                            Text(f.subtitle,
+                                style: theme.textTheme.bodySmall
+                                    ?.copyWith(color: theme.hintColor)),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+      );
+
+  // --- Bottom bar: CTA + legal ----------------------------------------------
+
+  Widget _bottomBar(ThemeData theme) {
+    final canBuy = !_loading && ProConstants.enabled && _packages.isNotEmpty;
+    final sub = _ctaSubcaption();
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.ink.withValues(alpha: 0.08),
+            blurRadius: 20,
+            offset: const Offset(0, -6),
+          ),
+        ],
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(22, 14, 22, 10),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (canBuy && sub != null) ...[
+                Text(sub,
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                        fontWeight: FontWeight.w600, color: theme.hintColor)),
+                const SizedBox(height: 10),
+              ],
+              if (canBuy)
+                _GradientButton(
+                  enabled: _canBuy,
+                  busy: _busy,
+                  label: _ctaLabel(),
+                  onTap: _buy,
+                ),
+              const SizedBox(height: 8),
+              _legalFooter(theme),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _legalFooter(ThemeData theme) {
+    final style = theme.textTheme.bodySmall
+        ?.copyWith(color: theme.hintColor, fontSize: 11, height: 1.3);
+    final link =
+        style?.copyWith(color: AppColors.primary, fontWeight: FontWeight.w700);
+    return Wrap(
+      alignment: WrapAlignment.center,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        Text('By continuing you agree to our ', style: style),
+        GestureDetector(
+          onTap: () => _openUrl(AppConstants.termsUrl),
+          child: Text('Terms of Service', style: link),
+        ),
+        Text(' and ', style: style),
+        GestureDetector(
+          onTap: () => _openUrl(AppConstants.privacyPolicyUrl),
+          child: Text('Privacy Policy', style: link),
+        ),
+      ],
+    );
+  }
+
   // --- CTA copy -------------------------------------------------------------
 
   String _ctaLabel() {
     final p = _selected;
     if (p == null) return 'Continue';
-    if (_freeTrialLabel(p.storeProduct) != null) return 'Start my free trial';
+    if (_selectedHasTrial) return 'Start my free trial';
     if (p.packageType == PackageType.lifetime) return 'Unlock Pro forever';
     return 'Unlock ClassTrack Pro';
   }
@@ -731,15 +842,58 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     final product = p.storeProduct;
     final trial = _freeTrialLabel(product);
     if (trial != null) {
-      return 'Free for your $trial, then ${product.priceString} ${_perPeriodWord(p.packageType)}. Cancel anytime.';
+      return '$trial, then ${product.priceString} ${_perPeriodWord(p.packageType)} · cancel anytime';
+    }
+    final offer = _introOffer(p);
+    if (offer != null) {
+      final period = _perPeriodWord(p.packageType).replaceFirst('per ', '');
+      return 'Save ${offer.percentOff}% — ${offer.priceString} for your first '
+          '$period, then ${product.priceString} ${_perPeriodWord(p.packageType)} · cancel anytime';
     }
     if (p.packageType == PackageType.lifetime) {
       return '${product.priceString} once. No subscription, yours forever.';
     }
-    return '${product.priceString} ${_perPeriodWord(p.packageType)} · cancel anytime.';
+    return '${product.priceString} ${_perPeriodWord(p.packageType)} · cancel anytime';
   }
 
   // --- Pricing helpers ------------------------------------------------------
+
+  /// Detects a paid, discounted introductory offer on [package] (e.g. "60% off
+  /// your first year") so it can be shown on the paywall instead of only on the
+  /// store's purchase sheet. Returns null when there's no such offer, or when
+  /// the intro is actually a free trial (that's handled by [_freeTrialLabel]).
+  _IntroOffer? _introOffer(Package package) {
+    final product = package.storeProduct;
+
+    // Google Play: the offer lives on the default subscription option as a paid
+    // "intro phase" (a free trial would be a freePhase, which we ignore here).
+    final option = product.defaultOption;
+    if (option != null) {
+      final intro = option.introPhase;
+      if (intro != null && intro.price.amountMicros > 0) {
+        final introUnits = intro.price.amountMicros / 1e6;
+        final fullMicros = option.fullPricePhase?.price.amountMicros;
+        final fullUnits = (fullMicros != null && fullMicros > 0)
+            ? fullMicros / 1e6
+            : product.price;
+        final pct = PaywallPricing.percentOff(fullUnits, introUnits);
+        if (pct != null) {
+          return _IntroOffer(
+              percentOff: pct, priceString: intro.price.formatted);
+        }
+      }
+    }
+
+    // iOS / cross-platform fallback: a non-zero introductory price.
+    final intro = product.introductoryPrice;
+    if (intro != null && intro.price > 0) {
+      final pct = PaywallPricing.percentOff(product.price, intro.price);
+      if (pct != null) {
+        return _IntroOffer(percentOff: pct, priceString: intro.priceString);
+      }
+    }
+    return null;
+  }
 
   /// A short marketing badge: savings % on the annual plan (vs 12× monthly),
   /// or "BEST VALUE"/"BEST DEAL" when a percentage can't be computed.
@@ -843,7 +997,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       );
 }
 
-/// The primary purchase button: a bold gradient CTA with a busy state.
+/// The primary purchase button: a bold gradient CTA pill with a busy state.
 class _GradientButton extends StatelessWidget {
   final bool enabled;
   final bool busy;
@@ -864,7 +1018,7 @@ class _GradientButton extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(30),
           onTap: active ? onTap : null,
           child: Ink(
             height: 56,
@@ -874,7 +1028,7 @@ class _GradientButton extends StatelessWidget {
                 begin: Alignment.centerLeft,
                 end: Alignment.centerRight,
               ),
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(30),
               boxShadow: active
                   ? [
                       BoxShadow(
@@ -893,19 +1047,11 @@ class _GradientButton extends StatelessWidget {
                       child: CircularProgressIndicator(
                           strokeWidth: 2.6, color: Colors.white),
                     )
-                  : Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(label,
-                            style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 16.5,
-                                fontWeight: FontWeight.w800)),
-                        const SizedBox(width: 8),
-                        const Icon(Icons.arrow_forward_rounded,
-                            color: Colors.white, size: 20),
-                      ],
-                    ),
+                  : Text(label,
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16.5,
+                          fontWeight: FontWeight.w800)),
             ),
           ),
         ),
@@ -913,13 +1059,14 @@ class _GradientButton extends StatelessWidget {
     );
     // A slow, periodic shimmer sweep on the live CTA keeps the eye drawn to the
     // primary action without being distracting (only when it's actionable).
+    // SweepShimmer applies its mask only during each sweep, not every frame.
     if (!active) return button;
-    return button
-        .animate(onPlay: (c) => c.repeat())
-        .shimmer(
-          delay: 1600.ms,
-          duration: 1500.ms,
-          color: Colors.white.withValues(alpha: 0.35),
-        );
+    return SweepShimmer(
+      delay: const Duration(milliseconds: 1600),
+      every: const Duration(seconds: 5),
+      duration: const Duration(milliseconds: 1400),
+      color: Colors.white.withValues(alpha: 0.35),
+      child: button,
+    );
   }
 }

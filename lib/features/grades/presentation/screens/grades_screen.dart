@@ -79,9 +79,7 @@ class GradesScreen extends ConsumerWidget {
                   children: [
                     for (var i = 0; i < subjects.length; i++)
                       _SubjectGradeCard(subject: subjects[i])
-                          .animate()
-                          .fadeIn(delay: (i * 60).ms, duration: 320.ms)
-                          .slideY(begin: 0.08, curve: Curves.easeOutCubic),
+                          .listEntrance(i, stepMs: 60, slide: 0.08),
                   ],
                 );
               },
@@ -122,7 +120,11 @@ class GradesScreen extends ConsumerWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Column(
+          Expanded(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -150,7 +152,9 @@ class GradesScreen extends ConsumerWidget {
               ),
             ],
           ),
-          const Spacer(),
+            ),
+          ),
+          const SizedBox(width: 12),
           _gpaStat(
               theme,
               gpa.gradedSubjects == 0

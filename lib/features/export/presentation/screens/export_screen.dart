@@ -10,8 +10,7 @@ import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../../schedule/domain/class_session.dart';
 import '../../../schedule/presentation/providers/schedule_providers.dart';
 import '../../../subjects/presentation/providers/subject_providers.dart';
-import '../../../subscription/presentation/providers/subscription_providers.dart';
-import '../../../subscription/presentation/screens/paywall_screen.dart';
+import '../../../subscription/presentation/widgets/upgrade_prompt.dart';
 import '../../data/export_service.dart';
 
 class ExportScreen extends ConsumerStatefulWidget {
@@ -26,9 +25,8 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
 
   Future<void> _guard(Future<void> Function() task) async {
     // Exports are a Pro feature.
-    if (!ref.read(isProProvider)) {
-      final becamePro = await showPaywall(context);
-      if (!becamePro || !mounted) return;
+    if (!await requirePro(context, ref, UpgradeReason.export) || !mounted) {
+      return;
     }
     setState(() => _busy = true);
     try {

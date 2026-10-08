@@ -45,4 +45,17 @@ class ChatUsageRepository {
       }
     });
   }
+
+  /// Marks this month as fully used (the server reported the free limit even
+  /// though the local mirror was behind — e.g. a re-created account). Never
+  /// lowers an existing higher count.
+  Future<void> markExhausted(int limit) async {
+    final month = currentMonth();
+    await db.runTransaction((tx) async {
+      final snap = await tx.get(_doc);
+      final current = _readCount(snap.data());
+      if (current >= limit) return;
+      tx.set(_doc, {'month': month, 'count': limit});
+    });
+  }
 }

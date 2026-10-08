@@ -7,7 +7,7 @@ class AppConstants {
 
   /// User-facing app version shown in Settings. Keep this in sync with the
   /// `version:` field in pubspec.yaml (the part before the `+` build number).
-  static const String appVersion = '1.0.40';
+  static const String appVersion = '1.0.52';
 
   // Google Sign-In: the OAuth 2.0 *Web* client ID (client_type 3 in
   // google-services.json). Passing this explicitly to GoogleSignIn makes the
@@ -93,6 +93,10 @@ class AppConstants {
   static const String getReferralInfoFunction = 'getReferralInfo';
   static const String redeemReferralFunction = 'redeemReferral';
 
+  /// Server-side self-heal: reconciles the caller's Pro entitlement against
+  /// RevenueCat's source of truth (repairs a missed/denied webhook).
+  static const String reconcileEntitlementFunction = 'reconcileEntitlement';
+
   // Referrals — each successful referral grants BOTH users this many free
   // days of ClassTrack Pro (written server-side to _entitlements/{uid}).
   static const int referralRewardDays = 3;
@@ -102,6 +106,9 @@ class AppConstants {
   // SharedPreferences keys
   static const String prefsOnboardingDone = 'onboarding_done';
   static const String prefsHomeTourDone = 'home_tour_done';
+  // Answers from the personalised onboarding (JSON). Device-global because it
+  // is collected BEFORE sign-in; consumed + cleared on the first sign-in.
+  static const String prefsOnboardingDraft = 'onboarding_profile_draft';
   // One-time feature-discovery tips (💡). Stored device-global, same as the
   // home tour: they teach the app's UI, so they surface once per install.
   static const String prefsTipNotes = 'tip_seen_notes';
@@ -115,6 +122,9 @@ class AppConstants {
   static const String prefsFeaturesUsed = 'features_used';
   static const String prefsTipsPromptShown = 'tips_prompt_shown';
   static const String prefsThemeMode = 'theme_mode';
+  // Clock style for every time in the app: 'system' (follow the phone),
+  // '12h' or '24h'. Per user.
+  static const String prefsTimeFormat = 'time_format';
   static const String prefsGeminiKey = 'gemini_api_key';
   static const String prefsReminderLead = 'reminder_lead_minutes';
   static const String prefsRemindersEnabled = 'reminders_enabled';

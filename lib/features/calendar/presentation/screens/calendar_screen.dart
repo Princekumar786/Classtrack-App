@@ -66,8 +66,12 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                   onTap: () => Navigator.of(context).pop(),
                 ),
                 const SizedBox(width: 12),
-                Text('Calendar', style: theme.textTheme.titleLarge),
-                const Spacer(),
+                Expanded(
+                  child: Text('Calendar',
+                      style: theme.textTheme.titleLarge,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis),
+                ),
                 RoundIconButton(
                   icon: Icons.file_download_outlined,
                   onTap: () => showImportOptions(context, ref),

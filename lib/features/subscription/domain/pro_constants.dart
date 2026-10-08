@@ -50,5 +50,5 @@ class ProConstants {
 
   /// Free users get this many AI assistant messages per calendar month.
   /// Pro users are unlimited. Kept in sync with the server-side limit.
-  static const int freeMonthlyChatLimit = 20;
+  static const int freeMonthlyChatLimit = 10;
 }

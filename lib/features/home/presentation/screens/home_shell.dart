@@ -16,6 +16,7 @@ import '../../../../shared/widgets/ui_kit.dart';
 import '../../../../services/analytics_service.dart';
 import '../../../../services/calendar_auto_sync.dart';
 import '../../../../services/notification_service.dart';
+import '../../../../services/push_deep_link.dart';
 import '../../../../services/push_messaging_service.dart';
 import '../../../../services/reminder_scheduler.dart';
 import '../../../../services/home_widget_service.dart';
@@ -23,10 +24,14 @@ import '../../../insights/presentation/screens/daily_agenda_screen.dart';
 import '../../../subscription/presentation/providers/subscription_providers.dart';
 import '../../../schedule/presentation/screens/schedule_screen.dart';
 import '../../../schedule/presentation/screens/edit_session_screen.dart';
+import '../../../import/presentation/screens/import_screen.dart';
 import '../../../subjects/presentation/screens/edit_subject_screen.dart';
 import '../../../tasks/presentation/screens/tasks_screen.dart';
 import '../../../tasks/presentation/screens/share_link_handler.dart';
+import '../../../opportunities/domain/resource.dart';
+import '../../../opportunities/presentation/providers/opportunities_providers.dart';
 import '../../../opportunities/presentation/screens/opportunities_screen.dart';
+import '../../../opportunities/presentation/screens/resource_detail_screen.dart';
 import '../../../attendance/presentation/screens/attendance_screen.dart';
 import '../../../attendance/presentation/providers/attendance_providers.dart';
 import '../../../learning_planner/presentation/screens/planner_home_screen.dart';
@@ -48,6 +53,7 @@ enum _QuickAddAction {
   task,
   classSession,
   subject,
+  importTimetable,
   exam,
   grade,
   note,
@@ -133,6 +139,13 @@ Future<void> showQuickAddSheet(BuildContext context) async {
                 onTap: () => Navigator.pop(ctx, _QuickAddAction.subject),
               ),
               option(
+                icon: Icons.document_scanner_rounded,
+                color: AppColors.info,
+                title: 'Import timetable',
+                subtitle: 'Scan a photo, PDF or paste text with AI',
+                onTap: () => Navigator.pop(ctx, _QuickAddAction.importTimetable),
+              ),
+              option(
                 icon: Icons.event_note_rounded,
                 color: AppColors.danger,
                 title: 'New exam',
@@ -216,6 +229,9 @@ Future<void> showQuickAddSheet(BuildContext context) async {
     case _QuickAddAction.subject:
       await openScreen(const EditSubjectScreen());
       break;
+    case _QuickAddAction.importTimetable:
+      await openScreen(const ImportScreen());
+      break;
     case _QuickAddAction.note:
       await openScreen(const NoteEditorScreen());
       break;
@@ -257,6 +273,13 @@ class _HomeShellState extends ConsumerState<HomeShell>
   /// can't double-count during the cold-start window.
   String? _lastMarkSig;
   DateTime? _lastMarkAt;
+
+  /// True while the AttendanceScreen route opened from a Present/Absent
+  /// notification action is still on the stack. Guards against pushing it
+  /// again for a re-delivered/replayed action tap (Android can deliver the
+  /// same action response several times), which otherwise stacked multiple
+  /// identical routes so the user had to press back once per copy.
+  bool _attendanceMarkRouteOpen = false;
 
   /// Signature of the last shared payload we actually handled, persisted so a
   /// stale cold-start re-delivery of the same link (see [SharedIntake]) is not
@@ -497,6 +520,13 @@ class _HomeShellState extends ConsumerState<HomeShell>
               status,
             );
       }
+      // Only confirm + navigate for a genuine (non-replayed) action tap, and
+      // never stack a second AttendanceScreen on top of one already opened
+      // this way. Android re-delivers the same action response (and the
+      // cold-start path replays it); without these guards each delivery
+      // pushed another AttendanceScreen, so returning Home needed one back
+      // press per duplicated route ("have to tap back 3-4 times").
+      if (isDuplicate || _attendanceMarkRouteOpen) return;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         final name = ref.read(subjectsByIdProvider)[mark.subjectId]?.name;
@@ -510,9 +540,12 @@ class _HomeShellState extends ConsumerState<HomeShell>
                 ? 'Marked present$label ✅'
                 : 'Marked absent$label');
         setState(() => _index = 0);
-        Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const AttendanceScreen()),
-        );
+        _attendanceMarkRouteOpen = true;
+        Navigator.of(context)
+            .push(
+              MaterialPageRoute(builder: (_) => const AttendanceScreen()),
+            )
+            .whenComplete(() => _attendanceMarkRouteOpen = false);
       });
       return;
     }
@@ -553,6 +586,58 @@ class _HomeShellState extends ConsumerState<HomeShell>
       // Planner tab (index 3) — the Today card shows what's due.
       if (mounted) setState(() => _index = 3);
       return;
+    }
+
+    // CMS push deep links (`resource:<id>`, `tab:<name>`).
+    final link = PushDeepLink.parse(payload);
+    if (link != null) {
+      NotificationService.selectedPayload.value = null;
+      switch (link) {
+        case TabDeepLink(:final index):
+          if (mounted) setState(() => _index = index);
+        case ResourceDeepLink(:final resourceId):
+          _openResourceFromPush(resourceId);
+      }
+    }
+  }
+
+  /// Guards against Android re-delivering the same push tap and stacking two
+  /// detail pages.
+  String? _openingResourceId;
+
+  /// Loads the pushed resource and opens its detail page on top of the
+  /// Explore tab (so Back lands somewhere related). Falls back to the Explore
+  /// feed with a message if it was removed / unpublished or can't be loaded.
+  Future<void> _openResourceFromPush(String id) async {
+    if (_openingResourceId == id) return;
+    _openingResourceId = id;
+    try {
+      if (mounted) setState(() => _index = 2);
+      Resource? r;
+      try {
+        r = await ref
+            .read(resourceRepositoryProvider)
+            .watchById(id)
+            .first
+            .timeout(const Duration(seconds: 10));
+      } catch (_) {
+        r = null; // offline / timeout / permission — fall through.
+      }
+      if (!mounted) return;
+      if (r == null || !r.isVisibleToStudents) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text("That post isn't available anymore.")));
+        return;
+      }
+      final resource = r;
+      ref.read(analyticsProvider).log('push_opened', {
+        'id': resource.id,
+        'type': resource.type.key,
+      });
+      await Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => ResourceDetailScreen(resource: resource)));
+    } finally {
+      _openingResourceId = null;
     }
   }
 
@@ -662,7 +747,8 @@ class _CenterFabState extends State<_CenterFab>
           scale: _scale,
           duration: const Duration(milliseconds: 120),
           curve: Curves.easeOut,
-          child: Container(
+          child: RepaintBoundary(
+            child: Container(
             width: 54,
             height: 54,
             decoration: BoxDecoration(
@@ -681,10 +767,12 @@ class _CenterFabState extends State<_CenterFab>
               ],
             ),
             child: const Icon(Icons.add_rounded, color: Colors.white, size: 28),
+          ),
           )
-              // Gentle continuous "breathing" so the primary action stays
-              // subtly alive without being distracting.
-              .animate(onPlay: (c) => c.repeat(reverse: true))
+              // A few gentle "breaths" after launch to draw the eye, then it
+              // rests. (It used to breathe forever on every tab, repainting
+              // its blurred shadow every frame for the app's whole session.)
+              .animate(onPlay: (c) => c.repeat(reverse: true, count: 3))
               .scaleXY(
                 begin: 1,
                 end: 1.06,

@@ -3,6 +3,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../../chat/presentation/widgets/ai_error_view.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/date_utils.dart';
@@ -405,17 +406,22 @@ class InsightsScreen extends ConsumerWidget {
             ),
           const SizedBox(height: 16),
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Projected month-end',
-                  style: theme.textTheme.bodyMedium
-                      ?.copyWith(color: theme.hintColor)),
-              Text(
-                '$currency${projected.toStringAsFixed(0)}'
-                '${budget > 0 ? ' / $currency${budget.toStringAsFixed(0)}' : ''}',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  color: overBudget ? AppColors.danger : AppColors.success,
+              Expanded(
+                child: Text('Projected month-end',
+                    style: theme.textTheme.bodyMedium
+                        ?.copyWith(color: theme.hintColor)),
+              ),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  '$currency${projected.toStringAsFixed(0)}'
+                  '${budget > 0 ? ' / $currency${budget.toStringAsFixed(0)}' : ''}',
+                  textAlign: TextAlign.end,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: overBudget ? AppColors.danger : AppColors.success,
+                  ),
                 ),
               ),
             ],
@@ -693,16 +699,10 @@ class _AiInsightsCard extends ConsumerWidget {
           ],
         ),
       ),
-      error: (_, __) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            "Couldn't reach the assistant. Check your connection and try again.",
-            style: theme.textTheme.bodyMedium?.copyWith(color: Colors.white),
-          ),
-          const SizedBox(height: 12),
-          _generateButton(context, controller, 'Retry'),
-        ],
+      error: (e, _) => AiErrorView(
+        error: e,
+        onRetry: controller.generate,
+        onDark: true,
       ),
       data: (text) => Container(
         width: double.infinity,

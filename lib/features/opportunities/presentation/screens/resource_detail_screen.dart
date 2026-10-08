@@ -11,6 +11,7 @@ import '../../../../shared/widgets/ui_kit.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../../cms/domain/content_report.dart';
 import '../../../cms/presentation/providers/report_providers.dart';
+import '../../../subscription/presentation/providers/subscription_providers.dart';
 import '../../data/resource_repository.dart';
 import '../../domain/resource.dart';
 import '../../domain/resource_status.dart';
@@ -426,8 +427,29 @@ class _ResourceDetailScreenState extends ConsumerState<ResourceDetailScreen> {
 
   /// Related = same type, feed-visible, excluding this resource. Powers the
   /// "no dead ends" behaviour when an opportunity expires/discontinues.
+  ///
+  /// Free members only see related items that are inside their free window
+  /// (the latest [kFreeResourceLimit] of the matching feed), computed exactly
+  /// like the Opportunities / Perks screens. A post opened from a push is
+  /// always viewable, but it must not become a side door into the locked
+  /// catalogue via this list.
   List<Resource> _related(WidgetRef ref) {
     final all = ref.watch(visibleResourcesProvider).valueOrNull ?? const [];
-    return ResourceQueries.related(r, all);
+    final related = ResourceQueries.related(r, all);
+    final isPro = ref.watch(isProProvider);
+    if (isPro) return related;
+
+    final country = ref.watch(userProfileProvider).valueOrNull?.country;
+    final hidden =
+        ref.watch(hiddenResourceIdsProvider).valueOrNull ?? const <String>{};
+    final feed = all
+        .where((x) => x.type.isDiscount == r.type.isDiscount)
+        .where((x) => x.isInActiveFeed)
+        .where((x) => x.targetsCountry(country))
+        .where((x) => !hidden.contains(x.id))
+        .toList();
+    final allowed = freeAllowedIds(feed, isPro: false);
+    if (allowed == null) return related;
+    return related.where((x) => allowed.contains(x.id)).toList();
   }
 }

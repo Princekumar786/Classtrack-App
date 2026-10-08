@@ -192,3 +192,89 @@ test("a user's private tree stays private to them", async () => {
   await assertFails(getDoc(doc(other, "users/student1/subjects/s1")));
   await assertSucceeds(getDoc(doc(student(), "users/student1/subjects/s1")));
 });
+
+
+// ── Free-tier loophole guards on the profile doc ───────────────────────────
+
+const FREE_AVATAR = "icons8-aang-144.png";
+const PRO_AVATAR = "icons8-venom-head-144.png";
+
+test("free user CANNOT pick a Pro-only character (create or update)", async () => {
+  await assertFails(
+    setDoc(doc(student(), "users/student1"), { avatarCharacter: PRO_AVATAR })
+  );
+  await seed("users/student1", { avatarCharacter: FREE_AVATAR });
+  await assertFails(
+    setDoc(doc(student(), "users/student1"), { avatarCharacter: PRO_AVATAR }, { merge: true })
+  );
+  await assertSucceeds(
+    setDoc(doc(student(), "users/student1"), { avatarCharacter: "icons8-bmo-144.png" }, { merge: true })
+  );
+});
+
+test("Pro user CAN pick a Pro-only character", async () => {
+  await seed("_entitlements/student1", { pro: true });
+  await seed("users/student1", { avatarCharacter: FREE_AVATAR });
+  await assertSucceeds(
+    setDoc(doc(student(), "users/student1"), { avatarCharacter: PRO_AVATAR }, { merge: true })
+  );
+});
+
+test("time-boxed Pro (proUntil in the future) also unlocks characters", async () => {
+  await seed("_entitlements/student1", { proUntil: Date.now() + 86400000 });
+  await seed("users/student1", {});
+  await assertSucceeds(
+    setDoc(doc(student(), "users/student1"), { avatarCharacter: PRO_AVATAR }, { merge: true })
+  );
+});
+
+test("learning-plan counter can only go up", async () => {
+  await seed("users/student1", { learningPlansCreatedCount: 2 });
+  await assertFails(
+    setDoc(doc(student(), "users/student1"), { learningPlansCreatedCount: 0 }, { merge: true })
+  );
+  await assertSucceeds(
+    setDoc(doc(student(), "users/student1"), { learningPlansCreatedCount: 3 }, { merge: true })
+  );
+});
+
+test("client CANNOT delete its profile doc (would reset counters)", async () => {
+  await seed("users/student1", { learningPlansCreatedCount: 2 });
+  await assertFails(deleteDoc(doc(student(), "users/student1")));
+});
+
+test("client CANNOT read or write the free-quota identity docs", async () => {
+  await seed("_freeQuota/abc", { chatCount: 10 });
+  await assertFails(getDoc(doc(student(), "_freeQuota/abc")));
+  await assertFails(setDoc(doc(student(), "_freeQuota/abc"), { chatCount: 0 }));
+});
+
+
+test("client CANNOT grant itself referral rewards on the profile doc", async () => {
+  await seed("users/student1", { displayName: "A" });
+  await assertFails(
+    setDoc(doc(student(), "users/student1"), { referralCount: 99 }, { merge: true })
+  );
+});
+
+test("subcollections stay fully writable by the owner", async () => {
+  await assertSucceeds(
+    setDoc(doc(student(), "users/student1/learningPlans/p1"), { title: "x" })
+  );
+  await assertSucceeds(
+    setDoc(doc(student(), "users/student1/usage/chat"), { month: "2026-10", count: 1 })
+  );
+});
+
+test("owner can still create + edit a normal profile", async () => {
+  await assertSucceeds(
+    setDoc(doc(student(), "users/student1"), {
+      displayName: "Priya",
+      avatarCharacter: FREE_AVATAR,
+      targetAttendancePercent: 75,
+    })
+  );
+  await assertSucceeds(
+    setDoc(doc(student(), "users/student1"), { displayName: "Priya S" }, { merge: true })
+  );
+});

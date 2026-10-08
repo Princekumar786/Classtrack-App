@@ -6,6 +6,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/utils/validators.dart';
 import '../domain/app_user.dart';
+import '../domain/onboarding_profile.dart';
 import '../domain/profile_avatars.dart';
 
 /// Handles authentication and the users/{uid} profile document.
@@ -43,8 +44,9 @@ class AuthRepository {
   Future<void> signUpWithEmail(
     String email,
     String password,
-    String displayName,
-  ) async {
+    String displayName, {
+    OnboardingProfile? seed,
+  }) async {
     final cred = await _auth.createUserWithEmailAndPassword(
       email: email.trim(),
       password: password,
@@ -54,7 +56,7 @@ class AuthRepository {
     // surface downstream.
     final cleanName = Validators.sanitizeName(displayName);
     await cred.user?.updateDisplayName(cleanName);
-    await _ensureProfile(cred.user!, displayName: cleanName);
+    await _ensureProfile(cred.user!, displayName: cleanName, seed: seed);
     // Send a verification link so the account's email is authenticated.
     await cred.user?.sendEmailVerification();
   }
@@ -73,7 +75,7 @@ class AuthRepository {
   Future<void> resendVerificationEmail() async =>
       _auth.currentUser?.sendEmailVerification();
 
-  Future<void> signInWithGoogle() async {
+  Future<void> signInWithGoogle({OnboardingProfile? seed}) async {
     final googleUser = await _googleSignIn.signIn();
     if (googleUser == null) {
       // User cancelled the picker.
@@ -100,7 +102,8 @@ class AuthRepository {
       idToken: googleAuth.idToken,
     );
     final cred = await _auth.signInWithCredential(credential);
-    await _ensureProfile(cred.user!, displayName: cred.user!.displayName);
+    await _ensureProfile(cred.user!,
+        displayName: cred.user!.displayName, seed: seed);
   }
 
   Future<void> sendPasswordReset(String email) =>
@@ -111,22 +114,52 @@ class AuthRepository {
     await _auth.signOut();
   }
 
-  /// Creates the profile document if it does not yet exist.
-  Future<void> _ensureProfile(User user, {String? displayName}) async {
+  /// Creates the profile document if it does not yet exist, seeding it with
+  /// the student's onboarding answers ([seed]) when this is a brand-new
+  /// account. Existing profiles are never overwritten.
+  Future<void> _ensureProfile(
+    User user, {
+    String? displayName,
+    OnboardingProfile? seed,
+  }) async {
     final ref = _userDoc(user.uid);
     final snap = await ref.get();
     if (!snap.exists) {
-      final profile = AppUser(
+      final profile = buildNewProfile(
         uid: user.uid,
-        displayName: Validators.sanitizeName(displayName ?? user.displayName),
+        displayName: displayName ?? user.displayName,
         email: user.email,
         photoUrl: user.photoURL,
-        // Give every new account a distinct character avatar from the start
-        // (deterministic on uid) instead of a plain name initial.
-        avatarCharacter: ProfileAvatars.defaultForUid(user.uid),
+        seed: seed,
       );
       await ref.set(profile.toMap());
     }
+  }
+
+  /// Pure builder for a first-time profile (unit-tested). The auth-provided
+  /// name wins; the onboarding name is only a fallback (e.g. a Google account
+  /// with no display name).
+  static AppUser buildNewProfile({
+    required String uid,
+    String? displayName,
+    String? email,
+    String? photoUrl,
+    OnboardingProfile? seed,
+  }) {
+    final authName = Validators.sanitizeName(displayName);
+    final name = authName.isNotEmpty ? authName : (seed?.name ?? '');
+    return AppUser(
+      uid: uid,
+      displayName: name.isEmpty ? null : name,
+      email: email,
+      photoUrl: photoUrl,
+      // The character picked in onboarding, else a distinct deterministic
+      // default (on uid) instead of a plain name initial.
+      avatarCharacter: seed?.avatarCharacter ?? ProfileAvatars.defaultForUid(uid),
+      targetAttendancePercent: seed?.targetAttendance.toDouble() ??
+          AppConstants.defaultTargetAttendance,
+      focusAreas: seed?.focusAreas.map((f) => f.name).toList() ?? const [],
+    );
   }
 
   Stream<AppUser?> watchProfile(String uid) {

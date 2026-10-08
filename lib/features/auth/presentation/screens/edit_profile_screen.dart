@@ -12,6 +12,8 @@ import '../../domain/app_user.dart';
 import '../../domain/profile_avatars.dart';
 import '../../domain/profile_options.dart';
 import '../providers/auth_providers.dart';
+import '../../../subscription/presentation/providers/subscription_providers.dart';
+import '../../../subscription/presentation/widgets/upgrade_prompt.dart';
 
 /// Settings → Edit profile.
 ///
@@ -379,7 +381,9 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
         const SizedBox(width: 14),
         Expanded(
           child: Text(
-            'Choose from ${ProfileAvatars.all.length} characters',
+            ref.watch(isProProvider)
+                ? 'Choose from ${ProfileAvatars.all.length} characters'
+                : '${ProfileAvatars.freeCount} free · ${ProfileAvatars.all.length} with Pro',
             style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
           ),
         ),
@@ -446,9 +450,22 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                       padding: const EdgeInsets.fromLTRB(20, 14, 20, 6),
                       child: Row(
                         children: [
-                          Text('Choose your character',
-                              style: theme.textTheme.titleMedium
-                                  ?.copyWith(fontWeight: FontWeight.w700)),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Choose your character',
+                                    style: theme.textTheme.titleMedium
+                                        ?.copyWith(fontWeight: FontWeight.w700)),
+                                if (!ref.read(isProProvider))
+                                  Text(
+                                    'First ${ProfileAvatars.freeCount} are free · unlock all ${ProfileAvatars.all.length} with Pro',
+                                    style: theme.textTheme.bodySmall
+                                        ?.copyWith(color: theme.hintColor),
+                                  ),
+                              ],
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -465,12 +482,27 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                         itemCount: ProfileAvatars.all.length,
                         itemBuilder: (ctx, i) {
                           final file = ProfileAvatars.all[i];
+                          final isPro = ref.read(isProProvider);
+                          final locked =
+                              !isPro && !ProfileAvatars.isFree(file);
                           return Center(
                             child: _CharacterChoice(
                               path: '${ProfileAvatars.assetDir}/$file',
                               selected: file == selected,
+                              locked: locked,
                               baseColor: baseColor,
-                              onTap: () {
+                              onTap: () async {
+                                if (locked) {
+                                  // Pro-only character: send them to the
+                                  // paywall. If they upgrade, unlock the grid
+                                  // and select the one they wanted.
+                                  final becamePro = await showUpgradePrompt(
+                                      ctx, UpgradeReason.avatars);
+                                  if (!mounted || !becamePro) return;
+                                  setState(() => _avatarCharacter = file);
+                                  setSheet(() {});
+                                  return;
+                                }
                                 setState(() => _avatarCharacter = file);
                                 setSheet(() {});
                               },
@@ -772,6 +804,7 @@ class _CharacterChoice extends StatelessWidget {
     required this.selected,
     required this.baseColor,
     required this.onTap,
+    this.locked = false,
   });
 
   final String path;
@@ -779,12 +812,17 @@ class _CharacterChoice extends StatelessWidget {
   final Color baseColor;
   final VoidCallback onTap;
 
+  /// A Pro-only character the current (free) user can't select yet. Shown
+  /// dimmed with a small lock badge; tapping routes to the paywall.
+  final bool locked;
+
   @override
   Widget build(BuildContext context) {
     const size = 58.0;
     return Semantics(
       button: true,
       selected: selected,
+      label: locked ? 'Pro character, locked' : null,
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(size),
@@ -804,15 +842,33 @@ class _CharacterChoice extends StatelessWidget {
             children: [
               Padding(
                 padding: const EdgeInsets.all(8),
-                child: Image.asset(
-                  path,
-                  fit: BoxFit.contain,
-                  filterQuality: FilterQuality.medium,
-                  errorBuilder: (_, __, ___) =>
-                      const Icon(Icons.person_rounded, color: Colors.white),
+                child: Opacity(
+                  opacity: locked ? 0.4 : 1,
+                  child: Image.asset(
+                    path,
+                    fit: BoxFit.contain,
+                    filterQuality: FilterQuality.medium,
+                    errorBuilder: (_, __, ___) =>
+                        const Icon(Icons.person_rounded, color: Colors.white),
+                  ),
                 ),
               ),
-              if (selected)
+              if (locked)
+                Positioned(
+                  right: 2,
+                  bottom: 2,
+                  child: Container(
+                    padding: const EdgeInsets.all(3),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 1.2),
+                    ),
+                    child: const Icon(Icons.lock_rounded,
+                        size: 11, color: Colors.white),
+                  ),
+                )
+              else if (selected)
                 Positioned(
                   right: 2,
                   bottom: 2,

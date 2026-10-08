@@ -184,8 +184,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       .animate()
                       .fadeIn(delay: 500.ms, duration: 350.ms),
                   const SizedBox(height: 24),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
                       Text("Don't have an account?",
                           style: theme.textTheme.bodyMedium),

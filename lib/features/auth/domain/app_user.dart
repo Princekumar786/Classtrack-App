@@ -76,6 +76,10 @@ class AppUser {
   /// "Finance"]. Empty when the student hasn't picked any.
   final List<String> interests;
 
+  /// What the student said they want help with during onboarding (ids of
+  /// `FocusArea`, e.g. ["attendance", "deadlines"]). Empty when skipped.
+  final List<String> focusAreas;
+
   const AppUser({
     required this.uid,
     this.displayName,
@@ -101,6 +105,7 @@ class AppUser {
     this.graduationYear,
     this.careerGoal,
     this.interests = const [],
+    this.focusAreas = const [],
   });
 
   /// True once the student has filled in at least one profiling field. Used to
@@ -142,6 +147,7 @@ class AppUser {
     int? graduationYear,
     String? careerGoal,
     List<String>? interests,
+    List<String>? focusAreas,
   }) {
     return AppUser(
       uid: uid,
@@ -169,6 +175,7 @@ class AppUser {
       graduationYear: graduationYear ?? this.graduationYear,
       careerGoal: careerGoal ?? this.careerGoal,
       interests: interests ?? this.interests,
+      focusAreas: focusAreas ?? this.focusAreas,
     );
   }
 
@@ -180,6 +187,7 @@ class AppUser {
         'targetAttendancePercent': targetAttendancePercent,
         'monthlyBudget': monthlyBudget,
         'currency': currency,
+        if (focusAreas.isNotEmpty) 'focusAreas': focusAreas,
         'createdAt': createdAt != null
             ? Timestamp.fromDate(createdAt!)
             : FieldValue.serverTimestamp(),
@@ -221,6 +229,11 @@ class AppUser {
       graduationYear: (map['graduationYear'] as num?)?.toInt(),
       careerGoal: map['careerGoal'] as String?,
       interests: (map['interests'] as List?)
+              ?.map((e) => e.toString())
+              .where((e) => e.isNotEmpty)
+              .toList() ??
+          const [],
+      focusAreas: (map['focusAreas'] as List?)
               ?.map((e) => e.toString())
               .where((e) => e.isNotEmpty)
               .toList() ??

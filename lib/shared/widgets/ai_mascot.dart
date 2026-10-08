@@ -43,12 +43,19 @@ class AiMascot extends StatelessWidget {
       width: size,
       height: size,
       fit: BoxFit.contain,
+      // The source art is ~1250px; decode at display size (a 46dp avatar was
+      // decoding a ~6 MB bitmap — costly on first frame and in memory).
+      cacheWidth: (size * MediaQuery.devicePixelRatioOf(context)).round(),
       filterQuality: FilterQuality.medium,
       color: tint,
       colorBlendMode: tint != null ? BlendMode.srcIn : BlendMode.srcOver,
     );
 
-    Widget content = SizedBox(width: size, height: size, child: image);
+    // Isolate the artwork so the float/blink below only re-composite a cached
+    // layer each frame instead of repainting the image.
+    Widget content = RepaintBoundary(
+      child: SizedBox(width: size, height: size, child: image),
+    );
 
     if (animate) {
       content = content

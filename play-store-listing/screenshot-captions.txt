@@ -1,0 +1,32 @@
+SCREENSHOT CAPTIONS (the headline text on each Play Store screenshot)
+Keep them to 2-5 words and order them like this. Screens 1-3 matter most:
+most people only see those in search results.
+
+1. Never drop below 75%
+   Screen: dashboard with the attendance ring + bunk calculator ("You can skip 2 more classes")
+
+2. Snap your timetable. Done.
+   Screen: AI import - photo of a timetable turning into a weekly schedule
+
+3. Your week at a glance
+   Screen: weekly timetable view, colour-coded subjects
+
+4. Every deadline, handled
+   Screen: tasks + exam countdowns
+
+5. An AI study planner
+   Screen: AI weekly planner / AI assistant chat
+
+6. Scholarships & student deals
+   Screen: opportunities feed (internships, scholarships, discounts)
+
+7. Know your GPA
+   Screen: grades & GPA card
+
+8. Notes, flashcards & focus
+   Screen: notes with flashcards or the focus timer
+
+
+FEATURE GRAPHIC (1024x500) text
+Headline: Never drop below 75% attendance
+Sub-line: Attendance • Timetable • Homework • AI planner

@@ -96,9 +96,7 @@ class _ExamsScreenState extends ConsumerState<ExamsScreen> {
                 for (var i = 0; i < showList.length; i++)
                   _examCard(context, ref, showList[i],
                           past: _view == _ExamView.past)
-                      .animate()
-                      .fadeIn(delay: (i * 50).ms, duration: 300.ms)
-                      .slideY(begin: 0.08, curve: Curves.easeOutCubic),
+                      .listEntrance(i, stepMs: 50, slide: 0.08),
             ],
           ],
         ),

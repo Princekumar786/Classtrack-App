@@ -56,8 +56,12 @@ class AttendanceScreen extends ConsumerWidget {
                     ),
                     const SizedBox(width: 12),
                   ],
-                  Text('Attendance', style: theme.textTheme.displaySmall),
-                  const Spacer(),
+                  Expanded(
+                    child: Text('Attendance',
+                        style: theme.textTheme.displaySmall,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis),
+                  ),
                   RoundIconButton(
                     icon: Icons.add_rounded,
                     background: AppColors.primary,

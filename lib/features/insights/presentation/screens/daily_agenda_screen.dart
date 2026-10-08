@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../chat/presentation/widgets/ai_error_view.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/date_utils.dart';
 import '../../../attendance/domain/attendance_record.dart';
@@ -251,9 +252,11 @@ class DailyAgendaScreen extends ConsumerWidget {
                 child: Icon(icon, color: color, size: 18),
               ),
               const SizedBox(width: 10),
-              Text(title,
-                  style: theme.textTheme.titleSmall
-                      ?.copyWith(fontWeight: FontWeight.w700)),
+              Expanded(
+                child: Text(title,
+                    style: theme.textTheme.titleSmall
+                        ?.copyWith(fontWeight: FontWeight.w700)),
+              ),
             ],
           ),
           const SizedBox(height: 10),
@@ -557,21 +560,7 @@ class _AiSummaryCard extends ConsumerWidget {
           ],
         ),
       ),
-      error: (_, __) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            "Couldn't reach the assistant. Check your connection and try again.",
-            style: theme.textTheme.bodyMedium,
-          ),
-          const SizedBox(height: 12),
-          FilledButton.icon(
-            onPressed: onGenerate,
-            icon: const Icon(Icons.refresh_rounded, size: 18),
-            label: const Text('Retry'),
-          ),
-        ],
-      ),
+      error: (e, _) => AiErrorView(error: e, onRetry: onGenerate),
       data: (text) => Container(
         width: double.infinity,
         padding: const EdgeInsets.all(14),

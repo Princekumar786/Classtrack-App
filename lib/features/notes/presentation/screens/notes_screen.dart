@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
@@ -23,7 +22,7 @@ import '../../data/note_importer.dart';
 import '../providers/note_providers.dart';
 import 'flashcard_study_screen.dart';
 import '../../../subscription/presentation/providers/subscription_providers.dart';
-import '../../../subscription/presentation/screens/paywall_screen.dart';
+import '../../../subscription/presentation/widgets/upgrade_prompt.dart';
 
 class NotesScreen extends ConsumerStatefulWidget {
   const NotesScreen({super.key});
@@ -193,10 +192,7 @@ class _NotesScreenState extends ConsumerState<NotesScreen> {
   Widget _cardTile(Note note, int i) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: _NoteCard(note: note)
-          .animate()
-          .fadeIn(delay: (i * 30).ms, duration: 260.ms)
-          .slideY(begin: 0.05, curve: Curves.easeOutCubic),
+      child: _NoteCard(note: note).listEntrance(i, stepMs: 30, slide: 0.05),
     );
   }
 
@@ -701,7 +697,7 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
   /// opens the paywall. Returns true when the caller may proceed.
   Future<bool> _ensurePro() async {
     if (_isPro) return true;
-    return showPaywall(context);
+    return showUpgradePrompt(context, UpgradeReason.smartNotes);
   }
 
   List<ChecklistItem> _buildChecklist() => _checklist
@@ -892,7 +888,8 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
     if (!mounted || cmd == null) return;
     // Only link / image / pdf / flashcard require Pro. Text formatting is free.
     if (cmd.pro && !_isPro) {
-      final unlocked = await showPaywall(context);
+      final unlocked =
+          await showUpgradePrompt(context, UpgradeReason.smartNotes);
       if (!unlocked || !mounted) return;
     }
     _applySlash(cmd);

@@ -1,6 +1,23 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 
 import '../../core/theme/app_colors.dart';
+
+/// Staggered entrance for list rows that stays smooth on long lists.
+///
+/// Only the first [maxAnimated] rows animate (the ones visible when the screen
+/// opens), with a capped delay. Rows further down render immediately — before,
+/// row 40 waited ~2s to appear and every lazily-built row replayed its fade as
+/// it scrolled in, which read as scroll lag.
+extension ListEntrance on Widget {
+  Widget listEntrance(int index,
+      {int stepMs = 40, int maxAnimated = 8, double slide = 0.06}) {
+    if (index >= maxAnimated) return this;
+    return animate()
+        .fadeIn(delay: (index * stepMs).ms, duration: 280.ms)
+        .slideY(begin: slide, curve: Curves.easeOutCubic);
+  }
+}
 
 /// Soft, shadowed card decoration used across the redesigned screens.
 BoxDecoration softCard(
@@ -353,8 +370,13 @@ class SectionHeader extends StatelessWidget {
     final theme = Theme.of(context);
     return Row(
       children: [
-        Text(title, style: theme.textTheme.titleLarge),
-        const Spacer(),
+        Expanded(
+          child: Text(title,
+              style: theme.textTheme.titleLarge,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis),
+        ),
+        const SizedBox(width: 8),
         if (actionLabel != null)
           GestureDetector(
             onTap: onAction,

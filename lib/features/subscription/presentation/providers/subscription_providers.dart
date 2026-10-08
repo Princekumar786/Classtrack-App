@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/constants/app_constants.dart';
 import '../../../../core/providers/firebase_providers.dart';
 import '../../data/subscription_service.dart';
 
@@ -158,12 +160,34 @@ final proDetailsProvider =
 /// Keeps RevenueCat's identity in sync with Firebase auth: logs the user in to
 /// RevenueCat when they sign in, and out when they sign out. Watch this once
 /// (e.g. in HomeShell) so entitlements follow the account across devices.
+///
+/// It ALSO triggers a server-side reconciliation on every sign-in, so a paying
+/// user whose entitlement webhook was missed, delayed, or denied self-heals
+/// within one app-open (see [reconcileServerEntitlement]).
 final subscriptionAuthLinkProvider = Provider<void>((ref) {
   final service = ref.watch(subscriptionServiceProvider);
   final uid = ref.watch(currentUidProvider);
   if (uid != null && uid.isNotEmpty) {
-    service.logIn(uid);
+    // logIn first so RevenueCat has aliased this device's purchases to the
+    // Firebase uid, then ask the backend to reconcile against RevenueCat.
+    service.logIn(uid).whenComplete(
+        () => reconcileServerEntitlement(ref.read(firebaseFunctionsProvider)));
   } else {
     service.logOut();
   }
 });
+
+/// Fire-and-forget: asks the backend to reconcile the current user's Pro
+/// entitlement against RevenueCat's authoritative state, repairing a missed or
+/// denied webhook. Safe to call anytime — it never throws into the UI and is a
+/// no-op server-side when there's nothing to fix. Call after purchase/restore
+/// for an instant server-trusted unlock.
+Future<void> reconcileServerEntitlement(FirebaseFunctions functions) async {
+  try {
+    await functions
+        .httpsCallable(AppConstants.reconcileEntitlementFunction)
+        .call();
+  } catch (_) {
+    // Best-effort: the RevenueCat webhook and the hourly cron are the backstops.
+  }
+}

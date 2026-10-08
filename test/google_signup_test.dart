@@ -5,6 +5,7 @@
 // Google entry point in the sign-up flow at all. This test asserts the button
 // exists and that tapping it drives AuthController.signInWithGoogle().
 
+import 'package:classtrack/core/providers/app_settings_provider.dart';
 import 'package:classtrack/core/theme/app_theme.dart';
 import 'package:classtrack/features/auth/data/auth_repository.dart';
 import 'package:classtrack/features/auth/presentation/providers/auth_providers.dart';
@@ -12,6 +13,7 @@ import 'package:classtrack/features/auth/presentation/screens/signup_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Minimal fake so we can build an [AuthController] without touching Firebase.
 /// AuthController never calls into it in this test because the spy overrides
@@ -41,10 +43,13 @@ void main() {
     addTearDown(tester.view.reset);
 
     final spy = _SpyAuthController(_FakeRepo());
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
 
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          sharedPrefsProvider.overrideWithValue(prefs),
           authControllerProvider.overrideWith((ref) => spy),
         ],
         child: MaterialApp(

@@ -64,19 +64,75 @@ service cloud.firestore {
               'referredBy', 'referredAt'];
     }
 
+    // Server-trusted Pro check, mirroring the app's isProProvider: a
+    // permanent `pro: true` or a future `proUntil` (millis or Timestamp).
+    function isPro(uid) {
+      let path = /databases/$(database)/documents/_entitlements/$(uid);
+      let e = exists(path) ? get(path).data : {};
+      return e.get('pro', false) == true
+        || (e.get('proUntil', null) is timestamp && e.proUntil > request.time)
+        || (e.get('proUntil', null) is int
+            && e.proUntil > request.time.toMillis());
+    }
+
+    // Free profile characters — MUST match ProfileAvatars.free (the first
+    // ProfileAvatars.freeCount entries of ProfileAvatars.all). A guard test in
+    // test/profile_avatars_rules_sync_test.dart fails if they drift.
+    function freeAvatars() {
+      return ['icons8-aang-144.png', 'icons8-adam-savage-144.png',
+              'icons8-albus-dumbledore-144.png', 'icons8-amethyst-universe-144.png',
+              'icons8-anonymous-mask-144.png', 'icons8-aquaman-144.png',
+              'icons8-atom-144.png', 'icons8-badtz-maru-144.png',
+              'icons8-batman-144.png', 'icons8-batman-144-2.png',
+              'icons8-bendy-144.png', 'icons8-bill-cipher-144.png',
+              'icons8-bmo-144.png', 'icons8-brave-144.png',
+              'icons8-brutus-144.png'];
+    }
+
+    // The profile's avatar is free, unset, or the user is Pro.
+    function avatarAllowed(uid) {
+      let a = request.resource.data.get('avatarCharacter', null);
+      return a == null || a in freeAvatars() || isPro(uid);
+    }
+
+    // The lifetime "learning plans created" counter can only go up, so
+    // deleting/resetting it can't hand out more free plans.
+    function plansCounterNeverDecreases() {
+      let before = resource.data.get('learningPlansCreatedCount', 0);
+      let after = request.resource.data.get('learningPlansCreatedCount', 0);
+      return after is int && after >= before;
+    }
+
     // Everything under a user's tree is private to that user.
     match /users/{uid} {
       allow read: if request.auth != null && request.auth.uid == uid;
-      allow delete: if request.auth != null && request.auth.uid == uid;
+      // No client delete of the profile doc: account deletion runs server-side
+      // (deleteAccount, Admin SDK). Allowing it let a client wipe its
+      // free-tier counters (e.g. learningPlansCreatedCount) and start over.
+      allow delete: if false;
       // A client may create/update its own profile, but can never set or change
-      // the backend-owned referral/reward fields (server-managed via Admin SDK).
+      // the backend-owned referral/reward fields (server-managed via Admin SDK),
+      // can never lower its free-tier counters, and can only pick a Pro-only
+      // profile character while actually Pro.
       allow create: if request.auth != null && request.auth.uid == uid
-        && !request.resource.data.keys().hasAny(referralFields());
+        && !request.resource.data.keys().hasAny(referralFields())
+        && avatarAllowed(uid)
+        && !('learningPlansCreatedCount' in request.resource.data
+             && request.resource.data.learningPlansCreatedCount != 0);
       allow update: if request.auth != null && request.auth.uid == uid
         && !request.resource.data.diff(resource.data)
-              .affectedKeys().hasAny(referralFields());
+              .affectedKeys().hasAny(referralFields())
+        && plansCounterNeverDecreases()
+        && (!request.resource.data.diff(resource.data)
+              .affectedKeys().hasAny(['avatarCharacter'])
+            || avatarAllowed(uid));
 
-      match /{document=**} {
+      // Subcollections only. With rules_version 2, `{document=**}` here would
+      // ALSO match users/{uid} itself (zero segments) and grant unconditional
+      // write to the profile doc — silently bypassing every check above
+      // (referral fields, avatar gate, plan counter). `{sub}/{rest=**}`
+      // requires at least one segment below the profile.
+      match /{sub}/{rest=**} {
         allow read, write: if request.auth != null && request.auth.uid == uid;
       }
     }

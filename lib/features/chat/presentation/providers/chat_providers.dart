@@ -10,6 +10,9 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/date_utils.dart';
 import '../../../../services/gemini_service.dart';
 import '../../../../services/analytics_service.dart';
+import '../../domain/ai_errors.dart';
+import '../../domain/chat_actions_logic.dart';
+import '../../../../core/providers/app_settings_provider.dart';
 import '../../../attendance/domain/attendance_record.dart';
 import '../../../attendance/presentation/providers/attendance_providers.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
@@ -91,6 +94,16 @@ class ActionOutcome {
 }
 
 class ChatController extends StateNotifier<ChatState> {
+  /// Sent (not shown) when the model claimed a change without an actions
+  /// block. Gives it one chance to emit the action it described.
+  static const _missingActionsNudge =
+      'SYSTEM CHECK (not from the student): your previous reply said you made '
+      'a change, but it contained NO ```actions``` block, so NOTHING changed in '
+      'the app. If the student asked for a change, reply again with a short '
+      'confirmation AND the ```actions``` block, matching the item by its '
+      'exact name from the data. If you cannot tell which item they mean, ask '
+      'a short question and do NOT claim anything was done.';
+
   final GeminiService _gemini;
   final Ref _ref;
   final List<Map<String, dynamic>> _history = [];
@@ -301,6 +314,21 @@ class ChatController extends StateNotifier<ChatState> {
         sb.writeln('- ${Weekdays.full[d]}: $parts');
       }
     }
+    // The display setting, so the assistant knows what the student sees
+    // (times above are always 24h) and can answer/offer to change it.
+    final tf = _ref.read(timeFormatProvider);
+    sb.writeln('App time format setting: ${tf.label}'
+        '${tf == TimeFormatPref.system ? " (follows the phone clock)" : ""}. '
+        'Times above are listed in 24-hour HH:MM.');
+    // Classes that look like afternoon times entered without PM.
+    final suspect = recurring
+        .where((c) => fixAmEnteredClassTime(c.session.startTime, c.session.endTime) != null)
+        .length;
+    if (suspect > 0) {
+      sb.writeln('Note: $suspect class(es) have times between 01:00 and 06:59 or '
+          'end before they start — likely afternoon times entered without PM '
+          '(a fixClassTimes action corrects them).');
+    }
     final gpa = _ref.read(gpaSummaryProvider);
     if (gpa.gradedSubjects > 0) {
       sb.writeln(
@@ -309,7 +337,7 @@ class ChatController extends StateNotifier<ChatState> {
     final tasks = _ref.read(pendingTasksProvider);
     if (tasks.isNotEmpty) {
       sb.writeln('Pending tasks:');
-      for (final t in tasks.take(15)) {
+      for (final t in tasks.take(40)) {
         final due =
             t.dueDate != null ? DateUtilsX.prettyDate(t.dueDate!) : 'no date';
         sb.writeln(
@@ -586,12 +614,7 @@ class ChatController extends StateNotifier<ChatState> {
     if (!isPro) {
       final used = usageRepo == null ? 0 : await usageRepo.currentCount();
       if (used >= ProConstants.freeMonthlyChatLimit) {
-        _append(const ChatMessage(
-          role: ChatRole.assistant,
-          text: "You've used all ${ProConstants.freeMonthlyChatLimit} free AI "
-              'messages this month. Upgrade to ClassTrack Pro for unlimited '
-              'chats. 💜',
-        ));
+        _append(const ChatMessage(role: ChatRole.assistant, text: freeChatLimitMessage));
         _needsPaywall = true;
         return;
       }
@@ -623,7 +646,32 @@ class ChatController extends StateNotifier<ChatState> {
       // empty and the assistant answers with wrong zeros.
       await _ensureDataLoaded();
 
-      final reply = await _gemini.chat(_history, context: _buildContext());
+      final chatContext = _buildContext();
+      var reply = await _gemini.chat(_history, context: chatContext);
+      // Claim guard: models sometimes reply "Done — I've marked it complete"
+      // WITHOUT emitting the actions block, so nothing changes in the app.
+      // Ask once more for the actual action; if it still sends none, we tell
+      // the student the truth below instead of echoing the false "done".
+      var falseClaim = false;
+      if (GeminiService.extractActionsFromReply(reply).isEmpty &&
+          GeminiService.extractScheduleFromReply(reply) == null &&
+          parseSpendStatement(trimmed) == null && // the spend safety net handles these
+          claimsDataChange(reply)) {
+        try {
+          final retry = await _gemini.chat([
+            ..._history,
+            {'role': 'model', 'parts': [{'text': reply}]},
+            {'role': 'user', 'parts': [{'text': _missingActionsNudge}]},
+          ], context: chatContext);
+          if (GeminiService.extractActionsFromReply(retry).isNotEmpty) {
+            reply = retry;
+          } else {
+            falseClaim = true;
+          }
+        } catch (_) {
+          falseClaim = true;
+        }
+      }
       // NOTE: the model turn is appended to `_history` AFTER we've computed the
       // cleaned, user-visible prose (see below). We deliberately store that
       // prose — NOT the raw reply — so the transcript we replay on later turns
@@ -665,6 +713,30 @@ class ChatController extends StateNotifier<ChatState> {
             toRun.where((a) => !_isDestructiveAction(a)).toList();
         if (safe.isNotEmpty) outcome = await _executeActions(safe);
       }
+      // Safety net: a plain "I spent 120 on aws" must always be logged, even
+      // when the model answered without an expense action (it sometimes asks
+      // for a category, or treats tech/cloud spends as off-topic). Only fires
+      // for an unambiguous single-amount spend statement.
+      String? autoLogged;
+      final modelLoggedExpense =
+          actions.any((a) => a['type']?.toString().trim() == 'expense');
+      if (!modelLoggedExpense && schedule == null && image == null && pdf == null) {
+        final spend = parseSpendStatement(trimmed);
+        if (spend != null &&
+            await _addExpense({
+              'title': spend.title,
+              'amount': spend.amount,
+              'category': spend.category,
+            })) {
+          (outcome ??= ActionOutcome()).record(true);
+          final cur = _ref.read(currencySymbolProvider);
+          final amt = spend.amount == spend.amount.roundToDouble()
+              ? spend.amount.toStringAsFixed(0)
+              : spend.amount.toStringAsFixed(2);
+          final cat = ExpenseCategoryX.parse(spend.category).label;
+          autoLogged = 'Done — logged $cur$amt for ${spend.title} ($cat). ✅';
+        }
+      }
       var cleaned = GeminiService.stripScheduleBlock(reply);
       cleaned = GeminiService.stripActionsBlock(cleaned);
       // Belt-and-braces: remove any other fenced code block or bare JSON the
@@ -698,6 +770,17 @@ class ChatController extends StateNotifier<ChatState> {
             "I couldn't find anything matching that in your data, so nothing "
             'was changed. Could you tell me exactly which item you mean?';
       }
+      // The app logged the spend itself — say exactly that (the model's prose
+      // may have been a question or a refusal).
+      if (autoLogged != null && !hasPending) finalText = autoLogged;
+      // The model claimed a change but never sent an action (even when asked
+      // again): nothing happened, so say so rather than "Done".
+      if (falseClaim && autoLogged == null && !hasPending && outcome == null) {
+        finalText =
+            "Sorry — I haven't actually changed anything yet. Could you tell me "
+            'the exact name of the item as it appears in the app, and what to '
+            'change?';
+      }
       // Store the CLEANED, user-visible reply as the model turn (see the note
       // where `reply` is fetched above). This keeps the replayed transcript
       // free of stale action/schedule JSON so multi-turn chats stay accurate.
@@ -723,17 +806,37 @@ class ChatController extends StateNotifier<ChatState> {
       // Save the conversation so the user can revisit it from history.
       await _persistSession();
     } catch (e) {
-      final s = e.toString().toLowerCase();
-      final limited =
-          s.contains('resource-exhausted') || s.contains('usage limit');
-      _append(ChatMessage(
-        role: ChatRole.assistant,
-        text: limited
-            ? "You've reached today's AI usage limit. Please try again "
-                'tomorrow. 🙏'
-            : 'Something went wrong reaching the assistant. Please check your '
-                'connection and try again.',
-      ));
+      final outcome = classifyChatError(e, isPro: isPro);
+      switch (outcome) {
+        case ChatErrorKind.freeLimit:
+          // The server is authoritative: e.g. an account re-created with the
+          // same email starts with a fresh local counter, but the server still
+          // remembers this month's usage. Sync the local mirror so the
+          // "remaining" badge shows 0, then prompt the upgrade.
+          try {
+            await usageRepo?.markExhausted(ProConstants.freeMonthlyChatLimit);
+          } catch (_) {/* bookkeeping only */}
+          _append(const ChatMessage(role: ChatRole.assistant, text: freeChatLimitMessage));
+          _needsPaywall = true;
+        case ChatErrorKind.proDailyCap:
+          _append(const ChatMessage(
+            role: ChatRole.assistant,
+            text: "You've reached today's AI usage limit. Please try again "
+                'tomorrow. 🙏',
+          ));
+        case ChatErrorKind.emailUnverified:
+          _append(const ChatMessage(
+            role: ChatRole.assistant,
+            text: 'Please verify your email address to use the AI assistant. '
+                'Check your inbox for the verification link. ✉️',
+          ));
+        case ChatErrorKind.other:
+          _append(const ChatMessage(
+            role: ChatRole.assistant,
+            text: 'Something went wrong reaching the assistant. Please check '
+                'your connection and try again.',
+          ));
+      }
     } finally {
       state = state.copyWith(sending: false);
     }
@@ -804,12 +907,19 @@ class ChatController extends StateNotifier<ChatState> {
   /// fully instead of blindly echoing the model's "Done".
   Future<ActionOutcome> _executeActions(List<Map<String, dynamic>> actions) async {
     final outcome = ActionOutcome();
-    for (final a in actions) {
+    for (final raw in actions) {
+      final a = coerceActionFields(raw);
       final type = a['type']?.toString().trim();
       try {
         switch (type) {
           case 'expense':
             outcome.record(await _addExpense(a));
+            break;
+          case 'setting':
+            outcome.record(await _applySetting(a));
+            break;
+          case 'fixClassTimes':
+            outcome.recordCount(await _fixClassTimes(a));
             break;
           case 'exam':
             outcome.record(await _addExam(a));
@@ -864,7 +974,10 @@ class ChatController extends StateNotifier<ChatState> {
             break;
         }
       } catch (_) {
-        // Invisible automation shouldn't surface stack traces to the user.
+        // Invisible automation shouldn't surface stack traces to the user —
+        // but a failed action is NOT a success: count it, so the reply never
+        // says "Done" for something that threw (e.g. a malformed field).
+        outcome.record(false);
       }
     }
     return outcome;
@@ -935,6 +1048,50 @@ class ChatController extends StateNotifier<ChatState> {
           note: clean(a['note'] as String?),
         ));
     return true;
+  }
+
+  /// `{ "type": "setting", "timeFormat": "12h"|"24h"|"system" }` — changes an
+  /// app preference the user asked for (currently the clock style).
+  Future<bool> _applySetting(Map<String, dynamic> a) async {
+    final raw = a['timeFormat']?.toString();
+    if (raw == null || raw.trim().isEmpty) return false;
+    await _ref.read(timeFormatProvider.notifier).set(TimeFormatPref.parse(raw));
+    return true;
+  }
+
+  /// `{ "type": "fixClassTimes", "subject": string|null, "day": string|null }`
+  ///
+  /// Repairs classes whose afternoon times were entered as morning times (the
+  /// student typed "1:40" meaning 1:40 PM, stored as 01:40). See
+  /// [fixAmEnteredClassTime] for exactly which times move. Returns how many
+  /// classes changed, with a single Undo for the batch.
+  Future<int> _fixClassTimes(Map<String, dynamic> a) async {
+    final repo = _ref.read(sessionRepositoryProvider);
+    if (repo == null) return 0;
+    final onlySubject = _findSubjectIdByName(a['subject'] as String?);
+    final onlyDay = Weekdays.parse((a['day'] as String?) ?? '');
+    final subjects = _ref.read(subjectsStreamProvider).valueOrNull ?? const [];
+    final originals = <(String, ClassSession)>[];
+    for (final subj in subjects) {
+      if (onlySubject != null && subj.id != onlySubject) continue;
+      final sessions =
+          _ref.read(sessionsForSubjectProvider(subj.id)).valueOrNull ?? const [];
+      for (final s in sessions) {
+        if (onlyDay != null && s.dayOfWeek != onlyDay) continue;
+        final fixed = fixAmEnteredClassTime(s.startTime, s.endTime);
+        if (fixed == null) continue;
+        await repo.update(s.copyWith(startTime: fixed.$1, endTime: fixed.$2));
+        originals.add((subj.id, s));
+      }
+    }
+    if (originals.isNotEmpty) {
+      _pendingUndo = PendingUndo('Fixed ${originals.length} class times', () async {
+        for (final (_, s) in originals) {
+          await repo.update(s);
+        }
+      });
+    }
+    return originals.length;
   }
 
   Future<bool> _addTask(Map<String, dynamic> a) async {
@@ -1041,19 +1198,13 @@ class ChatController extends StateNotifier<ChatState> {
 
   // --- Generic matching + create/update/delete across all entities ----------
 
-  /// Finds the item whose title/name best matches [q] (exact first, then
-  /// contains). Returns null when nothing reasonably matches.
+  /// Finds the item [q] refers to: exact title, then containment, then keyword
+  /// overlap ignoring filler words ("the microsoft fabric video" → "Microsoft
+  /// Fabric end-to-end tutorial"). Returns null when nothing — or more than one
+  /// thing — fits, so the assistant asks instead of changing the wrong item.
   T? _match<T>(List<T> items, String? q, String Function(T) name) {
-    if (q == null || q.trim().isEmpty) return null;
-    final query = q.toLowerCase().trim();
-    for (final it in items) {
-      if (name(it).toLowerCase() == query) return it;
-    }
-    for (final it in items) {
-      final t = name(it).toLowerCase();
-      if (t.isNotEmpty && (t.contains(query) || query.contains(t))) return it;
-    }
-    return null;
+    final i = bestMatchIndex([for (final it in items) name(it)], q);
+    return i == null ? null : items[i];
   }
 
   /// Finds the expense the user means, using any combination of amount,
@@ -1328,15 +1479,21 @@ class ChatController extends StateNotifier<ChatState> {
     return true;
   }
 
-  Future<bool> _updateEntity(Map<String, dynamic> a) async {
+  Future<bool> _updateEntity(Map<String, dynamic> raw) async {
+    // Accept field-name variants ("completed": true → "done": true), and treat
+    // an update that requests no actual change as a failure — it used to
+    // "succeed" without changing anything, so the reply said "marked complete"
+    // while the task stayed open.
+    final a = normalizeUpdateAction(raw);
+    if (!updateRequestsChange(a)) return false;
     final entity = (a['entity'] as String?)?.toLowerCase().trim();
-    final q = (a['match'] ?? a['title'] ?? a['name']) as String?;
+    final q = (a['match'] ?? a['title'] ?? a['name'])?.toString();
     switch (entity) {
       case 'task':
         final t = _match(_ref.read(tasksStreamProvider).valueOrNull ?? const [],
             q, (x) => x.title);
         if (t == null) return false;
-        await _ref.read(taskControllerProvider).update(t.copyWith(
+        final updated = t.copyWith(
               title: _clean(a['newTitle'] as String?),
               note: _clean(a['note'] as String?),
               dueDate: _parseDate(a['dueDate'] as String?),
@@ -1347,7 +1504,8 @@ class ChatController extends StateNotifier<ChatState> {
                   ? TaskTypeX.parse(a['taskType'] as String?)
                   : null,
               done: a['done'] as bool?,
-            ));
+            );
+        await _ref.read(taskControllerProvider).update(updated);
         return true;
       case 'exam':
         final e = _match(_ref.read(examsStreamProvider).valueOrNull ?? const [],

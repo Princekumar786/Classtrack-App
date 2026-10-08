@@ -259,7 +259,10 @@ class _DiscountsScreenState extends ConsumerState<DiscountsScreen> {
               ),
               const SizedBox(height: 12),
               SizedBox(
-                height: 214,
+                // Grow with the OS text size so card text never overflows.
+                height: 214.0 +
+                    (MediaQuery.textScalerOf(context).scale(1.0).clamp(1.0, 1.6) - 1.0) *
+                        90.0,
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   physics: const BouncingScrollPhysics(),
@@ -434,10 +437,14 @@ class _SavingsHero extends StatelessWidget {
                             const Icon(Icons.auto_awesome_rounded,
                                 color: Colors.white, size: 14),
                             const SizedBox(width: 5),
-                            Text("You're saving big!",
-                                style: theme.textTheme.labelMedium?.copyWith(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w700)),
+                            Flexible(
+                              child: Text("You're saving big!",
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.labelMedium?.copyWith(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w700)),
+                            ),
                           ],
                         ),
                       ),
@@ -472,10 +479,14 @@ class _SavingsHero extends StatelessWidget {
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Text('View my savings',
-                                    style: theme.textTheme.labelMedium?.copyWith(
-                                        color: AppColors.primary,
-                                        fontWeight: FontWeight.w700)),
+                                Flexible(
+                                  child: Text('View my savings',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: theme.textTheme.labelMedium?.copyWith(
+                                          color: AppColors.primary,
+                                          fontWeight: FontWeight.w700)),
+                                ),
                                 const SizedBox(width: 4),
                                 const Icon(Icons.chevron_right_rounded,
                                     size: 18, color: AppColors.primary),

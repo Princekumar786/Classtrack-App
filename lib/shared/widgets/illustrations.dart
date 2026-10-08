@@ -4,10 +4,11 @@ import 'package:flutter_animate/flutter_animate.dart';
 import '../../core/theme/app_colors.dart';
 
 /// Gentle looping vertical float used by the decorative illustration pieces.
-/// Kept small and few in number so it stays perfectly smooth.
+/// Kept small and few in number so it stays perfectly smooth; the child is
+/// isolated in a RepaintBoundary so each frame only moves a cached layer.
 Widget _float(Widget child,
     {double dy = 6, int ms = 2600, int delayMs = 0}) {
-  return child
+  return RepaintBoundary(child: child)
       .animate(onPlay: (c) => c.repeat(reverse: true))
       .moveY(
         begin: -dy,
@@ -238,18 +239,47 @@ class EmptyIllustration extends StatelessWidget {
   }
 }
 
-/// ringed by softly floating sparkles. Designed for a dark gradient backdrop.
-class PremiumIllustration extends StatelessWidget {
+/// A serene, calming header for the Pro paywall: a soft set of concentric
+/// halos that gently "breathe" in and out, with a quiet lotus mark at the
+/// centre and a few slowly drifting dots. Designed for a dark gradient
+/// backdrop. Deliberately slow and low-contrast (no sharp sparkles or trophy)
+/// so the screen feels reassuring and relaxed rather than pushy.
+class CalmIllustration extends StatelessWidget {
   final double height;
-  const PremiumIllustration({super.key, this.height = 150});
+  const CalmIllustration({super.key, this.height = 150});
 
   @override
   Widget build(BuildContext context) {
-    Widget sparkle(double size, double opacity) => Icon(
-          Icons.auto_awesome_rounded,
-          size: size,
-          color: Colors.white.withValues(alpha: opacity),
+    Widget dot(double size, double opacity) => Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: Colors.white.withValues(alpha: opacity),
+          ),
         );
+
+    // A soft halo that slowly breathes in and out — the heart of the calm feel.
+    Widget breathingHalo(double size, double opacity,
+            {int ms = 4200, int delayMs = 0}) =>
+        RepaintBoundary(
+          child: Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: Colors.white.withValues(alpha: opacity),
+          ),
+        ),
+        )
+            .animate(onPlay: (c) => c.repeat(reverse: true))
+            .scaleXY(
+              begin: 0.94,
+              end: 1.06,
+              duration: ms.ms,
+              delay: delayMs.ms,
+              curve: Curves.easeInOut,
+            );
 
     return SizedBox(
       height: height,
@@ -258,54 +288,47 @@ class PremiumIllustration extends StatelessWidget {
         alignment: Alignment.center,
         clipBehavior: Clip.none,
         children: [
+          breathingHalo(132, 0.08),
+          breathingHalo(100, 0.12, ms: 4600, delayMs: 300),
           Container(
-            width: 130,
-            height: 130,
+            width: 72,
+            height: 72,
             decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.white.withValues(alpha: 0.10),
-            ),
-          ),
-          Container(
-            width: 96,
-            height: 96,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.white.withValues(alpha: 0.16),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.35)),
-            ),
-          ),
-          Container(
-            width: 66,
-            height: 66,
-            decoration: const BoxDecoration(
               shape: BoxShape.circle,
               color: Colors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.12),
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
+                ),
+              ],
             ),
-            child: const Icon(Icons.workspace_premium_rounded,
-                color: AppColors.accent, size: 38),
+            child: const Icon(Icons.spa_rounded,
+                color: AppColors.primary, size: 36),
           )
               .animate()
+              .fadeIn(duration: 500.ms)
               .scale(
-                  begin: const Offset(0.6, 0.6),
-                  end: const Offset(1, 1),
-                  duration: 460.ms,
-                  curve: Curves.easeOutBack)
-              .fadeIn(),
+                begin: const Offset(0.85, 0.85),
+                end: const Offset(1, 1),
+                duration: 600.ms,
+                curve: Curves.easeOut,
+              )
+              // A gentle, slow float so it feels alive but never busy.
+              .animate(onPlay: (c) => c.repeat(reverse: true))
+              .moveY(
+                  begin: -4, end: 4, duration: 3200.ms, curve: Curves.easeInOut),
           Positioned(
-              left: 44, top: 20, child: _float(sparkle(20, 0.9), dy: 5, ms: 2400)),
+              left: 46, top: 26, child: _float(dot(9, 0.45), dy: 4, ms: 3200)),
           Positioned(
-              right: 46,
-              top: 34,
-              child: _float(sparkle(14, 0.7), dy: 6, ms: 2800, delayMs: 200)),
+              right: 50,
+              top: 40,
+              child: _float(dot(6, 0.35), dy: 5, ms: 3600, delayMs: 300)),
           Positioned(
-              right: 62,
-              bottom: 20,
-              child: _float(sparkle(22, 0.85), dy: 5, ms: 2600, delayMs: 400)),
-          Positioned(
-              left: 58,
-              bottom: 24,
-              child: _float(sparkle(12, 0.6), dy: 7, ms: 3000, delayMs: 100)),
+              right: 64,
+              bottom: 26,
+              child: _float(dot(10, 0.4), dy: 4, ms: 3400, delayMs: 500)),
         ],
       ),
     );

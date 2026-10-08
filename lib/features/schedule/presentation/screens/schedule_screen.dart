@@ -285,8 +285,12 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                     ),
                     const SizedBox(width: 12),
                   ],
-                  Text('Schedule', style: theme.textTheme.displaySmall),
-                  const Spacer(),
+                  Expanded(
+                    child: Text('Schedule',
+                        style: theme.textTheme.displaySmall,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis),
+                  ),
                   RoundIconButton(
                     icon: Icons.file_download_outlined,
                     onTap: () => showImportOptions(context, ref),
@@ -312,7 +316,8 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                     ScheduleView.week => 'Week',
                     ScheduleView.month => 'Month',
                   };
-                  return Padding(
+                  return Flexible(
+                    child: Padding(
                     padding: const EdgeInsets.only(right: 10),
                     child: GestureDetector(
                       onTap: () => setState(() => _view = v),
@@ -326,6 +331,9 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                         ),
                         child: Text(
                           label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
                           style: theme.textTheme.labelLarge?.copyWith(
                             color: selected
                                 ? Colors.white
@@ -334,6 +342,7 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                           ),
                         ),
                       ),
+                    ),
                     ),
                   );
                 }).toList(),
@@ -415,8 +424,10 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
 
   Widget _dateStrip() {
     final today = DateTime.now();
+    // Grow with the OS text size so the weekday + date never overflow.
+    final ts = MediaQuery.textScalerOf(context).scale(1.0).clamp(1.0, 2.0);
     return SizedBox(
-      height: 84,
+      height: 84 + (ts - 1.0) * 30,
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -441,17 +452,24 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text(
-                    Weekdays.short[date.weekday - 1],
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: selected ? Colors.white70 : null,
+                  // Fixed 56×60 chip: shrink text to fit at large font sizes.
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      Weekdays.short[date.weekday - 1],
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: selected ? Colors.white70 : null,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 4),
-                  Text(
-                    '${date.day}',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      color: selected ? Colors.white : null,
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      '${date.day}',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        color: selected ? Colors.white : null,
+                      ),
                     ),
                   ),
                 ],

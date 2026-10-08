@@ -13,6 +13,7 @@ class ClassTrackApp extends ConsumerWidget {
     final router = ref.watch(routerProvider);
     final themeMode = ref.watch(themeModeProvider);
     final accent = ref.watch(accentColorProvider);
+    final use24 = ref.watch(timeFormatProvider).use24;
 
     return MaterialApp.router(
       title: 'ClassTrack',
@@ -34,6 +35,9 @@ class ClassTrackApp extends ConsumerWidget {
               minScaleFactor: 0.9,
               maxScaleFactor: 1.3,
             ),
+            // In-app 12/24-hour choice (Settings → Appearance). Every time in
+            // the app is formatted via TimeOfDay.format, which reads this.
+            alwaysUse24HourFormat: use24 ?? mq.alwaysUse24HourFormat,
           ),
           child: child ?? const SizedBox.shrink(),
         );

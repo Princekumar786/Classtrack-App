@@ -6,7 +6,7 @@ import 'package:intl/intl.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../services/analytics_service.dart';
 import '../../../../shared/widgets/ui_kit.dart';
-import '../../../subscription/presentation/screens/paywall_screen.dart';
+import '../../../subscription/presentation/widgets/upgrade_prompt.dart';
 import '../../../subscription/presentation/providers/subscription_providers.dart';
 import '../../domain/learning_plan.dart';
 import '../providers/learning_planner_providers.dart';
@@ -50,7 +50,9 @@ class PlannerHomeScreen extends ConsumerWidget {
   static Future<bool> _ensureCanCreate(
       BuildContext context, WidgetRef ref) async {
     if (ref.read(canCreatePlanProvider)) return true;
-    final unlocked = await showPaywall(context);
+    final unlocked = await showUpgradePrompt(
+        context, UpgradeReason.learningPlans,
+        used: ref.read(usedPlanSlotsProvider));
     if (!context.mounted) return false;
     return unlocked || ref.read(canCreatePlanProvider);
   }
@@ -574,7 +576,7 @@ class _EmptyState extends StatelessWidget {
             child: const Icon(Icons.auto_stories_outlined,
                 size: 34, color: AppColors.primary),
           )
-              .animate(onPlay: (c) => c.repeat(reverse: true))
+              .animate(onPlay: (c) => c.repeat(reverse: true, count: 4))
               .moveY(begin: 0, end: -6, duration: 1800.ms, curve: Curves.easeInOut),
           const SizedBox(height: 18),
           Text('No learning plans yet', style: theme.textTheme.titleMedium),

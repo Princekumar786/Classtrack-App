@@ -22,7 +22,11 @@ class MomentCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AspectRatio(
+    // A fixed-ratio, share-ready graphic: every size derives from the card
+    // width, so the OS text-size setting must not scale it (it would overflow
+    // the fixed 4:5 frame). The card is shown/exported as an image.
+    return MediaQuery.withNoTextScaling(
+      child: AspectRatio(
       aspectRatio: 4 / 5,
       child: LayoutBuilder(
         builder: (context, constraints) {
@@ -126,6 +130,7 @@ class MomentCard extends StatelessWidget {
           );
         },
       ),
+    ),
     );
   }
 

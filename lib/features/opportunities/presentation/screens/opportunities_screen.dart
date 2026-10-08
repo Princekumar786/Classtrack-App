@@ -362,7 +362,7 @@ class _OpportunitiesScreenState extends ConsumerState<OpportunitiesScreen> {
                               // proportional to the text scale.
                               final ts = MediaQuery.textScalerOf(
                                 context,
-                              ).scale(1.0).clamp(1.0, 1.3);
+                              ).scale(1.0).clamp(1.0, 1.6);
                               final carouselHeight = 204.0 + (ts - 1.0) * 90.0;
                               final header = <Widget>[
                                 const PlacementBanner(
@@ -408,12 +408,14 @@ class _OpportunitiesScreenState extends ConsumerState<OpportunitiesScreen> {
                                       color: AppColors.primary,
                                     ),
                                     const SizedBox(width: 6),
-                                    Text(
-                                      'Recommended for you',
-                                      style: theme.textTheme.titleLarge
-                                          ?.copyWith(
-                                            fontWeight: FontWeight.w800,
-                                          ),
+                                    Expanded(
+                                      child: Text(
+                                        'Recommended for you',
+                                        style: theme.textTheme.titleLarge
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -989,11 +991,15 @@ class _MetaBit extends StatelessWidget {
       children: [
         Icon(icon, size: 13, color: color),
         const SizedBox(width: 4),
-        Text(
-          label,
-          style: theme.textTheme.labelSmall?.copyWith(
-            color: color,
-            fontWeight: FontWeight.w600,
+        Flexible(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: color,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ),
       ],

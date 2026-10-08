@@ -96,6 +96,21 @@ class ProfileAvatars {
     'icons8-venom-head-144.png',
   ];
 
+  /// How many characters are unlocked on the free plan; the rest are Pro.
+  /// The free set is intentionally the FIRST [freeCount] of [all] so the
+  /// selection is stable and the picker can simply split the list.
+  static const int freeCount = 15;
+
+  /// The characters available on the free plan (the first [freeCount]).
+  static List<String> get free => all.sublist(0, freeCount.clamp(0, all.length));
+
+  /// The Pro-only characters (everything after the free ones).
+  static List<String> get pro => all.sublist(freeCount.clamp(0, all.length));
+
+  /// Whether [fileName] is a character available on the free plan.
+  static bool isFree(String? fileName) =>
+      fileName != null && free.contains(fileName);
+
   /// Full asset path for a stored [fileName], or `null` when it's empty or not
   /// a known character (so callers can fall back gracefully).
   static String? assetPath(String? fileName) {
@@ -106,17 +121,19 @@ class ProfileAvatars {
 
   /// A stable, deterministic default character for a given user id.
   ///
-  /// Derived from a simple hash of the uid so a brand-new account starts with a
-  /// distinct character (not the same one for everyone) and always resolves to
-  /// the same character on every device — without needing a server round-trip.
+  /// Chosen only from the [free] pool so a brand-new (free) account never
+  /// starts locked out of its own avatar. Derived from a simple hash of the
+  /// uid so accounts start distinct and always resolve to the same character
+  /// on every device — without needing a server round-trip.
   static String defaultForUid(String uid) {
-    if (all.isEmpty) return '';
-    if (uid.isEmpty) return all.first;
+    final pool = free.isNotEmpty ? free : all;
+    if (pool.isEmpty) return '';
+    if (uid.isEmpty) return pool.first;
     var hash = 0;
     for (final unit in uid.codeUnits) {
       hash = (hash * 31 + unit) & 0x7fffffff;
     }
-    return all[hash % all.length];
+    return pool[hash % pool.length];
   }
 
   /// Resolves which character to actually display for a user: their [chosen]

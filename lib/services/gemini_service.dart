@@ -2,15 +2,56 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:uuid/uuid.dart';
 
 import '../features/import/domain/parsed_schedule.dart';
+
+/// Real MIME type from a file's first bytes (galleries return PNG, WebP and
+/// HEIC as well as JPEG; labelling them all "image/jpeg" made the AI reject or
+/// misread some photos). Falls back to [fallback] when unrecognised.
+String sniffMimeType(Uint8List b, String fallback) {
+  bool at(int i, List<int> sig) {
+    if (b.length < i + sig.length) return false;
+    for (var k = 0; k < sig.length; k++) {
+      if (b[i + k] != sig[k]) return false;
+    }
+    return true;
+  }
+
+  if (at(0, [0xFF, 0xD8])) return 'image/jpeg';
+  if (at(0, [0x89, 0x50, 0x4E, 0x47])) return 'image/png';
+  if (at(0, 'RIFF'.codeUnits) && at(8, 'WEBP'.codeUnits)) return 'image/webp';
+  if (at(0, '%PDF'.codeUnits)) return 'application/pdf';
+  if (at(4, 'ftyp'.codeUnits) && b.length >= 12) {
+    final brand = String.fromCharCodes(b.sublist(8, 12));
+    if (['heic', 'heix', 'hevc', 'hevx'].contains(brand)) return 'image/heic';
+    if (['mif1', 'msf1', 'heif'].contains(brand)) return 'image/heif';
+  }
+  return fallback;
+}
 
 /// Gemini access that goes through auth-gated Cloud Functions. The API key
 /// lives ONLY server-side (GEMINI_API_KEY secret) and is never shipped in the
 /// app, so it cannot be extracted from the binary.
 class GeminiService {
   final FirebaseFunctions _functions;
-  GeminiService(this._functions);
+  final FirebaseStorage? _storage;
+  final String? Function()? _uid;
+
+  GeminiService(this._functions, {FirebaseStorage? storage, String? Function()? uid})
+      : _storage = storage,
+        _uid = uid;
+
+  /// Files above this go through Cloud Storage (a resumable upload) instead
+  /// of inside the function call, which is slower and size-capped on mobile.
+  static const int inlineLimitBytes = 6 * 1024 * 1024;
+
+  /// A photo/PDF parse can legitimately take a minute or more (multi-page
+  /// PDFs, dense photos). The SDK's default callable timeout is 60s, which
+  /// made the app give up while the server was still working ("network
+  /// hiccup"). Slightly above the function's own 180s limit.
+  static const Duration parseTimeout = Duration(seconds: 190);
 
   /// Always "configured" — the key is managed by the backend.
   bool get isConfigured => true;
@@ -25,30 +66,47 @@ class GeminiService {
     final Map<String, dynamic> payload;
     if (text != null && text.trim().isNotEmpty) {
       payload = {'sourceType': 'text', 'text': text};
-    } else if (pdfBytes != null) {
-      // A PDF timetable (e.g. an exported college schedule). Gemini reads PDFs
-      // natively, so we send the raw bytes inline with the PDF mime type and
-      // the backend `parseSchedule` function forwards them to the model.
+    } else if (pdfBytes != null || imageBytes != null) {
+      final isPdf = pdfBytes != null;
+      final bytes = (pdfBytes ?? imageBytes)!;
+      final mime = sniffMimeType(bytes, isPdf ? 'application/pdf' : 'image/jpeg');
       payload = {
-        'sourceType': 'pdf',
-        'inlineData': base64Encode(pdfBytes),
-        'mimeType': 'application/pdf',
-      };
-    } else if (imageBytes != null) {
-      payload = {
-        'sourceType': 'image',
-        'inlineData': base64Encode(imageBytes),
-        'mimeType': 'image/jpeg',
+        'sourceType': isPdf ? 'pdf' : 'image',
+        'mimeType': mime,
+        ...await _fileField(bytes, mime),
       };
     } else {
       return ParsedSchedule(subjects: const [], confidence: 'low');
     }
 
-    final callable = _functions.httpsCallable('parseSchedule');
+    final callable = _functions.httpsCallable(
+      'parseSchedule',
+      options: HttpsCallableOptions(timeout: parseTimeout),
+    );
     final res = await callable.call(payload);
     // Deep-convert the callable result into plain JSON maps/lists.
     final map = jsonDecode(jsonEncode(res.data)) as Map<String, dynamic>;
     return ParsedSchedule.fromJson(map);
+  }
+
+  /// `inlineData` for normal files; for large ones, uploads to the user's own
+  /// Storage folder and returns `storagePath` (the function reads it, then
+  /// deletes it). Falls back to inline if Storage isn't available.
+  Future<Map<String, dynamic>> _fileField(Uint8List bytes, String mime) async {
+    final uid = _uid?.call();
+    if (bytes.length > inlineLimitBytes && _storage != null && uid != null) {
+      final ext = switch (mime) {
+        'application/pdf' => 'pdf',
+        'image/png' => 'png',
+        'image/webp' => 'webp',
+        'image/heic' || 'image/heif' => 'heic',
+        _ => 'jpg',
+      };
+      final path = 'users/$uid/imports/${const Uuid().v4()}.$ext';
+      await _storage.ref(path).putData(bytes, SettableMetadata(contentType: mime));
+      return {'storagePath': path};
+    }
+    return {'inlineData': base64Encode(bytes)};
   }
 
   /// Multi-turn chat via the `chat` Cloud Function. [history] is a serializable

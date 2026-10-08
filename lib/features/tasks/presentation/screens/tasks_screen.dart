@@ -575,13 +575,16 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
                       style: theme.textTheme.headlineSmall
                           ?.copyWith(fontWeight: FontWeight.w800)),
                   const SizedBox(width: 4),
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 3),
-                    child: Text('tasks',
-                        style: theme.textTheme.bodySmall
-                            ?.copyWith(color: theme.hintColor, fontSize: 11)),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 3),
+                      child: Text('tasks',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall
+                              ?.copyWith(color: theme.hintColor, fontSize: 11)),
+                    ),
                   ),
-                  const Spacer(),
                   Icon(Icons.chevron_right_rounded, size: 16, color: color),
                 ],
               ),

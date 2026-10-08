@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_colors.dart';
@@ -55,10 +54,7 @@ class HabitsScreen extends ConsumerWidget {
                 return Column(
                   children: [
                     for (var i = 0; i < habits.length; i++)
-                      _HabitCard(habit: habits[i])
-                          .animate()
-                          .fadeIn(delay: (i * 50).ms, duration: 300.ms)
-                          .slideY(begin: 0.06, curve: Curves.easeOutCubic),
+                      _HabitCard(habit: habits[i]).listEntrance(i, stepMs: 50),
                   ],
                 );
               },

@@ -1,0 +1,294 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>ClassTrack — Google Play assets (2026)</title>
+<style>
+@font-face{font-family:Poppins;src:url('../../assets/fonts/Poppins-Medium.ttf');font-weight:500}
+@font-face{font-family:Poppins;src:url('../../assets/fonts/Poppins-SemiBold.ttf');font-weight:600}
+@font-face{font-family:Poppins;src:url('../../assets/fonts/Poppins-Bold.ttf');font-weight:700}
+@font-face{font-family:Inter;src:url('../../assets/fonts/Inter-Regular.ttf');font-weight:400}
+@font-face{font-family:Inter;src:url('../../assets/fonts/Inter-Medium.ttf');font-weight:500}
+@font-face{font-family:Inter;src:url('../../assets/fonts/Inter-SemiBold.ttf');font-weight:600}
+
+:root{
+  --ink:#1B1C34; --ink-2:#4A4B66; --muted:#656478;
+  --primary:#6C5CE7; --primary-d:#5546C9; --primary-l:#8B7FEC;
+  --lav:#EDEAFB; --lav-2:#F5F3FD; --line:rgba(108,92,231,.14);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:1080px;height:1920px;overflow:hidden;background:#fff}
+body{font-family:Inter,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+
+/* ── Canvas ─────────────────────────────────────────────────────────── */
+.slide{position:absolute;inset:0;display:none;overflow:hidden;
+  background:
+    radial-gradient(900px 700px at 85% -5%, rgba(139,127,236,.28), transparent 60%),
+    radial-gradient(800px 600px at -10% 35%, rgba(108,92,231,.12), transparent 60%),
+    linear-gradient(180deg,#F7F5FE 0%,#EFECFB 55%,#E6E1FA 100%);}
+.slide.active{display:block}
+.slide.dark{background:
+    radial-gradient(900px 700px at 85% -5%, rgba(139,127,236,.45), transparent 60%),
+    radial-gradient(800px 700px at -15% 70%, rgba(108,92,231,.30), transparent 60%),
+    linear-gradient(170deg,#24215A 0%,#1B1C34 55%,#141529 100%);}
+/* Fine dot grid that fades out — adds texture without clutter. */
+.slide::before{content:"";position:absolute;inset:0;pointer-events:none;
+  background-image:radial-gradient(rgba(108,92,231,.16) 1.4px,transparent 1.6px);
+  background-size:34px 34px;
+  -webkit-mask-image:linear-gradient(180deg,#000 0%,transparent 42%);}
+.slide.dark::before{background-image:radial-gradient(rgba(255,255,255,.10) 1.4px,transparent 1.6px)}
+/* Soft halo that "lights" the phone from behind. */
+.halo{position:absolute;left:50%;top:1180px;width:1100px;height:1100px;margin-left:-550px;border-radius:50%;
+  background:radial-gradient(circle,rgba(108,92,231,.30) 0%,rgba(108,92,231,.10) 40%,transparent 68%);}
+.dark .halo{background:radial-gradient(circle,rgba(139,127,236,.45) 0%,rgba(108,92,231,.14) 40%,transparent 68%)}
+.ring{position:absolute;border-radius:50%;border:1.5px solid var(--line)}
+.dark .ring{border-color:rgba(255,255,255,.08)}
+
+/* ── Copy block ─────────────────────────────────────────────────────── */
+.copy{position:absolute;left:84px;right:84px;top:120px;z-index:5}
+.brand{display:flex;align-items:center;gap:14px;margin-bottom:58px}
+.brand img{width:56px;height:56px;border-radius:16px;box-shadow:0 10px 24px rgba(55,48,163,.28)}
+.brand b{font:700 28px Poppins;color:var(--ink);letter-spacing:-.4px}
+.dark .brand b{color:#fff}
+.eyebrow{display:inline-flex;align-items:center;gap:10px;padding:10px 18px;border-radius:100px;
+  background:rgba(108,92,231,.10);color:var(--primary-d);font:600 20px Inter;letter-spacing:2.4px}
+.eyebrow i{width:9px;height:9px;border-radius:50%;background:var(--primary)}
+.dark .eyebrow{background:rgba(255,255,255,.10);color:#D9D4FF}
+.dark .eyebrow i{background:#A99FF7}
+h1{margin-top:26px;font:700 94px/1.0 Poppins;letter-spacing:-3.6px;color:var(--ink)}
+h1 em{font-style:normal;background:linear-gradient(95deg,#5546C9 0%,#7C6CF0 55%,#9B8CF5 100%);
+  -webkit-background-clip:text;background-clip:text;color:transparent}
+.dark h1{color:#fff}
+.dark h1 em{background:linear-gradient(95deg,#B9AEFF 0%,#D9D4FF 100%);-webkit-background-clip:text;background-clip:text}
+.sub{margin-top:28px;max-width:860px;font:400 33px/1.42 Inter;color:var(--muted)}
+.dark .sub{color:#B9B7D6}
+
+/* ── Phone ──────────────────────────────────────────────────────────── */
+.phone{position:absolute;z-index:4;width:600px;padding:15px;border-radius:80px;
+  background:linear-gradient(145deg,#2E2F4B 0%,#15162A 45%,#2A2B45 100%);
+  box-shadow:
+    0 0 0 2px #3B3D5E inset,
+    0 2px 0 1px rgba(255,255,255,.08) inset,
+    0 80px 120px -30px rgba(27,28,52,.45),
+    0 40px 60px -20px rgba(85,70,201,.35);}
+.phone .screen{position:relative;border-radius:65px;overflow:hidden;background:#F1EFFB}
+.phone .screen img{display:block;width:100%;height:auto}
+/* Status bar drawn over the app's 24dp safe-area strip. */
+.status{position:absolute;left:0;right:0;top:0;height:41px;display:flex;align-items:center;justify-content:space-between;
+  padding:6px 44px 0 52px;font:600 19px Inter;color:#1B1C34;z-index:2}
+.status .icons{display:flex;gap:8px;align-items:center}
+.status svg{height:17px}
+.punch{position:absolute;top:13px;left:50%;width:22px;height:22px;margin-left:-11px;border-radius:50%;background:#0B0C18;z-index:3}
+/* Side buttons */
+.phone::before,.phone::after{content:"";position:absolute;right:-5px;width:6px;border-radius:0 4px 4px 0;background:#2A2B45}
+.phone::before{top:300px;height:110px}
+.phone::after{top:450px;height:70px}
+
+.center{left:50%;margin-left:-300px;top:690px}
+.back{z-index:3;width:500px;padding:13px;border-radius:68px;opacity:.97}
+.back .screen{border-radius:56px}
+.back .status{height:32px;font-size:15px;padding:4px 34px 0 40px}
+.back .punch{width:17px;height:17px;margin-left:-8px;top:10px}
+.back::before,.back::after{display:none}
+
+/* ── Benefit pills (copy only — never fake UI) ─────────────────────── */
+.pill{position:absolute;z-index:6;display:flex;align-items:center;gap:14px;padding:20px 26px;border-radius:26px;
+  background:rgba(255,255,255,.92);border:1px solid rgba(108,92,231,.14);
+  box-shadow:0 24px 48px -18px rgba(27,28,52,.30);font:600 24px Inter;color:var(--ink);backdrop-filter:blur(8px)}
+.pill .ic{display:grid;place-items:center;width:46px;height:46px;border-radius:14px;background:linear-gradient(145deg,#8B7FEC,#5546C9)}
+.pill .ic svg{width:24px;height:24px;stroke:#fff;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.dark .pill{background:rgba(42,44,74,.92);border-color:rgba(255,255,255,.10);color:#fff}
+
+/* ── Feature graphic 1024×500 ──────────────────────────────────────── */
+body.fg,body.fg html{width:1024px;height:500px}
+.fgslide{position:absolute;inset:0;width:1024px;height:500px;overflow:hidden;
+  background:
+    radial-gradient(520px 420px at 82% 30%, rgba(139,127,236,.55), transparent 62%),
+    radial-gradient(500px 400px at 0% 100%, rgba(108,92,231,.30), transparent 60%),
+    linear-gradient(120deg,#24215A 0%,#1B1C34 60%,#17182E 100%);}
+.fgslide .copy{left:64px;top:84px;right:auto;width:560px}
+.fgslide .brand{margin-bottom:34px}
+.fgslide .brand img{width:52px;height:52px}
+.fgslide .brand b{color:#fff;font-size:27px}
+.fgslide h1{margin:0;font-size:44px;letter-spacing:-1.6px;color:#fff;line-height:1.08}
+.fgslide h1 em{background:linear-gradient(95deg,#B9AEFF,#E3DEFF);-webkit-background-clip:text;background-clip:text}
+.fgslide .sub{margin-top:18px;font-size:21px;color:#B9B7D6;max-width:470px}
+.fgslide .phone{width:330px;padding:9px;border-radius:46px}
+.fgslide .phone .screen{border-radius:38px}
+.fgslide .phone .status{height:21px;font-size:10px;padding:3px 24px 0 28px}
+.fgslide .phone .status svg{height:9px}
+.fgslide .phone .punch{width:11px;height:11px;margin-left:-5px;top:7px}
+.fgslide .phone::before,.fgslide .phone::after{display:none}
+</style>
+</head>
+<body>
+
+<!-- Reusable status bar markup is injected by script below. -->
+
+<!-- 1 — Hero ────────────────────────────────────────────────────────── -->
+<section class="slide" data-slide="1">
+  <div class="ring" style="width:1500px;height:1500px;left:-210px;top:820px"></div>
+  <div class="ring" style="width:1140px;height:1140px;left:-30px;top:1000px"></div>
+  <div class="halo"></div>
+  <div class="copy">
+    <div class="brand"><img src="../../assets/icon/icon.png" alt=""><b>ClassTrack</b></div>
+    <span class="eyebrow"><i></i>ALL-IN-ONE STUDENT APP</span>
+    <h1 style="font-size:80px;letter-spacing:-3px">Your whole student life.<br><em>One simple app.</em></h1>
+    <p class="sub">Classes, attendance, deadlines, grades and AI — in one place.</p>
+  </div>
+  <div class="phone back" style="left:-150px;top:900px;transform:rotate(-9deg)" data-src="raw/04_schedule.png"></div>
+  <div class="phone back" style="right:-150px;top:900px;transform:rotate(9deg)" data-src="raw/02_attendance.png"></div>
+  <div class="phone center" style="top:700px" data-src="raw/01_home.png"></div>
+</section>
+
+<!-- 2 — Attendance ──────────────────────────────────────────────────── -->
+<section class="slide" data-slide="2">
+  <div class="ring" style="width:1300px;height:1300px;left:-110px;top:900px"></div>
+  <div class="halo"></div>
+  <div class="copy">
+    <div class="brand"><img src="../../assets/icon/icon.png" alt=""><b>ClassTrack</b></div>
+    <span class="eyebrow"><i></i>ATTENDANCE</span>
+    <h1>Know where<br><em>you stand.</em></h1>
+    <p class="sub">Live attendance for every subject — and a heads-up before you slip below your target.</p>
+  </div>
+  <div class="phone center" data-src="raw/02_attendance.png"></div>
+  <div class="pill" style="left:52px;top:1270px"><span class="ic"><svg viewBox="0 0 24 24"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"/><path d="M9 12l2 2 4-4"/></svg></span>Below-target alerts</div>
+  <div class="pill" style="right:52px;top:1560px"><span class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>Safe-to-skip count</div>
+</section>
+
+<!-- 3 — AI Planner ──────────────────────────────────────────────────── -->
+<section class="slide dark" data-slide="3">
+  <div class="ring" style="width:1300px;height:1300px;left:-110px;top:900px"></div>
+  <div class="halo"></div>
+  <div class="copy">
+    <div class="brand"><img src="../../assets/icon/icon.png" alt=""><b>ClassTrack</b></div>
+    <span class="eyebrow"><i></i>AI STUDY PLANNER</span>
+    <h1>Turn any goal<br><em>into a plan.</em></h1>
+    <p class="sub">Pick a subject, a goal and a deadline. Get a day-by-day roadmap that fits your week.</p>
+  </div>
+  <div class="phone back" style="right:-120px;top:900px;transform:rotate(8deg)" data-src="raw/03_planner.png"></div>
+  <div class="phone center" style="margin-left:-370px" data-src="raw/03b_plan_overview.png"></div>
+</section>
+
+<!-- 4 — Schedule ────────────────────────────────────────────────────── -->
+<section class="slide" data-slide="4">
+  <div class="ring" style="width:1300px;height:1300px;left:-110px;top:900px"></div>
+  <div class="halo"></div>
+  <div class="copy">
+    <div class="brand"><img src="../../assets/icon/icon.png" alt=""><b>ClassTrack</b></div>
+    <span class="eyebrow"><i></i>TIMETABLE</span>
+    <h1>Your timetable,<br><em>without the hassle.</em></h1>
+    <p class="sub">Snap a photo of your timetable or sync Google Calendar. Every class, organised by day.</p>
+  </div>
+  <div class="phone center" data-src="raw/04_schedule.png"></div>
+  <div class="pill" style="left:52px;top:1300px"><span class="ic"><svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></span>Import from a photo</div>
+  <div class="pill" style="right:52px;top:1590px"><span class="ic"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg></span>Google Calendar sync</div>
+</section>
+
+<!-- 5 — Tasks & Exams ───────────────────────────────────────────────── -->
+<section class="slide" data-slide="5">
+  <div class="ring" style="width:1300px;height:1300px;left:-110px;top:900px"></div>
+  <div class="halo"></div>
+  <div class="copy">
+    <div class="brand"><img src="../../assets/icon/icon.png" alt=""><b>ClassTrack</b></div>
+    <span class="eyebrow"><i></i>TASKS &amp; EXAMS</span>
+    <h1>Never miss<br><em>a deadline.</em></h1>
+    <p class="sub">Assignments, exams and reminders in one calm view — sorted by what’s due next.</p>
+  </div>
+  <div class="phone center" data-src="raw/05_tasks.png"></div>
+  <div class="pill" style="right:52px;top:1300px"><span class="ic"><svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 0112 0c0 7 3 8 3 8H3s3-1 3-8"/><path d="M10 20a2 2 0 004 0"/></svg></span>Smart reminders</div>
+</section>
+
+<!-- 6 — Grades ──────────────────────────────────────────────────────── -->
+<section class="slide" data-slide="6">
+  <div class="ring" style="width:1300px;height:1300px;left:-110px;top:900px"></div>
+  <div class="halo"></div>
+  <div class="copy">
+    <div class="brand"><img src="../../assets/icon/icon.png" alt=""><b>ClassTrack</b></div>
+    <span class="eyebrow"><i></i>GRADES &amp; GPA</span>
+    <h1>Stay on top of<br><em>your progress.</em></h1>
+    <p class="sub">Log every assessment and watch your grades and GPA update as you go.</p>
+  </div>
+  <div class="phone center" data-src="raw/06_grades.png"></div>
+  <div class="pill" style="left:52px;top:1560px"><span class="ic"><svg viewBox="0 0 24 24"><path d="M4 18l5-6 4 3 7-9"/><path d="M15 6h5v5"/></svg></span>4.0 &amp; 10-point scales</div>
+</section>
+
+<!-- 7 — Opportunities ───────────────────────────────────────────────── -->
+<section class="slide dark" data-slide="7">
+  <div class="ring" style="width:1300px;height:1300px;left:-110px;top:900px"></div>
+  <div class="halo"></div>
+  <div class="copy">
+    <div class="brand"><img src="../../assets/icon/icon.png" alt=""><b>ClassTrack</b></div>
+    <span class="eyebrow"><i></i>STUDENT OPPORTUNITIES</span>
+    <h1>More opportunities.<br><em>Less searching.</em></h1>
+    <p class="sub">Scholarships, internships, certifications and student discounts — in one feed.</p>
+  </div>
+  <div class="phone center" data-src="raw/07_opportunities.png"></div>
+</section>
+
+<!-- 8 — AI Assistant ────────────────────────────────────────────────── -->
+<section class="slide" data-slide="8">
+  <div class="ring" style="width:1300px;height:1300px;left:-110px;top:900px"></div>
+  <div class="halo"></div>
+  <div class="copy">
+    <div class="brand"><img src="../../assets/icon/icon.png" alt=""><b>ClassTrack</b></div>
+    <span class="eyebrow"><i></i>AI ASSISTANT</span>
+    <h1>Your schedule.<br><em>Now you can ask it.</em></h1>
+    <p class="sub">Ask about classes, free time and deadlines — answers come from your own ClassTrack data.</p>
+  </div>
+  <div class="phone center" data-src="raw/08_assistant.png"></div>
+</section>
+
+<!-- Feature graphic 1024×500 ────────────────────────────────────────── -->
+<section class="fgslide" data-slide="fg" style="display:none">
+  <div class="copy">
+    <div class="brand"><img src="../../assets/icon/icon.png" alt=""><b>ClassTrack</b></div>
+    <h1>Your whole student life.<br><em>One simple app.</em></h1>
+    <p class="sub">Attendance, timetable, deadlines, grades and AI — together.</p>
+  </div>
+  <div class="phone" style="left:640px;top:70px;transform:rotate(-6deg)" data-src="raw/02_attendance.png"></div>
+  <div class="phone" style="left:790px;top:38px;transform:rotate(6deg)" data-src="raw/01_home.png"></div>
+</section>
+
+<script>
+const statusBar = `
+  <div class="status"><span>9:41</span><span class="icons">
+    <svg viewBox="0 0 18 12"><path fill="#1B1C34" d="M1 11h2V8H1zm4 0h2V6H5zm4 0h2V3H9zm4 0h2V0h-2z"/></svg>
+    <svg viewBox="0 0 16 12"><path fill="#1B1C34" d="M8 11.5L0 3.6a11.3 11.3 0 0116 0z"/></svg>
+    <svg viewBox="0 0 26 12"><rect x=".5" y=".5" width="22" height="11" rx="3" fill="none" stroke="#1B1C34"/><rect x="2.5" y="2.5" width="15" height="7" rx="1.5" fill="#1B1C34"/><rect x="23.5" y="4" width="2" height="4" rx="1" fill="#1B1C34"/></svg>
+  </span></div><span class="punch"></span>`;
+document.querySelectorAll('.phone[data-src]').forEach(p => {
+  p.innerHTML = `<div class="screen">${statusBar}<img src="${p.dataset.src}" alt=""></div>`;
+});
+const n = new URLSearchParams(location.search).get('slide') || '1';
+if (n === 'fg') {
+  document.body.classList.add('fg');
+  document.documentElement.style.cssText = 'width:1024px;height:500px';
+  document.body.style.cssText = 'width:1024px;height:500px';
+  document.querySelector('[data-slide="fg"]').style.display = 'block';
+} else {
+  document.querySelector(`.slide[data-slide="${n}"]`).classList.add('active');
+}
+// Layout QA: ?measure=1 reports copy/phone geometry + image load state.
+if (new URLSearchParams(location.search).get('measure')) {
+  window.addEventListener('load', () => {
+    const root = n === 'fg' ? document.querySelector('[data-slide="fg"]')
+                            : document.querySelector('.slide.active');
+    const copy = root.querySelector('.copy').getBoundingClientRect();
+    const phones = [...root.querySelectorAll('.phone')].map(p => p.getBoundingClientRect());
+    const front = phones[phones.length - 1];
+    const imgs = [...root.querySelectorAll('img')].map(i => i.complete && i.naturalWidth > 0);
+    const h1 = root.querySelector('h1');
+    const lines = Math.round(h1.getBoundingClientRect().height / parseFloat(getComputedStyle(h1).lineHeight));
+    const pre = document.createElement('pre');
+    pre.id = 'measure';
+    pre.textContent = JSON.stringify({slide: n, copyBottom: Math.round(copy.bottom),
+      frontPhoneTop: Math.round(front.top), frontPhoneBottom: Math.round(front.bottom),
+      h1Lines: lines, imagesOk: imgs.every(Boolean), images: imgs.length,
+      copyRight: Math.round(copy.right)});
+    document.body.appendChild(pre);
+  });
+}
+</script>
+</body>
+</html>

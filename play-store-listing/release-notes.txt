@@ -1,0 +1,13 @@
+RELEASE NOTES / "WHAT'S NEW" (max 500 characters)
+Template for your next update. Replace the bullets with what actually changed.
+
+<en-US>
+New in ClassTrack 1.0.52:
+• Smarter AI assistant — logs any expense, marks tasks done reliably and explains how to use the app
+• Choose 12-hour or 24-hour time in Settings ? Appearance
+• More reliable timetable import from photos and PDFs
+• Smoother onboarding and better layouts on small phones
+• Bug fixes and security improvements
+
+Enjoying ClassTrack? A quick rating helps other students find us ?
+</en-US>
