@@ -42,6 +42,10 @@ A student app (Android, iOS and web) for tracking attendance, class timetables, 
 
 ## Change log (newest first)
 
+### 2026-10-14 - All of today's work saved to GitHub
+- **What:** Committed everything as `d780b7d` ("v1.0.58: …") and pushed it to both `origin` (Classtrack-App) and `playstore` (classtrack-play-store). Before committing I checked that no secret files or keys were included. `.crashlytics/` (a downloaded tool) is now in `.gitignore`.
+- **Note:** GitHub says `origin` has moved to github.com/Princekumar786/Classtrack-App. Pushes still work through the redirect. To point at the new address: `git remote set-url origin https://github.com/Princekumar786/Classtrack-App.git`.
+
 ### 2026-10-14 - Backend package security updates
 - **What:** Ran `npm audit fix` in `functions/`. Security problems in downloaded libraries went from 8 to 2 (fixed: 1 critical, 2 high, 3 moderate, in libraries like `proxy-addr`, `qs`, `@grpc/grpc-js`, `@fastify/busboy`). Only `package-lock.json` changed. All 64 backend tests pass.
 - **Left:** 2 "high" warnings come from `node-forge` inside `firebase-admin` 13. Fixing them needs `firebase-admin` 14 plus `firebase-functions` 7, which have breaking changes. Our code doesn't use the affected part (checking RSA signatures from outside), so the real risk is low. Plan this upgrade as its own task.
