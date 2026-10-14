@@ -297,7 +297,9 @@ class ImportRepository {
             incomingLink.isNotEmpty &&
             (existing.classLink == null || existing.classLink!.trim().isEmpty)) {
           final updated = existing.copyWith(classLink: incomingLink);
-          await _subjectRepo.setWithId(subjectId, updated);
+          // Details-only merge: a full set() here would overwrite the
+          // subject's live attendance counters and manual baselines.
+          await _subjectRepo.update(updated);
           byName[key] = updated;
         }
       } else {

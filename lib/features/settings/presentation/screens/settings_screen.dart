@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:classtrack/core/theme/app_icons.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../../semesters/presentation/screens/past_semesters_screen.dart';
 
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/providers/app_settings_provider.dart';
@@ -15,8 +16,6 @@ import '../../../auth/presentation/screens/edit_profile_screen.dart';
 import '../../../exams/presentation/providers/exam_providers.dart';
 import '../../../insights/presentation/screens/daily_agenda_screen.dart';
 import '../../../insights/presentation/screens/insights_screen.dart';
-import '../../../planner/presentation/screens/weekly_planner_screen.dart';
-import '../../../moments/presentation/screens/moments_screen.dart';
 import '../../../referral/presentation/screens/referral_screen.dart';
 import '../../../schedule/presentation/providers/schedule_providers.dart';
 import '../../../subjects/presentation/providers/subject_providers.dart';
@@ -57,37 +56,38 @@ class SettingsScreen extends ConsumerWidget {
           const SizedBox(height: 8),
           _card(
             theme,
-            child: ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading:
-                  const Icon(Icons.insights_rounded, color: AppColors.primary),
-              title: const Text('Insights & predictions'),
-              subtitle: const Text(
-                  'Attendance forecasts, spending & grade trends'),
-              trailing: const Icon(Icons.chevron_right_rounded),
-              onTap: () async {
-                if (await requirePro(context, ref, UpgradeReason.insights) &&
-                    context.mounted) {
-                  Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) => const InsightsScreen()));
-                }
-              },
-            ),
-          ),
-          const SizedBox(height: 16),
-          _sectionLabel(theme, 'Study planner'),
-          _card(
-            theme,
-            child: ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.auto_awesome_rounded,
-                  color: AppColors.primary),
-              title: const Text('AI weekly planner'),
-              subtitle: const Text(
-                  'Turn your exams, deadlines & free time into a study plan'),
-              trailing: const Icon(Icons.chevron_right_rounded),
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) => const WeeklyPlannerScreen())),
+            child: Column(
+              children: [
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.insights_rounded,
+                      color: AppColors.primary),
+                  title: const Text('Insights & predictions'),
+                  subtitle: const Text(
+                      'Attendance forecasts, spending & grade trends'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () async {
+                    if (await requirePro(
+                            context, ref, UpgradeReason.insights) &&
+                        context.mounted) {
+                      Navigator.of(context).push(MaterialPageRoute(
+                          settings: const RouteSettings(name: 'Insights'),
+                          builder: (_) => const InsightsScreen()));
+                    }
+                  },
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.history_edu_rounded,
+                      color: AppColors.primary),
+                  title: const Text('Semester wrap-up & past semesters'),
+                  subtitle: const Text(
+                      'Wrap up a finished semester, see SGPA and CGPA'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => openPastSemesters(context, ref),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 16),
@@ -106,6 +106,7 @@ class SettingsScreen extends ConsumerWidget {
                 if (await requirePro(context, ref, UpgradeReason.dailySummary) &&
                     context.mounted) {
                   Navigator.of(context).push(MaterialPageRoute(
+                      settings: const RouteSettings(name: 'Daily Agenda'),
                       builder: (_) => const DailyAgendaScreen()));
                 }
               },
@@ -260,21 +261,12 @@ class SettingsScreen extends ConsumerWidget {
                       color: AppColors.primary),
                   title: const Text('Invite friends & earn Pro'),
                   subtitle: const Text(
-                      'You both get ${AppConstants.referralRewardDays} days of Pro free'),
+                      '${AppConstants.referralMilestoneDays} days of Pro for every '
+                      '${AppConstants.referralMilestoneSize} friends who join'),
                   trailing: const Icon(Icons.chevron_right_rounded),
                   onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                      settings: const RouteSettings(name: 'Referral'),
                       builder: (_) => const ReferralScreen())),
-                ),
-                const Divider(height: 1),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.auto_awesome_motion_rounded,
-                      color: AppColors.coral),
-                  title: const Text('Shareable moments'),
-                  subtitle: const Text('Turn your wins into share-worthy cards'),
-                  trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) => const MomentsScreen())),
                 ),
               ],
             ),
@@ -295,6 +287,7 @@ class SettingsScreen extends ConsumerWidget {
                   title: const Text('Privacy policy'),
                   trailing: const Icon(Icons.chevron_right_rounded),
                   onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                      settings: const RouteSettings(name: 'Privacy Policy'),
                       builder: (_) => const PrivacyPolicyScreen())),
                 ),
                 const Divider(height: 1),
@@ -318,22 +311,6 @@ class SettingsScreen extends ConsumerWidget {
                 const Divider(height: 1),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.tour_rounded,
-                      color: AppColors.primary),
-                  title: const Text('Show app tour'),
-                  subtitle: const Text('Replay the quick home walkthrough'),
-                  trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: () {
-                    // Re-arm the tour, then return to the Home shell so it can
-                    // play over the real nav bar and quick-add button.
-                    final tour = ref.read(homeTourDoneProvider.notifier);
-                    Navigator.of(context).popUntil((r) => r.isFirst);
-                    tour.reset();
-                  },
-                ),
-                const Divider(height: 1),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
                   leading: const Icon(Icons.tips_and_updates_rounded,
                       color: AppColors.primary),
                   title: const Text('Tips & Tricks'),
@@ -341,6 +318,7 @@ class SettingsScreen extends ConsumerWidget {
                       const Text('See which features you haven’t tried yet'),
                   trailing: const Icon(Icons.chevron_right_rounded),
                   onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                      settings: const RouteSettings(name: 'Tips'),
                       builder: (_) => const TipsScreen())),
                 ),
                 const Divider(height: 1),
@@ -458,7 +436,7 @@ class SettingsScreen extends ConsumerWidget {
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const EditProfileScreen()),
+          MaterialPageRoute(settings: const RouteSettings(name: 'Edit Profile'), builder: (_) => const EditProfileScreen()),
         ),
         child: _profileHeader(theme, uid, name, email, avatarCharacter, isPro),
       ),
@@ -569,6 +547,7 @@ class SettingsScreen extends ConsumerWidget {
           subtitle: const Text('View your subscription, renewal & restore'),
           trailing: const Icon(Icons.chevron_right_rounded),
           onTap: () => Navigator.of(context).push(MaterialPageRoute(
+              settings: const RouteSettings(name: 'Pro Status'),
               builder: (_) => const ProStatusScreen())),
         ),
       );

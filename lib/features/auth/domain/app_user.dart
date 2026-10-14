@@ -38,8 +38,24 @@ class AppUser {
   // so every field is nullable/empty and the app must work with none of them.
 
   /// Country the student is based in (e.g. "India"). ⭐ Primary targeting key
-  /// for country-based promotions and discounts.
+  /// for country-based promotions and discounts. Chosen by the student in
+  /// Edit profile; when set it always wins over [detectedCountry].
   final String? country;
+
+  /// Country detected automatically from the phone (SIM / mobile network,
+  /// else the device region), e.g. "India". Written by the app on start-up
+  /// (see country_detector.dart). Never precise location — only the country.
+  final String? detectedCountry;
+
+  /// The country used for ALL targeting — opportunities, discounts, banners,
+  /// campaigns and CMS push notifications: the profile choice when the
+  /// student set one, otherwise the detected country. Mirrored server-side
+  /// by `effectiveCountry()` in functions/notifications.js.
+  String? get effectiveCountry => effectiveCountryOf(country, detectedCountry);
+
+  /// True when targeting currently relies on the auto-detected country.
+  bool get countryIsDetected =>
+      _clean(country) == null && _clean(detectedCountry) != null;
 
   /// State / region within the country.
   final String? stateRegion;
@@ -94,6 +110,7 @@ class AppUser {
     this.referralCount = 0,
     this.referredBy,
     this.country,
+    this.detectedCountry,
     this.stateRegion,
     this.city,
     this.university,
@@ -164,6 +181,7 @@ class AppUser {
       referralCount: referralCount ?? this.referralCount,
       referredBy: referredBy ?? this.referredBy,
       country: country ?? this.country,
+      detectedCountry: detectedCountry,
       stateRegion: stateRegion ?? this.stateRegion,
       city: city ?? this.city,
       university: university ?? this.university,
@@ -218,6 +236,7 @@ class AppUser {
       referralCount: (map['referralCount'] as num?)?.toInt() ?? 0,
       referredBy: map['referredBy'] as String?,
       country: map['country'] as String?,
+      detectedCountry: map['detectedCountry'] as String?,
       stateRegion: map['stateRegion'] as String?,
       city: map['city'] as String?,
       university: map['university'] as String?,
@@ -240,4 +259,21 @@ class AppUser {
           const [],
     );
   }
+}
+
+
+String? _clean(String? v) {
+  final t = v?.trim();
+  return (t == null || t.isEmpty) ? null : t;
+}
+
+/// The targeting country: the profile [profileCountry] when set (and not
+/// "Other"), else the auto-[detectedCountry]. Pure so the rule is shared and
+/// unit-tested; functions/notifications.js `effectiveCountry` must match.
+String? effectiveCountryOf(String? profileCountry, String? detectedCountry) {
+  final p = _clean(profileCountry);
+  // "Other" is a picker choice, not a targetable country: let detection fill
+  // in the real one if we have it.
+  if (p != null && p.toLowerCase() != 'other') return p;
+  return _clean(detectedCountry) ?? p;
 }

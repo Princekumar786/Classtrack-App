@@ -17,6 +17,8 @@ import '../../features/auth/presentation/screens/splash_screen.dart';
 import '../../features/auth/presentation/screens/verify_email_screen.dart';
 import '../../features/home/presentation/screens/home_shell.dart';
 import '../../services/notification_service.dart';
+import '../../services/analytics_identity.dart';
+import '../../services/error_reporter.dart';
 
 /// App router. Redirects between onboarding → auth → home based on state.
 final routerProvider = Provider<GoRouter>((ref) {
@@ -43,7 +45,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       final user = next.valueOrNull;
       if (nowLoggedIn && user != null) {
         _identifyPostHog(user);
+        ErrorReporter.setUser(user.uid);
       } else if (wasLoggedIn && !nowLoggedIn) {
+        ErrorReporter.setUser(null);
+        resetPosthogIdentityCache();
         try {
           Posthog().reset();
         } catch (_) {}
@@ -93,6 +98,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       // each GoRoute's `name`). Complements the manual openFeature/screen
       // events fanned out by AnalyticsService.
       PosthogObserver(),
+      // Screen breadcrumbs for Crashlytics logs + PostHog exception `screen`.
+      ErrorReporterRouteObserver(),
     ],
     redirect: (context, state) {
       final auth = ref.read(authStateProvider);

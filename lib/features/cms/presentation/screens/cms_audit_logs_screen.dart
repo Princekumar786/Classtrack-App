@@ -27,14 +27,20 @@ class CmsAuditLogsScreen extends ConsumerWidget {
           child: async.when(
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (e, __) => Center(
-                child: Text('Failed to load audit logs.\n$e',
-                    textAlign: TextAlign.center)),
+              child: Text(
+                'Failed to load audit logs.\n$e',
+                textAlign: TextAlign.center,
+              ),
+            ),
             data: (entries) {
               if (entries.isEmpty) {
                 return Center(
-                  child: Text('No audit entries yet.',
-                      style: theme.textTheme.bodyMedium
-                          ?.copyWith(color: theme.hintColor)),
+                  child: Text(
+                    'No audit entries yet.',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.hintColor,
+                    ),
+                  ),
                 );
               }
               return ListView.separated(
@@ -56,7 +62,8 @@ class _AuditRow extends StatelessWidget {
   const _AuditRow({required this.entry});
 
   IconData get _icon {
-    if (entry.action.contains('role')) return Icons.admin_panel_settings_rounded;
+    if (entry.action.contains('role'))
+      return Icons.admin_panel_settings_rounded;
     if (entry.action.contains('resource')) return Icons.inventory_2_rounded;
     if (entry.action.contains('banner')) return Icons.view_carousel_rounded;
     if (entry.action.contains('campaign')) return Icons.campaign_rounded;
@@ -98,38 +105,52 @@ class _AuditRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(headline,
-                      style: theme.textTheme.titleSmall
-                          ?.copyWith(fontWeight: FontWeight.w700)),
+                  Text(
+                    headline,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                   if (transition != null)
                     Padding(
                       padding: const EdgeInsets.only(top: 4),
                       child: Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 3),
+                          horizontal: 8,
+                          vertical: 3,
+                        ),
                         decoration: BoxDecoration(
                           color: AppColors.primary.withValues(alpha: 0.10),
                           borderRadius: BorderRadius.circular(20),
                         ),
-                        child: Text(transition,
-                            style: theme.textTheme.labelSmall?.copyWith(
-                                color: AppColors.primary,
-                                fontWeight: FontWeight.w700)),
+                        child: Text(
+                          transition,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: AppColors.primary,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
                       ),
                     ),
                   Padding(
                     padding: const EdgeInsets.only(top: 4),
-                    child: Text('by $actor',
-                        style: theme.textTheme.labelSmall
-                            ?.copyWith(color: theme.hintColor)),
+                    child: Text(
+                      'by $actor',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: theme.hintColor,
+                      ),
+                    ),
                   ),
                 ],
               ),
             ),
             const SizedBox(width: 12),
-            Text(_time(entry.at),
-                style: theme.textTheme.labelSmall
-                    ?.copyWith(color: theme.hintColor)),
+            Text(
+              _time(entry.at),
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: theme.hintColor,
+              ),
+            ),
           ],
         ),
       ),
@@ -165,7 +186,9 @@ class _AuditRow extends StatelessWidget {
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('Close')),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close'),
+          ),
         ],
       ),
     );

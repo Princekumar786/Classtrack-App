@@ -39,7 +39,10 @@ String buildResourcesCsv(List<Resource> resources) {
       s = "'$s";
     }
     final needsQuote =
-        s.contains(',') || s.contains('"') || s.contains('\n') || s.contains('\r');
+        s.contains(',') ||
+        s.contains('"') ||
+        s.contains('\n') ||
+        s.contains('\r');
     if (!needsQuote) return s;
     return '"${s.replaceAll('"', '""')}"';
   }
@@ -50,21 +53,23 @@ String buildResourcesCsv(List<Resource> resources) {
 
   final rows = <String>[headers.map(cell).join(',')];
   for (final r in resources) {
-    rows.add([
-      cell(r.id),
-      cell(r.title),
-      cell(r.type.label),
-      cell(r.organization),
-      cell(r.status.label),
-      cell(r.effectiveStatus.label),
-      cell(r.countries.join('; ')),
-      cell(dateOnly(r.deadline)),
-      cell(r.priority),
-      cell(r.sponsored),
-      cell(r.featured),
-      cell(r.verified),
-      cell(r.applicationUrl ?? ''),
-    ].join(','));
+    rows.add(
+      [
+        cell(r.id),
+        cell(r.title),
+        cell(r.type.label),
+        cell(r.organization),
+        cell(r.status.label),
+        cell(r.effectiveStatus.label),
+        cell(r.countries.join('; ')),
+        cell(dateOnly(r.deadline)),
+        cell(r.priority),
+        cell(r.sponsored),
+        cell(r.featured),
+        cell(r.verified),
+        cell(r.applicationUrl ?? ''),
+      ].join(','),
+    );
   }
   // CRLF line endings for maximum spreadsheet compatibility.
   return rows.join('\r\n');

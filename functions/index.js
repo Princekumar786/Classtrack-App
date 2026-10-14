@@ -23,6 +23,10 @@ import { freeQuotaKey, decideFreeUse, periodKey, usedIn } from "./freeQuota.js";
 import {
   normalizeDay, resolveTimes, parseModelJson, sniffMime, SUPPORTED_MIME,
 } from "./scheduleParse.js";
+import {
+  remainingMs,
+} from "./aiResilience.js";
+import { generateText as generateTextCore } from "./aiGenerate.js";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { lookup as dnsLookup } from "node:dns/promises";
@@ -34,14 +38,32 @@ import {
   ROLE_RANK,
   buildAuditEntry,
 } from "./roles.js";
-import { topicForCountry, buildFcmMessage } from "./notifications.js";
+import {
+  topicForCountry,
+  buildFcmMessage,
+  effectiveCountry,
+} from "./notifications.js";
 import { computeLifecycleUpdate } from "./lifecycle.js";
+import {
+  REFERRAL_MILESTONE_SIZE,
+  REFERRAL_MILESTONE_DAYS,
+  REFERRAL_WELCOME_DAYS,
+  safeCount,
+  milestoneDaysMissing,
+  milestoneProgress,
+} from "./referral.js";
 import {
   classifyHttpStatus,
   URL_FIELDS,
   serializeHealth,
 } from "./url_health.js";
-import { metricField, dayId } from "./analytics_agg.js";
+import {
+  metricField,
+  dayId,
+  isBannerEvent,
+  uniqueMarkersFor,
+  countryKey,
+} from "./analytics_agg.js";
 
 initializeApp();
 
@@ -215,7 +237,10 @@ async function enforcePeriodLimit(uid, action, max, period, message) {
     throw new HttpsError(
       "resource-exhausted",
       message ||
-        "You've reached your AI usage limit. Upgrade to ClassTrack Pro for unlimited, or try again next month."
+        "You've reached your AI usage limit. Upgrade to ClassTrack Pro for unlimited, or try again next month.",
+      // Lets the app tell a safety cap apart from the free allowance, so a
+      // Pro user who hits it is never shown the "upgrade" paywall.
+      { reason: "rate_limit", action, period, max }
     );
   }
 }
@@ -347,78 +372,9 @@ const CHAT_MODELS = [
   "gemini-pro-latest",
 ];
 
-/// Per-model thinking config for a "keep thinking to a minimum" request.
-/// Gemini 2.5 models only understand `thinkingBudget` (2.5 Pro can't go below
-/// 128). Gemini 3+ models (what the "-latest" aliases resolve to) use
-/// `thinkingLevel`; upcoming models reject `thinkingBudget` with a 400, so it
-/// must never be sent to them. "minimal" is Flash-only; Pro supports "low".
-function minimalThinkingConfig(model) {
-  if (/^gemini-2\.5-/.test(model)) {
-    return { thinkingBudget: model.includes("pro") ? 128 : 0 };
-  }
-  return { thinkingLevel: model.includes("pro") ? "low" : "minimal" };
-}
-
-/// Generate text, trying each model until one works. [request] is whatever
-/// generateContent accepts (a parts array or a { contents } object).
-/// [models] overrides the default model order; [maxOutputTokens] caps the
-/// reply length (both used to keep the chat snappy). [minimalThinking]
-/// dials thinking down so it can't eat the output budget.
-async function generateText(
-  genAI,
-  {
-    systemInstruction,
-    jsonOut,
-    request,
-    models = MODELS,
-    maxOutputTokens,
-    minimalThinking = false,
-  }
-) {
-  // Base generation config shared by every attempt. No temperature/topP/topK:
-  // they're deprecated and will error on upcoming models.
-  const baseConfig = {};
-  if (jsonOut) baseConfig.responseMimeType = "application/json";
-  if (maxOutputTokens) baseConfig.maxOutputTokens = maxOutputTokens;
-
-  // Run the whole model list once. `withThinking` adds the per-model
-  // thinkingConfig. We keep this in its own helper so we can transparently
-  // retry WITHOUT thinkingConfig if a model/SDK combo rejects the field —
-  // chat must never break over it.
-  async function run(withThinking) {
-    let lastErr;
-    for (const m of models) {
-      const generationConfig = { ...baseConfig };
-      if (withThinking) {
-        generationConfig.thinkingConfig = minimalThinkingConfig(m);
-      }
-      const hasConfig = Object.keys(generationConfig).length > 0;
-      try {
-        const model = genAI.getGenerativeModel({
-          model: m,
-          systemInstruction,
-          generationConfig: hasConfig ? generationConfig : undefined,
-        });
-        const result = await model.generateContent(request);
-        return { text: result.response.text() };
-      } catch (e) {
-        lastErr = e;
-      }
-    }
-    return { err: lastErr };
-  }
-
-  // First pass: with thinkingConfig when minimal thinking was requested.
-  let res = await run(minimalThinking);
-  if (res.text !== undefined) return res.text;
-  // Fallback: retry the list without thinkingConfig in case the legacy SDK or a
-  // particular model doesn't accept it.
-  if (minimalThinking) {
-    res = await run(false);
-    if (res.text !== undefined) return res.text;
-  }
-  throw res.err || new Error("All models failed");
-}
+/// Model fallback + back-off + deadlines live in aiGenerate.js (load-tested).
+const generateText = (genAI, opts) =>
+  generateTextCore(genAI, { models: MODELS, ...opts });
 
 const SYSTEM_PROMPT = `You are a precise timetable parser for a student attendance app.
 Extract every class from the provided timetable (text, image or PDF).
@@ -525,21 +481,27 @@ Rules for actions:
 - TIME FORMAT: times in the user's data are given to you in 24-hour HH:MM, but the app DISPLAYS them in the student's chosen format. The app supports BOTH 12-hour and 24-hour display (Settings → Appearance → Time format: Auto / 12-hour / 24-hour; Auto follows the phone's clock setting). When the user wants times shown as 12-hour or 24-hour ("show my classes in 12h", "use 24 hour time"), emit a "setting" action with timeFormat "12h" or "24h" and confirm. NEVER say the app can only show one format.
 - FIX CLASS TIMES: when the user says their class times are wrong because they entered afternoon times without PM — "I entered my timetable in 12h format", "change all my PM classes", "my 1:40 class should be in the afternoon", "classes show at night/early morning" — emit ONE "fixClassTimes" action (optionally limited to a subject or day). The app then moves every class that starts between 01:00 and 06:59 to the afternoon (01:40–02:30 → 13:40–14:30) and fixes end times that end before they start. Do NOT output a schedule block for this, do NOT re-list the timetable, and do NOT ask the user to type each class. If that isn't the problem (e.g. one class is simply at the wrong time), use an "update" action for that class instead.
 
-APP GUIDE — when the user asks HOW to do something in the app, answer with short, exact steps from this guide (numbered or "•" lines). If you can do it for them with an action, offer that too (or just do it when they asked you to). If something is not covered here, say you're not sure where it is rather than guessing, and never claim the app can't do something unless this guide says so.
+APP GUIDE — when the user asks HOW to do something in the app, answer with short, exact steps from this guide (numbered or "•" lines). If you can do it for them with an action, offer that too (or just do it when they asked you to).
+STRICT ACCURACY: describe ONLY features, screens, buttons, limits and rewards that appear in this guide or in the user's data. NEVER invent a menu, button, setting, feature, price, discount, limit or reward amount. If something is not covered here, say you're not sure and suggest Settings → Support & feedback → Help & support — do not guess. Never claim the app can't do something unless this guide says so. Never quote Pro prices (they come from the Play Store / App Store and vary): say "see the plans on the ClassTrack Pro page". For past-semester numbers (SGPA, CGPA, attendance) use ONLY the "Past semesters" lines in the user's data; if a number isn't there, say it isn't recorded yet.
 - Navigation: the bottom bar has Home, Schedule, the round + button (Quick add), Explore and Planner. Settings = the gear icon at the top of Home. Notifications = the bell at the top of Home.
 - Quick add (+): New task, New class, New subject, Import timetable (scan a photo, upload a PDF or paste text with AI), New exam, Log grade, New note, New habit, Add expense.
-- Home: today's timeline (mark Present/Absent on each class), headline stats, and Quick tools: Attendance, Tasks, Exams, Grades, Notes, Calendar, Habits, Expenses, Perks.
+- Home: today's timeline (mark Present/Absent on each class), headline stats, and Quick tools: Attendance, Tasks, Exams, Grades, Notes, Habits, Expenses, Perks (Manage lets you reorder or hide them). The calendar views live in the Schedule tab.
 - Schedule tab: Day / Week / Month views. The + at the top adds a class; the download icon imports a timetable (Google Calendar, or Photo/PDF/text with AI). Tap a class → Edit class (subject, days, start/end time, repeats weekly or a single date, room) or Delete class.
+- Timetable import (AI): after scanning, you review everything before saving ("Add to ClassTrack"). If the app is closed before saving, the scan is kept on that phone for 7 days — Home and the Import screen show "Finish your timetable import" with Review & save or Discard. If the import looks like a NEW semester's timetable while old subjects exist, the app offers to wrap up the old semester first.
 - Attendance: Home → Quick tools → Attendance shows every subject's %, and the + there adds a subject. Mark attendance from today's timeline on Home. Change the overall target in Settings → Attendance → Default attendance target; a subject can have its own target when you edit that subject.
-- Grades: Quick tools → Grades (or + → Log grade). Switch 4.0 / 10-point scale in Settings → Grades → GPA scale.
+- Deleting a subject removes its classes and attendance; its grades and exams are KEPT and moved to "No subject".
+- Grades: Quick tools → Grades (or + → Log grade). The GPA shown there is for the CURRENT semester. Switch 4.0 / 10-point scale in Settings → Grades → GPA scale (or the toggle on the Grades screen).
+- SEMESTER WRAP-UP & PAST SEMESTERS (ClassTrack Pro): open Settings → ClassTrack Pro → "Semester wrap-up & past semesters", or Grades → "Past semesters & CGPA". "Wrap up current semester" lets you name the semester (e.g. "Semester 3"), set its dates, untick subjects that continue next semester, optionally enter the official SGPA, then confirm. The ticked subjects with their grades and exams move to Past semesters; their classes leave the timetable and their reminders stop; NOTHING is deleted. The current semester then starts fresh. Past semesters shows CGPA across semesters and a card per semester (SGPA, attendance, subjects). Inside a semester you can: add or edit marks, set each subject's Final result (grade, grade points, credits), add/edit the official SGPA (it overrides the estimate from marks), rename it, share a "Semester Wrapped" card, or "Restore to current semester" (undo). SGPA = credit-weighted grade points; CGPA = credit-weighted across past semesters. A user whose Pro ended can still see the list and restore, but needs Pro to open a semester or see CGPA.
 - Expenses & budget: Quick tools → Expenses (or + → Add expense); set the monthly budget on the Expenses screen.
-- Planner tab: learning plans — "Create with AI" or "Build your own plan"; AI weekly planner in Settings → Study planner; AI daily summary in Settings → Daily agenda.
-- Explore tab: scholarships, internships, certifications, events and student perks/discounts.
+- Planner tab: learning plans — "Create with AI" or "Build your own plan" (free users get 2 plans in total). Planner home shows Today's focus, today's stats, Today's agenda and "Coming up" (next study days). A plan is a single list of study days (no weeks). Each topic has subtopics you can tick one by one (tap a topic to open them, or open the Day / topic page); ticking the last subtopic completes the topic, and marking a topic complete ticks all its subtopics. Progress counts ticked subtopics. In "Build your own plan", "Paste your topics" turns one line per topic into topics, and indented lines (or lines starting with ◦) under a topic become its subtopics. AI daily summary is in Settings → Daily agenda (Pro).
+- Explore tab: scholarships, internships, certifications, events and student perks/discounts. They're matched to the student's country: the country picked in Settings → profile card → Edit profile → Country, or, if none is picked, the country detected from the phone (shown as "Auto · India"). Push notifications for a country follow the same country. Free users see the latest 5 opportunities and 5 perks; Pro sees everything.
 - Settings → Appearance: Theme (light/dark/system), Accent color (Pro) and Time format (Auto / 12-hour / 24-hour).
 - Settings → Notifications: turn reminders on and choose when they fire. Settings → Google Calendar: daily auto-sync (Pro).
-- Profile (name, avatar, college details): Settings → tap your profile card at the top → Edit profile.
-- Settings → Grow ClassTrack: Invite friends & earn Pro, Shareable moments. Settings → Support & feedback: Help & support, Show app tour, Tips & Tricks. Settings → Account: Sign out or delete the account.
-- ClassTrack Pro: Settings → ClassTrack Pro (unlimited AI, timetable scans, insights and more).`;
+- Profile (name, avatar, college details, country): Settings → tap your profile card at the top → Edit profile.
+- Settings → Grow ClassTrack → Invite friends & earn Pro: share your invite code. For every 5 friends who join with your code you get 7 days of ClassTrack Pro (10 friends = 14 days, and so on). A friend who joins with a code gets 3 days of Pro. Each account can redeem only one code, on that same screen.
+- Settings → Support & feedback: Help & support, Tips & Tricks. Settings → Account: Sign out or delete the account.
+- ClassTrack Pro: Settings → ClassTrack Pro shows the plans (Monthly, Quarterly, Annual — prices from the store) and a Free vs Pro table. Free: 10 AI messages a month, 2 AI timetable scans, 2 learning plans, latest 5 opportunities/perks, 15 profile characters. Pro adds: unlimited AI, scans and learning plans, Semester wrap-up & CGPA, Insights & predictions, Daily AI summary, Smart notes & flashcards, Google Calendar auto-sync, all opportunities & perks, PDF/CSV/calendar export, all profile characters, custom accent colours. Restore purchases is on the same page.
+- NOT in the app (never suggest them): an AI weekly planner, a "Shareable moments" screen, a "Show app tour" option, and a Calendar quick tool.`;
 
 const DAYS = [
   "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday",
@@ -635,9 +597,28 @@ function sanitize(parsed) {
 }
 
 export const parseSchedule = onCall(
-  // 180s + 1 GiB: a dense 10 MB PDF can take a while and is held in memory
-  // several times (base64 + request + SDK copy). The app waits slightly longer.
-  { secrets: [GEMINI_API_KEY], cors: true, timeoutSeconds: 180, memory: "1GiB" },
+  {
+    secrets: [GEMINI_API_KEY],
+    cors: true,
+    timeoutSeconds: 180,
+    // Sized for a traffic spike (e.g. 10,000 students importing in the same
+    // week, hundreds in the same minute):
+    //  • cpu 1 is required for one instance to serve several requests at once.
+    //    Before, the defaults (≈0.6 vCPU → concurrency 1, max 100 instances)
+    //    capped the WHOLE app at ~100 parses in flight; request #101 was
+    //    rejected with a 429 and the app showed "Import failed".
+    //  • concurrency 8: a parse is mostly waiting on Gemini, and 2 GiB holds
+    //    8 large (10 MB) files several times over (base64 + request copies).
+    //  • maxInstances 150 → up to ~1,200 parses at once. The project's
+    //    us-central1 quota allows 200 vCPU / 400 GiB in total per service
+    //    (Cloud Run "CpuAllocPerProjectRegion"); 150 × (1 vCPU, 2 GiB) stays
+    //    under it with headroom. To go higher, request a Cloud Run quota
+    //    increase first. Real limit is the Gemini quota (see HOW-IT-WORKS.md).
+    cpu: 1,
+    memory: "2GiB",
+    concurrency: 8,
+    maxInstances: 150,
+  },
   async (request) => {
     if (!request.auth) {
       throw new HttpsError("unauthenticated", "Sign in to import a schedule.");
@@ -762,9 +743,13 @@ async function runScheduleParse({ uid, sourceType, text, storagePath, inlineData
     }
 
     // Up to two generations: models are non-deterministic, and a second try
-    // usually fixes a malformed or truncated reply.
+    // usually fixes a malformed or truncated reply. Everything shares one
+    // deadline (function timeout 180s minus a safety margin) so the app always
+    // gets a clear answer instead of a timeout.
+    const deadline = Date.now() + 165_000;
     let lastRaw = "";
     for (let attempt = 0; attempt < 2; attempt++) {
+      if (attempt > 0 && remainingMs(deadline) < 20_000) break;
       let raw;
       try {
         raw = await generateText(genAI, {
@@ -775,16 +760,20 @@ async function runScheduleParse({ uid, sourceType, text, storagePath, inlineData
           // dense multi-page timetables aren't cut off mid-JSON.
           maxOutputTokens: 16384,
           minimalThinking: true,
+          deadline,
         });
       } catch (err) {
-        console.error("Gemini call failed", err);
-        if (attempt === 1) {
-          throw new HttpsError(
-            "unavailable",
-            "Couldn't process the schedule right now. Please try again."
-          );
-        }
-        continue;
+        console.error("Gemini call failed", { busy: err.busy === true, message: err.message });
+        // generateText already retried with back-off; calling it again here
+        // would only add load to a throttled backend. Tell the app it's busy
+        // (it retries after a short, random wait and keeps the scan as a draft).
+        throw new HttpsError(
+          "unavailable",
+          err.busy
+            ? "Lots of students are importing right now. Please try again in a minute."
+            : "Couldn't process the schedule right now. Please try again.",
+          { reason: err.busy ? "busy" : "ai_error", retryAfterSeconds: err.busy ? 30 : 10 }
+        );
       }
       lastRaw = raw;
       const parsed = parseModelJson(raw);
@@ -1594,17 +1583,18 @@ export const reconcileFlaggedEntitlements = onSchedule(
  * Referral program
  *
  * Growth loop: every student gets a short invite code. When a friend redeems
- * it, BOTH of them are granted `REFERRAL_REWARD_DAYS` of free ClassTrack Pro
- * (written to the server-trusted `_entitlements/{uid}.proUntil`, which the
- * existing paywall already honours). All state lives server-side so a client
+ * it, the FRIEND gets REFERRAL_WELCOME_DAYS of Pro once, and the INVITER earns
+ * REFERRAL_MILESTONE_DAYS of Pro for every REFERRAL_MILESTONE_SIZE friends who
+ * join (7 days per 5 friends — see referral.js). Pro is written to the
+ * server-trusted `_entitlements/{uid}.proUntil`, which the paywall honours.
+ * All state lives server-side so a client
  * can never spoof its invite count or self-grant Pro:
  *   • users/{uid}.referralCode   — the caller's own code (client may READ)
  *   • users/{uid}.referralCount  — successful invites (client may READ)
  *   • users/{uid}.referredBy     — the code this user redeemed (once only)
+ *   • users/{uid}.referralMilestoneDaysGranted — milestone days granted so far
  *   • _referralCodes/{CODE}      — code → uid map (admin-only, default-deny)
  * ======================================================================== */
-
-const REFERRAL_REWARD_DAYS = 3;
 
 /// Unambiguous code alphabet — no 0/O/1/I/L to avoid transcription errors when
 /// a friend types the code by hand.
@@ -1696,37 +1686,16 @@ export const getReferralInfo = onCall({ cors: true }, async (request) => {
       code = candidate;
     }
 
-    // Self-heal referral rewards: reconcile the Pro days this user has EARNED
-    // (REFERRAL_REWARD_DAYS per successful invite, plus one reward if they
-    // redeemed a friend's code) against what we've actually granted so far.
-    // This repairs accounts left short by the old non-atomic grant path (where
-    // the referral count could increment without the Pro grant landing), and
-    // stays idempotent because we persist the running total in
-    // `referralProDaysGranted` — so a healthy account computes missing = 0.
-    const referralCount = data.referralCount || 0;
+    // Self-heal milestone rewards: the inviter earns REFERRAL_MILESTONE_DAYS
+    // for every REFERRAL_MILESTONE_SIZE friends. Compare what's EARNED with
+    // the running total actually granted (`referralMilestoneDaysGranted`) and
+    // grant only the difference — idempotent, so a healthy account computes 0.
+    // Days granted under the old "3 days per invite" rule live in a different
+    // field (`referralProDaysGranted`) and are never clawed back.
+    const referralCount = safeCount(data.referralCount || 0);
     const referredBy = data.referredBy || null;
-    const owedDays =
-      referralCount * REFERRAL_REWARD_DAYS +
-      (referredBy ? REFERRAL_REWARD_DAYS : 0);
-    const grantedDays = data.referralProDaysGranted || 0;
-    // Defence-in-depth: even though the referral fields are backend-owned
-    // (Firestore rules forbid client writes), sanitise the inputs and CAP the
-    // amount we ever auto-grant here, so a data glitch (or a future rules
-    // regression) can never mint an absurd Pro entitlement.
-    const safeCount = Number.isFinite(referralCount)
-      ? Math.max(0, Math.floor(referralCount))
-      : 0;
-    const safeOwed =
-      safeCount * REFERRAL_REWARD_DAYS +
-      (referredBy ? REFERRAL_REWARD_DAYS : 0);
-    const safeGranted = Number.isFinite(grantedDays)
-      ? Math.max(0, Math.floor(grantedDays))
-      : 0;
-    const MAX_REFERRAL_PRO_DAYS = 3650; // 10 years — a sane hard ceiling
-    const missingDays = Math.min(
-      Math.max(0, safeOwed - safeGranted),
-      MAX_REFERRAL_PRO_DAYS
-    );
+    const milestoneGranted = safeCount(data.referralMilestoneDaysGranted || 0);
+    const missingDays = milestoneDaysMissing(referralCount, milestoneGranted);
 
     // ---- writes (all reads above are complete) ----
     if (mapRef) {
@@ -1735,15 +1704,23 @@ export const getReferralInfo = onCall({ cors: true }, async (request) => {
     }
     if (missingDays > 0) {
       grantProDaysTx(tx, entRef, entSnap, missingDays, Date.now());
-      tx.set(userRef, { referralProDaysGranted: safeGranted + missingDays },
-          { merge: true });
+      tx.set(
+        userRef,
+        { referralMilestoneDaysGranted: milestoneGranted + missingDays },
+        { merge: true }
+      );
     }
 
+    const progress = milestoneProgress(referralCount);
     return {
       code,
       referralCount,
       referredBy,
-      rewardDays: REFERRAL_REWARD_DAYS,
+      // What a friend gets for joining with this code (legacy field name).
+      rewardDays: REFERRAL_WELCOME_DAYS,
+      milestoneSize: REFERRAL_MILESTONE_SIZE,
+      milestoneDays: REFERRAL_MILESTONE_DAYS,
+      milestonesReached: progress.milestonesReached,
     };
   });
 
@@ -1855,34 +1832,47 @@ export const redeemReferral = onCall({ cors: true }, async (request) => {
     }
     const myEntSnap = await tx.get(myEntRef);
     const referrerEntSnap = await tx.get(referrerEntRef);
+    const referrerSnap = await tx.get(referrerRef);
+    const referrer = referrerSnap.exists ? referrerSnap.data() : {};
 
     // ---- writes ----
     const now = Date.now();
-    // Track the running total of referral Pro days granted to each side so the
-    // self-heal reconciliation in getReferralInfo never double-grants.
+    // The friend gets the welcome gift once. `referralProDaysGranted` keeps
+    // its old meaning (welcome/legacy days) for auditing.
     tx.set(
       userRef,
       {
         referredBy: referrerUid,
         referredAt: now,
-        referralProDaysGranted: FieldValue.increment(REFERRAL_REWARD_DAYS),
+        referralProDaysGranted: FieldValue.increment(REFERRAL_WELCOME_DAYS),
       },
       { merge: true }
     );
+    grantProDaysTx(tx, myEntRef, myEntSnap, REFERRAL_WELCOME_DAYS, now);
+
+    // The inviter's count goes up; Pro is granted only when this friend
+    // completes a group of REFERRAL_MILESTONE_SIZE (5 → 7 days, 10 → 7 more).
+    const newCount = safeCount(referrer.referralCount || 0) + 1;
+    const milestoneGranted = safeCount(
+      referrer.referralMilestoneDaysGranted || 0
+    );
+    const referrerDays = milestoneDaysMissing(newCount, milestoneGranted);
     tx.set(
       referrerRef,
       {
         referralCount: FieldValue.increment(1),
-        referralProDaysGranted: FieldValue.increment(REFERRAL_REWARD_DAYS),
+        ...(referrerDays > 0
+          ? { referralMilestoneDaysGranted: milestoneGranted + referrerDays }
+          : {}),
       },
       { merge: true }
     );
-    // Reward both sides atomically with the relationship record.
-    grantProDaysTx(tx, myEntRef, myEntSnap, REFERRAL_REWARD_DAYS, now);
-    grantProDaysTx(tx, referrerEntRef, referrerEntSnap, REFERRAL_REWARD_DAYS, now);
+    if (referrerDays > 0) {
+      grantProDaysTx(tx, referrerEntRef, referrerEntSnap, referrerDays, now);
+    }
   });
 
-  return { rewardDays: REFERRAL_REWARD_DAYS };
+  return { rewardDays: REFERRAL_WELCOME_DAYS };
 });
 
 
@@ -2282,17 +2272,95 @@ export const scheduledUrlHealthScan = onSchedule(
  * (`resourceMetrics/{resourceId}`) for Top Content, and per-day global totals
  * (`metricsDaily/{yyyymmdd}`) for windowed funnels. Firebase Analytics events
  * are NOT queryable from Firestore, so this is the source of CMS numbers.
+ *
+ * Sponsor reporting extras (all written here, read-only to the CMS):
+ *  - `<metrics>/{id}/daily/{yyyymmdd}`  per-item daily counters (campaign
+ *    windows, trend charts, CSV export),
+ *  - unique reach / viewers / clickers via one marker doc per user
+ *    (`<metrics>/{id}/<marker>/{uid}`), plus reach by country,
+ *  - banner metrics in `bannerMetrics/{bannerId}` (impressions + clicks).
  * ======================================================================== */
+
+/**
+ * Creates `<metricsRef>/<marker>/{uid}` once per user. Returns true only the
+ * first time (create() fails if the doc exists), so unique counts are exact.
+ */
+async function claimUnique(metricsRef, marker, uid) {
+  try {
+    await metricsRef
+      .collection(marker)
+      .doc(uid)
+      .create({ at: FieldValue.serverTimestamp() });
+    return true;
+  } catch (e) {
+    if (e?.code === 6 || /already exists/i.test(String(e?.message))) {
+      return false;
+    }
+    throw e;
+  }
+}
+
+/** Folds unique-user counters (and reach-by-country) for one event. */
+async function applyUniques(db, metricsRef, eventName, uid) {
+  if (typeof uid !== "string" || !uid || uid.length > 128) return {};
+  const patch = {};
+  for (const { marker, field } of uniqueMarkersFor(eventName)) {
+    if (!(await claimUnique(metricsRef, marker, uid))) continue;
+    patch[field] = FieldValue.increment(1);
+    if (field === "reach") {
+      const user = await db.collection("users").doc(uid).get();
+      const country = countryKey(
+        user.exists ? effectiveCountry(user.data()) : null
+      );
+      patch.reachByCountry = { [country]: FieldValue.increment(1) };
+    }
+  }
+  return patch;
+}
+
 export const aggregateEvent = onDocumentCreated("events/{id}", async (event) => {
   const d = event.data?.data() || {};
   const field = metricField(d.event);
+  if (!field) return;
+  const db = getFirestore();
+  const inc = FieldValue.increment(1);
+  const day = dayId(new Date());
+
+  // ── Banner events ────────────────────────────────────────────────────────
+  if (typeof d.bannerId === "string" && d.bannerId) {
+    if (d.bannerId.length > 200 || !isBannerEvent(d.event)) return;
+    const bSnap = await db.collection("banners").doc(d.bannerId).get();
+    if (!bSnap.exists) return; // anti-poisoning: real banners only
+    const b = bSnap.data() || {};
+    const ref = db.collection("bannerMetrics").doc(d.bannerId);
+    const uniques = await applyUniques(db, ref, d.event, d.uid);
+    const batch = db.batch();
+    batch.set(
+      ref,
+      {
+        [field]: inc,
+        ...uniques,
+        title: b.title || null,
+        placement: b.placement || null,
+        sponsored: b.sponsored === true,
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+    batch.set(ref.collection("daily").doc(day), { [field]: inc, day }, {
+      merge: true,
+    });
+    await batch.commit();
+    return;
+  }
+
+  // ── Resource events ──────────────────────────────────────────────────────
   const resourceId = d.resourceId;
-  if (!field || typeof resourceId !== "string" || !resourceId ||
+  if (typeof resourceId !== "string" || !resourceId ||
       resourceId.length > 200) {
     return;
   }
 
-  const db = getFirestore();
   // Anti-poisoning: only fold in events for a resource that ACTUALLY exists,
   // and take type/title from the trusted resource doc — never from the
   // client-written event — so a forged/spammed event can't create junk metrics
@@ -2301,19 +2369,25 @@ export const aggregateEvent = onDocumentCreated("events/{id}", async (event) => 
   if (!resSnap.exists) return;
   const res = resSnap.data() || {};
 
-  const inc = FieldValue.increment(1);
-  const day = dayId(new Date());
+  const ref = db.collection("resourceMetrics").doc(resourceId);
+  const uniques = await applyUniques(db, ref, d.event, d.uid);
   const batch = db.batch();
   batch.set(
-    db.collection("resourceMetrics").doc(resourceId),
+    ref,
     {
       [field]: inc,
+      ...uniques,
       type: res.type || null,
       title: res.title || null,
+      brand: res.company || res.organization || null,
+      sponsored: res.sponsored === true,
       updatedAt: FieldValue.serverTimestamp(),
     },
     { merge: true }
   );
+  batch.set(ref.collection("daily").doc(day), { [field]: inc, day }, {
+    merge: true,
+  });
   batch.set(
     db.collection("metricsDaily").doc(day),
     { [field]: inc, day },
@@ -2335,8 +2409,10 @@ export const maintainAudienceCounts = onDocumentWritten(
       ? event.data.before.data()
       : null;
     const after = event.data?.after?.exists ? event.data.after.data() : null;
-    const beforeC = before?.country || null;
-    const afterC = after?.country || null;
+    // Same targeting country the app uses (profile, else detected), so the
+    // CMS "estimated recipients" matches who actually gets the push.
+    const beforeC = effectiveCountry(before);
+    const afterC = effectiveCountry(after);
 
     const country = {};
     let totalDelta = 0;

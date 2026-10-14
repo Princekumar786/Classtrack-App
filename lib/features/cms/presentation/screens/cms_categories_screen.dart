@@ -30,8 +30,9 @@ class CmsCategoriesScreen extends ConsumerWidget {
             children: [
               Text('Categories', style: theme.textTheme.headlineSmall),
               FilledButton.icon(
-                style:
-                    FilledButton.styleFrom(backgroundColor: AppColors.primary),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                ),
                 onPressed: () => _editDialog(context, ref, null),
                 icon: const Icon(Icons.add_rounded),
                 label: const Text('New category'),
@@ -43,14 +44,20 @@ class CmsCategoriesScreen extends ConsumerWidget {
           child: async.when(
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (e, __) => Center(
-                child: Text('Failed to load categories.\n$e',
-                    textAlign: TextAlign.center)),
+              child: Text(
+                'Failed to load categories.\n$e',
+                textAlign: TextAlign.center,
+              ),
+            ),
             data: (all) {
               if (all.isEmpty) {
                 return Center(
-                  child: Text('No categories yet. Create your first one.',
-                      style: theme.textTheme.bodyMedium
-                          ?.copyWith(color: theme.hintColor)),
+                  child: Text(
+                    'No categories yet. Create your first one.',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.hintColor,
+                    ),
+                  ),
                 );
               }
               return ListView(
@@ -59,34 +66,43 @@ class CmsCategoriesScreen extends ConsumerWidget {
                   for (final kind in CategoryKind.values) ...[
                     Padding(
                       padding: const EdgeInsets.only(top: 8, bottom: 8),
-                      child: Text('${kind.label} categories',
-                          style: theme.textTheme.titleMedium
-                              ?.copyWith(fontWeight: FontWeight.w700)),
+                      child: Text(
+                        '${kind.label} categories',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
                     ),
                     ...() {
                       final rows = sortedCategories(
-                          all.where((c) => c.kind == kind).toList());
+                        all.where((c) => c.kind == kind).toList(),
+                      );
                       if (rows.isEmpty) {
                         return [
                           Padding(
                             padding: const EdgeInsets.only(bottom: 12),
-                            child: Text('None yet.',
-                                style: theme.textTheme.bodySmall
-                                    ?.copyWith(color: theme.hintColor)),
-                          )
+                            child: Text(
+                              'None yet.',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.hintColor,
+                              ),
+                            ),
+                          ),
                         ];
                       }
-                      return rows.map((c) => Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: _CategoryRow(
-                              category: c,
-                              onEdit: () => _editDialog(context, ref, c),
-                              onToggle: (v) => ref
-                                  .read(cmsCategoryRepositoryProvider)
-                                  ?.setEnabled(c.id, v),
-                              onDelete: () => _confirmDelete(context, ref, c),
-                            ),
-                          ));
+                      return rows.map(
+                        (c) => Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: _CategoryRow(
+                            category: c,
+                            onEdit: () => _editDialog(context, ref, c),
+                            onToggle: (v) => ref
+                                .read(cmsCategoryRepositoryProvider)
+                                ?.setEnabled(c.id, v),
+                            onDelete: () => _confirmDelete(context, ref, c),
+                          ),
+                        ),
+                      );
                     }(),
                   ],
                 ],
@@ -99,10 +115,14 @@ class CmsCategoriesScreen extends ConsumerWidget {
   }
 
   Future<void> _editDialog(
-      BuildContext context, WidgetRef ref, CmsCategory? existing) async {
+    BuildContext context,
+    WidgetRef ref,
+    CmsCategory? existing,
+  ) async {
     final nameCtrl = TextEditingController(text: existing?.name ?? '');
-    final sortCtrl =
-        TextEditingController(text: (existing?.sort ?? 0).toString());
+    final sortCtrl = TextEditingController(
+      text: (existing?.sort ?? 0).toString(),
+    );
     var kind = existing?.kind ?? CategoryKind.opportunity;
     final repo = ref.read(cmsCategoryRepositoryProvider);
     if (repo == null) return;
@@ -135,14 +155,16 @@ class CmsCategoriesScreen extends ConsumerWidget {
                 controller: sortCtrl,
                 keyboardType: TextInputType.number,
                 decoration: const InputDecoration(
-                    labelText: 'Sort order (lower shows first)'),
+                  labelText: 'Sort order (lower shows first)',
+                ),
               ),
             ],
           ),
           actions: [
             TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Cancel')),
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
             FilledButton(
               style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
               onPressed: () => Navigator.pop(ctx, true),
@@ -157,27 +179,33 @@ class CmsCategoriesScreen extends ConsumerWidget {
     if (name.isEmpty) return;
     final sort = int.tryParse(sortCtrl.text.trim()) ?? 0;
     if (existing == null) {
-      await repo.create(CmsCategory(
-          id: '', name: name, slug: '', kind: kind, sort: sort));
+      await repo.create(
+        CmsCategory(id: '', name: name, slug: '', kind: kind, sort: sort),
+      );
     } else {
       await repo.update(existing.copyWith(name: name, kind: kind, sort: sort));
     }
   }
 
   Future<void> _confirmDelete(
-      BuildContext context, WidgetRef ref, CmsCategory c) async {
+    BuildContext context,
+    WidgetRef ref,
+    CmsCategory c,
+  ) async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('Delete "${c.name}"?'),
         content: const Text(
-            'Deleting removes the category entirely. If resources still use it, '
-            'prefer Disable (toggle) instead — it hides the category from '
-            'pickers without breaking existing references.'),
+          'Deleting removes the category entirely. If resources still use it, '
+          'prefer Disable (toggle) instead — it hides the category from '
+          'pickers without breaking existing references.',
+        ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
             onPressed: () => Navigator.pop(ctx, true),
@@ -217,26 +245,38 @@ class _CategoryRow extends StatelessWidget {
           children: [
             SizedBox(
               width: 34,
-              child: Text('#${c.sort}',
-                  style: theme.textTheme.labelSmall
-                      ?.copyWith(color: theme.hintColor)),
+              child: Text(
+                '#${c.sort}',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.hintColor,
+                ),
+              ),
             ),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(c.name,
-                      style: theme.textTheme.titleMedium
-                          ?.copyWith(fontWeight: FontWeight.w600)),
-                  Text(c.slug,
-                      style: theme.textTheme.bodySmall
-                          ?.copyWith(color: theme.hintColor)),
+                  Text(
+                    c.name,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  Text(
+                    c.slug,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.hintColor,
+                    ),
+                  ),
                 ],
               ),
             ),
-            Text(c.enabled ? 'Enabled' : 'Disabled',
-                style: theme.textTheme.labelSmall?.copyWith(
-                    color: c.enabled ? AppColors.success : theme.hintColor)),
+            Text(
+              c.enabled ? 'Enabled' : 'Disabled',
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: c.enabled ? AppColors.success : theme.hintColor,
+              ),
+            ),
             Switch(value: c.enabled, onChanged: onToggle),
             PopupMenuButton<String>(
               onSelected: (v) => v == 'edit' ? onEdit() : onDelete(),

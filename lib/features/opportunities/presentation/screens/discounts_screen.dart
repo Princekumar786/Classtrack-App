@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../shared/widgets/impression_logger.dart';
 import '../../../../shared/widgets/placement_banner.dart';
 import '../../../../shared/widgets/placement_campaign.dart';
 import '../../../../shared/widgets/illustrations.dart';
@@ -46,7 +47,7 @@ class _DiscountsScreenState extends ConsumerState<DiscountsScreen> {
   }
 
   void _open(Resource r) => Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => ResourceDetailScreen(resource: r)));
+      MaterialPageRoute(settings: const RouteSettings(name: 'Resource Detail'), builder: (_) => ResourceDetailScreen(resource: r)));
 
   void _openAll(List<Resource> perks, {int lockedCount = 0}) =>
       Navigator.of(context).push(
@@ -57,13 +58,13 @@ class _DiscountsScreenState extends ConsumerState<DiscountsScreen> {
       );
 
   void _openSaved() => Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const SavedOpportunitiesScreen()));
+      MaterialPageRoute(settings: const RouteSettings(name: 'Saved Opportunities'), builder: (_) => const SavedOpportunitiesScreen()));
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final async = ref.watch(visibleResourcesProvider);
-    final country = ref.watch(userProfileProvider).valueOrNull?.country;
+    final country = ref.watch(effectiveCountryProvider);
     final hidden = ref.watch(hiddenResourceIdsProvider).valueOrNull ?? const {};
 
     return Scaffold(
@@ -180,6 +181,7 @@ class _DiscountsScreenState extends ConsumerState<DiscountsScreen> {
                               backgroundColor: AppColors.primary),
                           onPressed: () => Navigator.of(context).push(
                               MaterialPageRoute(
+                                  settings: const RouteSettings(name: 'Edit Profile'),
                                   builder: (_) => const EditProfileScreen())),
                           child: const Text('Complete your profile'),
                         ),
@@ -202,27 +204,24 @@ class _DiscountsScreenState extends ConsumerState<DiscountsScreen> {
             _query,
           );
 
-          // Featured (carousel) vs the rest (top deals list).
-          final featured = filtered.where((d) => d.featured).toList();
-          final featuredCarousel =
-              featured.isNotEmpty ? featured : filtered.take(3).toList();
-          final featuredIds = featuredCarousel.map((e) => e.id).toSet();
-          final allDeals =
-              filtered.where((d) => !featuredIds.contains(d.id)).toList();
-
           // ── Premium gate ──────────────────────────────────────────────
           // Free members browse only the 5 most-recently-updated perks. The
           // allowed set is computed from the full active perk feed (not the
-          // filtered/searched list) so it can't be bypassed by search or a
-          // category. The featured carousel above stays a free teaser; the
-          // rest is unlocked with Premium via the upsell card appended below.
+          // filtered/searched list), and BOTH the carousel and the deals list
+          // go through it (splitPerksForDisplay) — previously the carousel was
+          // built from search results ungated, so searching for a locked perk
+          // surfaced it at the top and it could be opened/redeemed.
           final isPro = ref.watch(isProProvider);
           final allowedIds = freeAllowedIds(perks, isPro: isPro);
           final lockedCount =
               allowedIds == null ? 0 : perks.length - allowedIds.length;
-          final deals = allowedIds == null
-              ? allDeals
-              : allDeals.where((d) => allowedIds.contains(d.id)).toList();
+          final split = splitPerksForDisplay(
+            filtered,
+            allowedIds: allowedIds,
+            searching: _query.trim().isNotEmpty,
+          );
+          final featuredCarousel = split.carousel;
+          final deals = split.deals;
 
           final totalSavings = perks.fold<num>(
               0, (sum, r) => sum + (_savingsAmount(r) ?? 0));
@@ -268,11 +267,14 @@ class _DiscountsScreenState extends ConsumerState<DiscountsScreen> {
                   physics: const BouncingScrollPhysics(),
                   itemCount: featuredCarousel.length,
                   separatorBuilder: (_, __) => const SizedBox(width: 14),
-                  itemBuilder: (_, i) => _FeaturedPerkCard(
-                    resource: featuredCarousel[i],
-                    accentIndex: i,
-                    country: country,
-                    onTap: () => _open(featuredCarousel[i]),
+                  itemBuilder: (_, i) => ImpressionLogger(
+                    resourceId: featuredCarousel[i].id,
+                    child: _FeaturedPerkCard(
+                      resource: featuredCarousel[i],
+                      accentIndex: i,
+                      country: country,
+                      onTap: () => _open(featuredCarousel[i]),
+                    ),
                   ),
                 ),
               ),
@@ -292,7 +294,9 @@ class _DiscountsScreenState extends ConsumerState<DiscountsScreen> {
                 theme,
                 icon: Icons.filter_alt_off_rounded,
                 title: 'No matches',
-                body: 'Try a different category.',
+                body: _query.trim().isNotEmpty && lockedCount > 0
+                    ? 'Nothing in your free perks matches. Premium unlocks the full catalogue.'
+                    : 'Try a different category.',
               ),
           ];
 
@@ -848,6 +852,7 @@ class _AllPerksScreen extends StatelessWidget {
           return _DealRow(
             resource: r,
             onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                settings: const RouteSettings(name: 'Resource Detail'),
                 builder: (_) => ResourceDetailScreen(resource: r))),
           );
         },

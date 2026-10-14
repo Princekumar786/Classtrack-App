@@ -26,6 +26,25 @@ void main() {
       expect(PushDeepLink.parse('tab:planner'), const TabDeepLink(3));
     });
 
+    test('paywall tokens → PaywallDeepLink', () {
+      expect(PushDeepLink.parse('app://paywall'), const PaywallDeepLink());
+      expect(PushDeepLink.parse('paywall'), const PaywallDeepLink());
+      expect(PushDeepLink.parse('  PRO '), const PaywallDeepLink());
+      expect(PushDeepLink.parse('pricing'), const PaywallDeepLink());
+      expect(PushDeepLink.parse('upgrade'), const PaywallDeepLink());
+      expect(PushDeepLink.parse('premium'), const PaywallDeepLink());
+      expect(PushDeepLink.parse(PushDeepLink.paywall), const PaywallDeepLink());
+    });
+
+    test('web links → UrlDeepLink', () {
+      expect(PushDeepLink.parse('https://example.com'),
+          const UrlDeepLink('https://example.com'));
+      expect(PushDeepLink.parse('  http://a.test/x '),
+          const UrlDeepLink('http://a.test/x'));
+      expect(PushDeepLink.parse('url:https://example.com'),
+          const UrlDeepLink('https://example.com'));
+    });
+
     test('non-links / malformed → null', () {
       expect(PushDeepLink.parse(null), isNull);
       expect(PushDeepLink.parse(''), isNull);
@@ -35,7 +54,6 @@ void main() {
       expect(PushDeepLink.parse('resource:a/b'), isNull);
       expect(PushDeepLink.parse('tab:unknown'), isNull);
       expect(PushDeepLink.parse(':abc'), isNull);
-      expect(PushDeepLink.parse('https://example.com'), isNull);
     });
   });
 }

@@ -93,22 +93,41 @@ class LearningPlannerController extends StateNotifier<List<LearningPlan>> {
     if (plan == null) return;
     final topic = plan.topicById(topicId);
     if (topic == null) return;
-    topic.status = status;
+    applyTopicStatus(topic, status);
     await _commit(plan.copyWith());
   }
 
+  /// Ticks / unticks one subtopic. The topic's status follows automatically:
+  /// all ticked → completed, some → still learning, none → not started.
+  Future<void> setSubtopicDone(
+      String planId, String topicId, String key, bool done) async {
+    final plan = byId(planId);
+    if (plan == null) return;
+    final topic = plan.topicById(topicId);
+    if (topic == null) return;
+    applySubtopic(topic, key, done);
+    await _commit(plan.copyWith());
+  }
+
+  /// Marks a study day complete (which also completes its topics) or not
+  /// complete. When un-marking, [revertTopics] also moves that day's topics
+  /// back to "not started" (the student is asked first in the Day page).
   Future<void> markDayComplete(
-      String planId, int dayNumber, bool complete) async {
+      String planId, int dayNumber, bool complete,
+      {bool revertTopics = false}) async {
     final plan = byId(planId);
     if (plan == null) return;
     for (final w in plan.weeks) {
       for (final d in w.days) {
         if (d.dayNumber == dayNumber) {
           d.completed = complete;
-          if (complete) {
-            for (final id in d.topicIds) {
-              final t = plan.topicById(id);
-              if (t != null && !t.isDone) t.status = TopicStatus.completed;
+          for (final id in d.topicIds) {
+            final t = plan.topicById(id);
+            if (t == null) continue;
+            if (complete && !t.isDone) {
+              applyTopicStatus(t, TopicStatus.completed);
+            } else if (!complete && revertTopics && t.isDone) {
+              applyTopicStatus(t, TopicStatus.notStarted);
             }
           }
         }
@@ -172,22 +191,20 @@ class LearningPlannerController extends StateNotifier<List<LearningPlan>> {
     if (plan == null) return;
     final topics = [
       for (final t in plan.topics)
-        if (t.id == topicId)
-          LearningTopic(
-            id: t.id,
-            title: t.title,
-            estMinutes: t.estMinutes + extra,
-            objectives: t.objectives,
-            unit: t.unit,
-            sections: t.sections,
-            completionCriteria: t.completionCriteria,
-            difficulty: t.difficulty,
-            isReview: t.isReview,
-            actualMinutes: t.actualMinutes,
-            status: t.status,
-          )
-        else
-          t,
+        if (t.id == topicId) t.copyWith(estMinutes: t.estMinutes + extra) else t,
+    ];
+    await _commit(plan.copyWith(topics: topics));
+  }
+
+  /// Replaces the study links on a topic.
+  Future<void> setTopicLinks(
+      String planId, String topicId, List<String> links) async {
+    final plan = byId(planId);
+    if (plan == null) return;
+    final clean = links.where(isStudyLink).take(20).toList();
+    final topics = [
+      for (final t in plan.topics)
+        if (t.id == topicId) t.copyWith(links: clean) else t,
     ];
     await _commit(plan.copyWith(topics: topics));
   }
@@ -250,12 +267,8 @@ class LearningPlannerController extends StateNotifier<List<LearningPlan>> {
         if (t.isDone)
           t
         else
-          LearningTopic(
-            id: t.id,
-            title: t.title,
+          t.copyWith(
             estMinutes: ((t.estMinutes * factor) / 5).round() * 5,
-            objectives: t.objectives,
-            unit: t.unit,
             sections: [
               for (final s in t.sections)
                 TopicSection(
@@ -263,11 +276,6 @@ class LearningPlannerController extends StateNotifier<List<LearningPlan>> {
                     minutes: ((s.minutes * factor) / 5).round() * 5,
                     points: s.points),
             ],
-            completionCriteria: t.completionCriteria,
-            difficulty: t.difficulty,
-            isReview: t.isReview,
-            actualMinutes: t.actualMinutes,
-            status: t.status,
           ),
     ];
     await updatePlan(generator.replan(plan.copyWith(topics: topics)));

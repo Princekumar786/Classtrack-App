@@ -31,7 +31,8 @@ class SubjectDetailScreen extends ConsumerWidget {
       builder: (ctx) => AlertDialog(
         title: const Text('Delete subject?'),
         content: Text(
-            'This permanently removes "${subject.name}", its schedule and attendance.'),
+            'This permanently removes "${subject.name}", its schedule and attendance. '
+            'Its grades and exams are kept and moved to "No subject".'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
@@ -129,6 +130,7 @@ class SubjectDetailScreen extends ConsumerWidget {
           IconButton(
             icon: const Icon(Icons.edit_outlined),
             onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+              settings: const RouteSettings(name: 'Edit Subject'),
               builder: (_) => EditSubjectScreen(subject: subject),
             )),
           ),
@@ -528,7 +530,17 @@ class SubjectDetailScreen extends ConsumerWidget {
   Widget _adjustRow(BuildContext context, WidgetRef ref, Subject subject) {
     final theme = Theme.of(context);
     final controller = ref.read(attendanceControllerProvider);
-    Widget stepper(String label, int value, VoidCallback dec, VoidCallback inc) {
+    // Drift guard (same rule as the manual counts editor): the totals can never
+    // go below what the dated, day-by-day marks already contribute, or the
+    // percentage would disagree with the calendar. The minus button is
+    // disabled at that floor; un-mark the day in the calendar instead.
+    final records = ref.watch(dedupedAttendanceForSubjectProvider(subject.id));
+    final datedPresent =
+        records.where((r) => r.status == AttendanceStatus.present).length;
+    final datedAbsent =
+        records.where((r) => r.status == AttendanceStatus.absent).length;
+    Widget stepper(
+        String label, int value, VoidCallback? dec, VoidCallback inc) {
       return Expanded(
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -536,6 +548,9 @@ class SubjectDetailScreen extends ConsumerWidget {
             IconButton(
               visualDensity: VisualDensity.compact,
               icon: const Icon(Icons.remove_circle_outline_rounded, size: 20),
+              tooltip: dec == null
+                  ? 'Un-mark a day in the calendar to lower this'
+                  : 'Decrease $label',
               onPressed: dec,
             ),
             Column(
@@ -566,14 +581,18 @@ class SubjectDetailScreen extends ConsumerWidget {
           stepper(
             'Present',
             subject.attended,
-            () => controller.adjustAttended(subject.id, -1),
+            subject.attended > datedPresent
+                ? () => controller.adjustAttended(subject.id, -1)
+                : null,
             () => controller.adjustAttended(subject.id, 1),
           ),
           Container(width: 1, height: 40, color: theme.dividerColor),
           stepper(
             'Absent',
             subject.absent,
-            () => controller.adjustAbsent(subject.id, -1),
+            subject.absent > datedAbsent
+                ? () => controller.adjustAbsent(subject.id, -1)
+                : null,
             () => controller.adjustAbsent(subject.id, 1),
           ),
         ],
@@ -588,8 +607,10 @@ class SubjectDetailScreen extends ConsumerWidget {
 
   Widget _sessionTile(
       BuildContext context, ThemeData theme, session, Color color) {
-    final dayLabel = session.recurring && session.dayOfWeek != null
-        ? Weekdays.full[session.dayOfWeek as int]
+    final day = session.dayOfWeek as int?;
+    final dayLabel = session.recurring && day != null
+        // Bounded: a corrupt/legacy weekday must not crash the screen.
+        ? (day >= 0 && day < Weekdays.full.length ? Weekdays.full[day] : 'Weekly')
         : (session.specificDate != null
             ? DateUtilsX.prettyDate(session.specificDate)
             : 'One-off');

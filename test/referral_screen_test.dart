@@ -23,14 +23,13 @@ void main() {
           referralInfoProvider.overrideWith(
             (ref) => const ReferralInfo(
               code: 'K7P2QM9',
-              referralCount: 0,
+              referralCount: 3,
               referredBy: null,
-              rewardDays: 14,
             ),
           ),
           userProfileProvider.overrideWith(
             (ref) => Stream<AppUser?>.value(
-              const AppUser(uid: 'u1', displayName: 'Alex'),
+              const AppUser(uid: 'u1', displayName: 'Alex', referralCount: 3),
             ),
           ),
           proEntitlementProvider.overrideWith(
@@ -50,6 +49,13 @@ void main() {
     // and are lazily built off-screen, so they aren't asserted here.
     expect(tester.takeException(), isNull);
     expect(find.text('K7P2QM9'), findsOneWidget);
+    expect(find.text('Invite 5 friends,\nget 7 days of Pro'), findsOneWidget);
+
+    // 3 of 5 friends joined: 2 more to the next 7-day reward.
+    final nextReward = find.textContaining('Invite 2 more friends to get 7 days');
+    await tester.scrollUntilVisible(nextReward, 200,
+        scrollable: find.byType(Scrollable).first);
+    expect(nextReward, findsOneWidget);
 
     // Scrolling to the bottom must also not throw a layout error.
     await tester.drag(find.byType(Scrollable), const Offset(0, -1200));

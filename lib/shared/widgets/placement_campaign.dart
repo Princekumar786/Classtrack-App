@@ -19,7 +19,7 @@ import 'ui_kit.dart';
 final placementCampaignsProvider =
     StreamProvider.family<List<Campaign>, String>((ref, placement) {
   final db = ref.watch(firestoreProvider);
-  final country = ref.watch(userProfileProvider).valueOrNull?.country;
+  final country = ref.watch(effectiveCountryProvider);
   return db
       .collection(AppConstants.campaignsCollection)
       .where('published', isEqualTo: true)
@@ -115,6 +115,7 @@ class _PlacementCampaignState extends ConsumerState<PlacementCampaign> {
     ref.read(analyticsProvider).log('campaign_clicked',
         {'id': campaign.id, 'placement': widget.placement});
     Navigator.of(context).push(MaterialPageRoute(
+        settings: const RouteSettings(name: 'Resource Detail'),
         builder: (_) => ResourceDetailScreen(resource: resource)));
   }
 }

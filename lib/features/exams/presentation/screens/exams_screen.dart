@@ -725,7 +725,10 @@ class _ExamEditorSheetState extends ConsumerState<ExamEditorSheet> {
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String?>(
-              initialValue: _subjectId,
+              // An exam can point at a deleted subject; show "No subject"
+              // rather than crash the picker with an unknown value.
+              initialValue:
+                  subjects.any((s) => s.id == _subjectId) ? _subjectId : null,
               isExpanded: true,
               decoration: const InputDecoration(labelText: 'Subject'),
               items: [

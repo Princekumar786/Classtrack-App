@@ -139,8 +139,7 @@ class _CmsResourceEditorScreenState
       _c['howToApply']!.text = r.howToApply ?? '';
       _c['requirements']!.text = r.requirements ?? '';
       _c['discountCode']!.text = r.discountCode ?? '';
-      _c['discountPercent']!.text =
-          r.discountPercent?.toString() ?? '';
+      _c['discountPercent']!.text = r.discountPercent?.toString() ?? '';
       _c['relatedIds']!.text = r.relatedResourceIds.join(', ');
       _homepageEligible = r.homepageEligible;
       _recommendationEligible = r.recommendationEligible;
@@ -177,11 +176,14 @@ class _CmsResourceEditorScreenState
     }
     b.write('type=${_type.key};status=${_status.key};');
     b.write(
-        'start=${_startDate?.toIso8601String()};dl=${_deadline?.toIso8601String()};');
+      'start=${_startDate?.toIso8601String()};dl=${_deadline?.toIso8601String()};',
+    );
     b.write(
-        'sched=${_scheduledPublishAt?.toIso8601String()}/${_scheduledUnpublishAt?.toIso8601String()};');
+      'sched=${_scheduledPublishAt?.toIso8601String()}/${_scheduledUnpublishAt?.toIso8601String()};',
+    );
     b.write(
-        'flags=$_featured$_sponsored$_verified$_remote$_paid$_verificationRequired$_homepageEligible$_recommendationEligible');
+      'flags=$_featured$_sponsored$_verified$_remote$_paid$_verificationRequired$_homepageEligible$_recommendationEligible',
+    );
     for (final d in _regional) {
       b.write('|rv=${d.signature()}');
     }
@@ -196,11 +198,13 @@ class _CmsResourceEditorScreenState
       builder: (ctx) => AlertDialog(
         title: const Text('Discard changes?'),
         content: const Text(
-            'You have unsaved changes. If you leave now they will be lost.'),
+          'You have unsaved changes. If you leave now they will be lost.',
+        ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Keep editing')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Keep editing'),
+          ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
             onPressed: () => Navigator.pop(ctx, true),
@@ -212,17 +216,11 @@ class _CmsResourceEditorScreenState
     return ok ?? false;
   }
 
-  List<String> _list(String s) => s
-      .split(',')
-      .map((e) => e.trim())
-      .where((e) => e.isNotEmpty)
-      .toList();
+  List<String> _list(String s) =>
+      s.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
 
-  List<int> _intList(String s) => s
-      .split(',')
-      .map((e) => int.tryParse(e.trim()))
-      .whereType<int>()
-      .toList();
+  List<int> _intList(String s) =>
+      s.split(',').map((e) => int.tryParse(e.trim())).whereType<int>().toList();
 
   String? _nullIf(String s) => s.trim().isEmpty ? null : s.trim();
 
@@ -307,12 +305,14 @@ class _CmsResourceEditorScreenState
       messenger.showSnackBar(const SnackBar(content: Text('Saved ✓')));
       navigator.pop();
     } catch (e) {
-      messenger.showSnackBar(SnackBar(
-        content: Text(e is ArgumentError
-            ? e.message.toString()
-            : 'Could not save: $e'),
-        backgroundColor: AppColors.danger,
-      ));
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            e is ArgumentError ? e.message.toString() : 'Could not save: $e',
+          ),
+          backgroundColor: AppColors.danger,
+        ),
+      );
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -328,12 +328,16 @@ class _CmsResourceEditorScreenState
     try {
       await repo.duplicate(existing!);
       messenger.showSnackBar(
-          const SnackBar(content: Text('Duplicated as draft ✓')));
+        const SnackBar(content: Text('Duplicated as draft ✓')),
+      );
       navigator.pop();
     } catch (e) {
-      messenger.showSnackBar(SnackBar(
+      messenger.showSnackBar(
+        SnackBar(
           content: Text('Could not duplicate: $e'),
-          backgroundColor: AppColors.danger));
+          backgroundColor: AppColors.danger,
+        ),
+      );
     }
   }
 
@@ -352,15 +356,22 @@ class _CmsResourceEditorScreenState
           .where((e) => (e.value as Map)['state'] == 'broken')
           .map((e) => e.key)
           .toList();
-      messenger.showSnackBar(SnackBar(
-        content: Text(broken.isEmpty
-            ? 'All ${health.length} link(s) look OK ✓'
-            : '${broken.length} link(s) may be broken: ${broken.join(', ')}'),
-      ));
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            broken.isEmpty
+                ? 'All ${health.length} link(s) look OK ✓'
+                : '${broken.length} link(s) may be broken: ${broken.join(', ')}',
+          ),
+        ),
+      );
     } catch (e) {
-      messenger.showSnackBar(SnackBar(
+      messenger.showSnackBar(
+        SnackBar(
           content: Text('Could not check links: $e'),
-          backgroundColor: AppColors.danger));
+          backgroundColor: AppColors.danger,
+        ),
+      );
     } finally {
       if (mounted) setState(() => _checkingLinks = false);
     }
@@ -435,18 +446,22 @@ class _CmsResourceEditorScreenState
       _applyAiDraft(data);
       final conf = (data['confidence'] as String?) ?? 'medium';
       final notes = (data['notes'] as String?)?.trim() ?? '';
-      messenger.showSnackBar(SnackBar(
-        duration: const Duration(seconds: 5),
-        content: Text(
-          'AI draft applied ($conf confidence). Review every field before '
-          'publishing.${notes.isNotEmpty ? '\n$notes' : ''}',
+      messenger.showSnackBar(
+        SnackBar(
+          duration: const Duration(seconds: 5),
+          content: Text(
+            'AI draft applied ($conf confidence). Review every field before '
+            'publishing.${notes.isNotEmpty ? '\n$notes' : ''}',
+          ),
         ),
-      ));
+      );
     } catch (e) {
-      messenger.showSnackBar(SnackBar(
-        content: Text('AI draft failed: $e'),
-        backgroundColor: AppColors.danger,
-      ));
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('AI draft failed: $e'),
+          backgroundColor: AppColors.danger,
+        ),
+      );
     } finally {
       if (mounted) setState(() => _aiDrafting = false);
     }
@@ -555,7 +570,8 @@ class _CmsResourceEditorScreenState
                 ? const SizedBox(
                     width: 16,
                     height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2))
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
                 : const Icon(Icons.link_rounded, size: 18),
             label: Text(_checkingLinks ? 'Checking…' : 'Check links now'),
           ),
@@ -571,19 +587,24 @@ class _CmsResourceEditorScreenState
     final label = h.isOk
         ? 'Working'
         : (h.isBroken
-            ? 'May be broken${h.httpStatus != null ? ' (HTTP ${h.httpStatus})' : ''}'
-            : 'Unknown');
+              ? 'May be broken${h.httpStatus != null ? ' (HTTP ${h.httpStatus})' : ''}'
+              : 'Unknown');
     final when = h.checkedAt != null ? ' · checked ${_ago(h.checkedAt!)}' : '';
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: Row(
         children: [
-          Icon(h.isOk ? Icons.check_circle_rounded : Icons.warning_amber_rounded,
-              size: 15, color: color),
+          Icon(
+            h.isOk ? Icons.check_circle_rounded : Icons.warning_amber_rounded,
+            size: 15,
+            color: color,
+          ),
           const SizedBox(width: 8),
           Expanded(
-            child: Text('$field: $label$when',
-                style: theme.textTheme.bodySmall),
+            child: Text(
+              '$field: $label$when',
+              style: theme.textTheme.bodySmall,
+            ),
           ),
         ],
       ),
@@ -615,259 +636,363 @@ class _CmsResourceEditorScreenState
         child: Focus(
           autofocus: true,
           child: Scaffold(
-      appBar: AppBar(
-        title: Text(existing == null ? 'New resource' : 'Edit resource'),
-        actions: [
-          IconButton(
-            tooltip: 'Draft with AI',
-            icon: _aiDrafting
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.auto_awesome),
-            onPressed: (_saving || _aiDrafting) ? null : _draftWithAi,
-          ),
-          IconButton(
-            tooltip: 'Preview as student',
-            icon: const Icon(Icons.visibility_outlined),
-            onPressed: _saving
-                ? null
-                : () => Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) =>
-                        CmsResourcePreviewScreen(resource: _build()))),
-          ),
-          if (existing != null && existing!.id.isNotEmpty)
-            IconButton(
-              tooltip: 'Duplicate as draft',
-              icon: const Icon(Icons.copy_all_rounded),
-              onPressed: _saving ? null : _duplicate,
-            ),
-        ],
-      ),
-      // A sticky action bar keeps Save reachable at all times — on a long form
-      // (especially on mobile) the user shouldn't have to hunt for it.
-      bottomNavigationBar: CmsSaveBar(
-        saving: _saving,
-        isNew: existing == null,
-        label: 'resource',
-        onSave: _saving ? null : _save,
-      ),
-      body: CmsFormBody(
-        child: Form(
-          key: _formKey,
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 40),
-            children: [
-              _QualityCard(
-                report: evaluateResource(_build()),
-                publishing: _status.isVisibleToStudents,
-              ),
-              _card(theme, 'Basics', 'Type, title and a short summary.', [
-                Row(
-                    children: [
-                      Expanded(
-                        child: DropdownButtonFormField<ResourceType>(
-                          initialValue: _type,
-                          isExpanded: true,
-                          decoration: const InputDecoration(labelText: 'Type'),
-                          items: [
-                            for (final t in ResourceType.values)
-                              DropdownMenuItem(value: t, child: Text(t.label)),
-                          ],
-                          onChanged: (t) => setState(() => _type = t ?? _type),
+            appBar: AppBar(
+              title: Text(existing == null ? 'New resource' : 'Edit resource'),
+              actions: [
+                IconButton(
+                  tooltip: 'Draft with AI',
+                  icon: _aiDrafting
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.auto_awesome),
+                  onPressed: (_saving || _aiDrafting) ? null : _draftWithAi,
+                ),
+                IconButton(
+                  tooltip: 'Preview as student',
+                  icon: const Icon(Icons.visibility_outlined),
+                  onPressed: _saving
+                      ? null
+                      : () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            settings: const RouteSettings(name: 'Cms Resource Preview'),
+                            builder: (_) =>
+                                CmsResourcePreviewScreen(resource: _build()),
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: DropdownButtonFormField<ResourceStatus>(
-                          initialValue: _status,
-                          isExpanded: true,
-                          decoration:
-                              const InputDecoration(labelText: 'Status'),
-                          items: [
-                            for (final s in ResourceStatus.values)
-                              DropdownMenuItem(value: s, child: Text(s.label)),
-                          ],
-                          onChanged: (s) => setState(() => _status = s ?? _status),
-                        ),
-                      ),
-                    ],
+                ),
+                if (existing != null && existing!.id.isNotEmpty)
+                  IconButton(
+                    tooltip: 'Duplicate as draft',
+                    icon: const Icon(Icons.copy_all_rounded),
+                    onPressed: _saving ? null : _duplicate,
                   ),
-                  const SizedBox(height: 14),
-                  _field('title', 'Title',
-                      required: true, onChanged: (_) => setState(() {})),
-                  _field('organization', 'Organization',
-                      onChanged: (_) => setState(() {}),
-                      validator: (v) =>
-                          (_status.isVisibleToStudents &&
-                                  (v == null || v.trim().isEmpty))
-                              ? 'Required to publish (set status to Draft to '
-                                  'save an incomplete resource).'
-                              : null),
-                  _field('description', 'Description',
-                      maxLines: 4,
-                      onChanged: (_) => setState(() {}),
-                      validator: (v) =>
-                          (_status.isVisibleToStudents &&
-                                  (v == null || v.trim().isEmpty))
-                              ? 'A description is required to publish.'
-                              : null),
-                  _field('fullDescription', 'Full description (optional)',
-                      maxLines: 6),
-                ]),
-                _categoriesCard(theme),
-                _card(theme, 'Links & media',
-                    isDiscount
-                        ? 'The deal link and imagery shown in the app.'
-                        : 'Where students apply and the imagery shown in the app.',
-                    [
-                  if (!isDiscount)
-                    _field('applicationUrl', 'Application URL',
-                        onChanged: (_) => setState(() {}), validator: (v) {
-                      final val = (v ?? '').trim();
-                      if (val.isNotEmpty && !isValidHttpUrl(val)) {
-                        return 'Enter a valid http(s) URL.';
-                      }
-                      if (_status.isVisibleToStudents &&
-                          _c['applicationUrl']!.text.trim().isEmpty &&
-                          _c['affiliateUrl']!.text.trim().isEmpty) {
-                        return 'An application link is required to publish.';
-                      }
-                      return null;
-                    }),
-                  if (isDiscount)
-                    _field('affiliateUrl', 'Deal / redemption link',
-                        onChanged: (_) => setState(() {}), validator: (v) {
-                      final val = (v ?? '').trim();
-                      if (val.isNotEmpty && !isValidHttpUrl(val)) {
-                        return 'Enter a valid http(s) URL.';
-                      }
-                      if (_status.isVisibleToStudents &&
-                          _c['applicationUrl']!.text.trim().isEmpty &&
-                          _c['affiliateUrl']!.text.trim().isEmpty) {
-                        return 'A deal / redemption link is required to publish.';
-                      }
-                      return null;
-                    }),
-                  _field('officialWebsite', 'Official website (optional)'),
-                  _imageField('imageUrl', 'Image URL'),
-                  _imageField('logoUrl', 'Logo URL'),
-                  _field('slug', 'SEO slug (optional)'),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton.icon(
-                      onPressed: () {
-                        _c['slug']!.text = slugify(_c['title']!.text);
-                        setState(() {});
-                      },
-                      icon: const Icon(Icons.auto_fix_high_rounded, size: 18),
-                      label: const Text('Generate slug from title'),
-                    ),
-                  ),
-                  if (existing != null && existing!.id.isNotEmpty)
-                    _linkHealthPanel(theme),
-                ]),
-                _card(theme, 'Dates & priority',
-                    'Higher priority surfaces the resource earlier in the feed.',
-                    [
-                  Row(
-                    children: [
-                      Expanded(
-                          child: _dateField('Start date', _startDate,
-                              (d) => setState(() => _startDate = d))),
-                      const SizedBox(width: 14),
-                      Expanded(
-                          child: _dateField('Deadline', _deadline,
-                              (d) => setState(() => _deadline = d))),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-                  _field('priority', 'Priority (higher shows first)',
-                      number: true),
-                ]),
-                _card(theme, 'Publishing schedule',
-                    'Optional. A background job flips status at these times; '
-                    'unpublish must be after publish.', [
-                  Row(
-                    children: [
-                      Expanded(
-                          child: _dateField('Publish at', _scheduledPublishAt,
-                              (d) => setState(() => _scheduledPublishAt = d))),
-                      const SizedBox(width: 14),
-                      Expanded(
-                          child: _dateField(
-                              'Unpublish at',
-                              _scheduledUnpublishAt,
-                              (d) =>
-                                  setState(() => _scheduledUnpublishAt = d))),
-                    ],
-                  ),
-                ]),
-                if (!isDiscount)
-                  _card(theme, 'Details',
-                      'Benefits and how to apply are required to publish. '
-                      'Shown on the opportunity detail page.',
-                      [
-                    _field('benefits', 'Benefits',
-                        maxLines: 3,
-                        onChanged: (_) => setState(() {}),
-                        validator: (v) => (_status.isVisibleToStudents &&
-                                (v == null || v.trim().isEmpty))
-                            ? 'Required to publish (set status to Draft to '
-                                'save an incomplete opportunity).'
-                            : null),
-                    _field('howToApply', 'How to apply',
-                        maxLines: 3,
-                        onChanged: (_) => setState(() {}),
-                        validator: (v) => (_status.isVisibleToStudents &&
-                                (v == null || v.trim().isEmpty))
-                            ? 'Required to publish (set status to Draft to '
-                                'save an incomplete opportunity).'
-                            : null),
-                    _field('requirements', 'Requirements (optional)',
-                        maxLines: 3),
-                  ]),
-                _card(theme, 'Targeting',
-                    'Leave a field blank to target everyone. Values are comma-separated.',
-                    [
-                  _field('countries', 'Countries ("Global" = all)'),
-                  _field('degrees', 'Target degrees'),
-                  _field('departments', 'Target departments'),
-                  _field('interests', 'Target interests'),
-                  _field('careerGoals', 'Target career goals'),
-                  _field('tags', 'Tags'),
-                  _field('relatedIds',
-                      'Related resource IDs (comma-separated)'),
-                ]),
-                _card(theme, 'Flags', 'Toggle how this resource is presented.', [
-                  _flagsGrid(),
-                ]),
-                if (isDiscount)
-                  _card(theme, 'Discount details',
-                      'Shown on discount / deal resources.', [
-                    _field('company', 'Company / brand'),
-                    _field('discountText',
-                        'Discount headline (e.g. "50% off")'),
-                    _field('discountCode', 'Discount code'),
-                    _field('discountPercent', 'Discount value / percent',
-                        number: true),
-                    _field('redemptionInstructions', 'How to redeem',
-                        maxLines: 3),
-                    _field('terms', 'Terms', maxLines: 3),
-                    _switchTile(
-                        'Verification required',
-                        'Partner handles eligibility verification',
-                        _verificationRequired,
-                        (v) => setState(() => _verificationRequired = v)),
-                    _regionalEditor(theme),
-                  ]),
               ],
             ),
+            // A sticky action bar keeps Save reachable at all times — on a long form
+            // (especially on mobile) the user shouldn't have to hunt for it.
+            bottomNavigationBar: CmsSaveBar(
+              saving: _saving,
+              isNew: existing == null,
+              label: 'resource',
+              onSave: _saving ? null : _save,
+            ),
+            body: CmsFormBody(
+              child: Form(
+                key: _formKey,
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 40),
+                  children: [
+                    _QualityCard(
+                      report: evaluateResource(_build()),
+                      publishing: _status.isVisibleToStudents,
+                    ),
+                    _card(theme, 'Basics', 'Type, title and a short summary.', [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: DropdownButtonFormField<ResourceType>(
+                              initialValue: _type,
+                              isExpanded: true,
+                              decoration: const InputDecoration(
+                                labelText: 'Type',
+                              ),
+                              items: [
+                                for (final t in ResourceType.values)
+                                  DropdownMenuItem(
+                                    value: t,
+                                    child: Text(t.label),
+                                  ),
+                              ],
+                              onChanged: (t) =>
+                                  setState(() => _type = t ?? _type),
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: DropdownButtonFormField<ResourceStatus>(
+                              initialValue: _status,
+                              isExpanded: true,
+                              decoration: const InputDecoration(
+                                labelText: 'Status',
+                              ),
+                              items: [
+                                for (final s in ResourceStatus.values)
+                                  DropdownMenuItem(
+                                    value: s,
+                                    child: Text(s.label),
+                                  ),
+                              ],
+                              onChanged: (s) =>
+                                  setState(() => _status = s ?? _status),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      _field(
+                        'title',
+                        'Title',
+                        required: true,
+                        onChanged: (_) => setState(() {}),
+                      ),
+                      _field(
+                        'organization',
+                        'Organization',
+                        onChanged: (_) => setState(() {}),
+                        validator: (v) =>
+                            (_status.isVisibleToStudents &&
+                                (v == null || v.trim().isEmpty))
+                            ? 'Required to publish (set status to Draft to '
+                                  'save an incomplete resource).'
+                            : null,
+                      ),
+                      _field(
+                        'description',
+                        'Description',
+                        maxLines: 4,
+                        onChanged: (_) => setState(() {}),
+                        validator: (v) =>
+                            (_status.isVisibleToStudents &&
+                                (v == null || v.trim().isEmpty))
+                            ? 'A description is required to publish.'
+                            : null,
+                      ),
+                      _field(
+                        'fullDescription',
+                        'Full description (optional)',
+                        maxLines: 6,
+                      ),
+                    ]),
+                    _categoriesCard(theme),
+                    _card(
+                      theme,
+                      'Links & media',
+                      isDiscount
+                          ? 'The deal link and imagery shown in the app.'
+                          : 'Where students apply and the imagery shown in the app.',
+                      [
+                        if (!isDiscount)
+                          _field(
+                            'applicationUrl',
+                            'Application URL',
+                            onChanged: (_) => setState(() {}),
+                            validator: (v) {
+                              final val = (v ?? '').trim();
+                              if (val.isNotEmpty && !isValidHttpUrl(val)) {
+                                return 'Enter a valid http(s) URL.';
+                              }
+                              if (_status.isVisibleToStudents &&
+                                  _c['applicationUrl']!.text.trim().isEmpty &&
+                                  _c['affiliateUrl']!.text.trim().isEmpty) {
+                                return 'An application link is required to publish.';
+                              }
+                              return null;
+                            },
+                          ),
+                        if (isDiscount)
+                          _field(
+                            'affiliateUrl',
+                            'Deal / redemption link',
+                            onChanged: (_) => setState(() {}),
+                            validator: (v) {
+                              final val = (v ?? '').trim();
+                              if (val.isNotEmpty && !isValidHttpUrl(val)) {
+                                return 'Enter a valid http(s) URL.';
+                              }
+                              if (_status.isVisibleToStudents &&
+                                  _c['applicationUrl']!.text.trim().isEmpty &&
+                                  _c['affiliateUrl']!.text.trim().isEmpty) {
+                                return 'A deal / redemption link is required to publish.';
+                              }
+                              return null;
+                            },
+                          ),
+                        _field(
+                          'officialWebsite',
+                          'Official website (optional)',
+                        ),
+                        _imageField('imageUrl', 'Image URL'),
+                        _imageField('logoUrl', 'Logo URL'),
+                        _field('slug', 'SEO slug (optional)'),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton.icon(
+                            onPressed: () {
+                              _c['slug']!.text = slugify(_c['title']!.text);
+                              setState(() {});
+                            },
+                            icon: const Icon(
+                              Icons.auto_fix_high_rounded,
+                              size: 18,
+                            ),
+                            label: const Text('Generate slug from title'),
+                          ),
+                        ),
+                        if (existing != null && existing!.id.isNotEmpty)
+                          _linkHealthPanel(theme),
+                      ],
+                    ),
+                    _card(
+                      theme,
+                      'Dates & priority',
+                      'Higher priority surfaces the resource earlier in the feed.',
+                      [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _dateField(
+                                'Start date',
+                                _startDate,
+                                (d) => setState(() => _startDate = d),
+                              ),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: _dateField(
+                                'Deadline',
+                                _deadline,
+                                (d) => setState(() => _deadline = d),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+                        _field(
+                          'priority',
+                          'Priority (higher shows first)',
+                          number: true,
+                        ),
+                      ],
+                    ),
+                    _card(
+                      theme,
+                      'Publishing schedule',
+                      'Optional. A background job flips status at these times; '
+                          'unpublish must be after publish.',
+                      [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _dateField(
+                                'Publish at',
+                                _scheduledPublishAt,
+                                (d) => setState(() => _scheduledPublishAt = d),
+                              ),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: _dateField(
+                                'Unpublish at',
+                                _scheduledUnpublishAt,
+                                (d) =>
+                                    setState(() => _scheduledUnpublishAt = d),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    if (!isDiscount)
+                      _card(
+                        theme,
+                        'Details',
+                        'Benefits and how to apply are required to publish. '
+                            'Shown on the opportunity detail page.',
+                        [
+                          _field(
+                            'benefits',
+                            'Benefits',
+                            maxLines: 3,
+                            onChanged: (_) => setState(() {}),
+                            validator: (v) =>
+                                (_status.isVisibleToStudents &&
+                                    (v == null || v.trim().isEmpty))
+                                ? 'Required to publish (set status to Draft to '
+                                      'save an incomplete opportunity).'
+                                : null,
+                          ),
+                          _field(
+                            'howToApply',
+                            'How to apply',
+                            maxLines: 3,
+                            onChanged: (_) => setState(() {}),
+                            validator: (v) =>
+                                (_status.isVisibleToStudents &&
+                                    (v == null || v.trim().isEmpty))
+                                ? 'Required to publish (set status to Draft to '
+                                      'save an incomplete opportunity).'
+                                : null,
+                          ),
+                          _field(
+                            'requirements',
+                            'Requirements (optional)',
+                            maxLines: 3,
+                          ),
+                        ],
+                      ),
+                    _card(
+                      theme,
+                      'Targeting',
+                      'Leave a field blank to target everyone. Values are comma-separated.',
+                      [
+                        _field('countries', 'Countries ("Global" = all)'),
+                        _field('degrees', 'Target degrees'),
+                        _field('departments', 'Target departments'),
+                        _field('interests', 'Target interests'),
+                        _field('careerGoals', 'Target career goals'),
+                        _field('tags', 'Tags'),
+                        _field(
+                          'relatedIds',
+                          'Related resource IDs (comma-separated)',
+                        ),
+                      ],
+                    ),
+                    _card(
+                      theme,
+                      'Flags',
+                      'Toggle how this resource is presented.',
+                      [_flagsGrid()],
+                    ),
+                    if (isDiscount)
+                      _card(
+                        theme,
+                        'Discount details',
+                        'Shown on discount / deal resources.',
+                        [
+                          _field('company', 'Company / brand'),
+                          _field(
+                            'discountText',
+                            'Discount headline (e.g. "50% off")',
+                          ),
+                          _field('discountCode', 'Discount code'),
+                          _field(
+                            'discountPercent',
+                            'Discount value / percent',
+                            number: true,
+                          ),
+                          _field(
+                            'redemptionInstructions',
+                            'How to redeem',
+                            maxLines: 3,
+                          ),
+                          _field('terms', 'Terms', maxLines: 3),
+                          _switchTile(
+                            'Verification required',
+                            'Partner handles eligibility verification',
+                            _verificationRequired,
+                            (v) => setState(() => _verificationRequired = v),
+                          ),
+                          _regionalEditor(theme),
+                        ],
+                      ),
+                  ],
+                ),
+              ),
+            ),
           ),
-        ),
-      ),
         ),
       ),
     );
@@ -875,8 +1000,12 @@ class _CmsResourceEditorScreenState
 
   /// A titled panel card grouping related fields. Gives the form clear visual
   /// sections against the tinted page background.
-  Widget _card(ThemeData theme, String title, String? subtitle,
-      List<Widget> children) {
+  Widget _card(
+    ThemeData theme,
+    String title,
+    String? subtitle,
+    List<Widget> children,
+  ) {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
@@ -884,14 +1013,20 @@ class _CmsResourceEditorScreenState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title,
-              style: theme.textTheme.titleMedium
-                  ?.copyWith(fontWeight: FontWeight.w700)),
+          Text(
+            title,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
           if (subtitle != null) ...[
             const SizedBox(height: 3),
-            Text(subtitle,
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: theme.hintColor)),
+            Text(
+              subtitle,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.hintColor,
+              ),
+            ),
           ],
           const SizedBox(height: 16),
           ...children,
@@ -904,12 +1039,14 @@ class _CmsResourceEditorScreenState
   /// resource's kind + enabled). Selection is stored in the `categories` list
   /// as names; legacy free-text values are preserved as removable chips.
   Widget _categoriesCard(ThemeData theme) {
-    final kind =
-        _type.isDiscount ? CategoryKind.discount : CategoryKind.opportunity;
+    final kind = _type.isDiscount
+        ? CategoryKind.discount
+        : CategoryKind.opportunity;
     final all =
         ref.watch(cmsCategoriesProvider).valueOrNull ?? const <CmsCategory>[];
     final managed = sortedCategories(
-        all.where((c) => c.kind == kind && c.enabled).toList());
+      all.where((c) => c.kind == kind && c.enabled).toList(),
+    );
     final selected = _list(_c['categories']!.text);
     final selectedSet = selected.toSet();
     final names = <String>[...managed.map((c) => c.name)];
@@ -934,67 +1071,95 @@ class _CmsResourceEditorScreenState
       setState(() {});
     }
 
-    return _card(theme, 'Categories',
-        'Pick from the managed taxonomy (manage it in the Categories tab), or '
-        'type to add one.',
-        [
-          if (names.isNotEmpty)
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final n in names)
-                  _CategoryChip(
-                    label: n,
-                    selected: selectedSet.contains(n),
-                    onTap: () => toggle(n),
-                  ),
-              ],
-            ),
-          if (names.isNotEmpty) const SizedBox(height: 12),
-          Row(
+    return _card(
+      theme,
+      'Categories',
+      'Pick from the managed taxonomy (manage it in the Categories tab), or '
+          'type to add one.',
+      [
+        if (names.isNotEmpty)
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
             children: [
-              Expanded(
-                child: TextField(
-                  controller: _catInput,
-                  onSubmitted: (_) => addTyped(),
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    hintText: 'Add a category (e.g. Software, Travel)',
-                  ),
+              for (final n in names)
+                _CategoryChip(
+                  label: n,
+                  selected: selectedSet.contains(n),
+                  onTap: () => toggle(n),
                 ),
-              ),
-              const SizedBox(width: 8),
-              IconButton.filledTonal(
-                onPressed: addTyped,
-                icon: const Icon(Icons.add_rounded),
-                tooltip: 'Add category',
-              ),
             ],
           ),
-        ]);
+        if (names.isNotEmpty) const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _catInput,
+                onSubmitted: (_) => addTyped(),
+                decoration: const InputDecoration(
+                  isDense: true,
+                  hintText: 'Add a category (e.g. Software, Travel)',
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            IconButton.filledTonal(
+              onPressed: addTyped,
+              icon: const Icon(Icons.add_rounded),
+              tooltip: 'Add category',
+            ),
+          ],
+        ),
+      ],
+    );
   }
 
   /// Responsive grid of flag toggles: two columns on wide forms, one on narrow.
   Widget _flagsGrid() {
     final tiles = <Widget>[
-      _switchTile('Featured', 'Pin near the top of the feed', _featured,
-          (v) => setState(() => _featured = v)),
-      _switchTile('Sponsored', 'Marked as a paid placement', _sponsored,
-          (v) => setState(() => _sponsored = v)),
-      _switchTile('Verified', 'Show the verified badge', _verified,
-          (v) => setState(() => _verified = v)),
-      _switchTile('Remote', 'Location-independent', _remote,
-          (v) => setState(() => _remote = v)),
-      _switchTile('Paid', 'Involves a payment', _paid,
-          (v) => setState(() => _paid = v)),
-      _switchTile('Homepage eligible', 'May appear on the Home surface',
-          _homepageEligible, (v) => setState(() => _homepageEligible = v)),
       _switchTile(
-          'Recommendation eligible',
-          'Allowed in personalized recommendations',
-          _recommendationEligible,
-          (v) => setState(() => _recommendationEligible = v)),
+        'Featured',
+        'Pin near the top of the feed',
+        _featured,
+        (v) => setState(() => _featured = v),
+      ),
+      _switchTile(
+        'Sponsored',
+        'Marked as a paid placement',
+        _sponsored,
+        (v) => setState(() => _sponsored = v),
+      ),
+      _switchTile(
+        'Verified',
+        'Show the verified badge',
+        _verified,
+        (v) => setState(() => _verified = v),
+      ),
+      _switchTile(
+        'Remote',
+        'Location-independent',
+        _remote,
+        (v) => setState(() => _remote = v),
+      ),
+      _switchTile(
+        'Paid',
+        'Involves a payment',
+        _paid,
+        (v) => setState(() => _paid = v),
+      ),
+      _switchTile(
+        'Homepage eligible',
+        'May appear on the Home surface',
+        _homepageEligible,
+        (v) => setState(() => _homepageEligible = v),
+      ),
+      _switchTile(
+        'Recommendation eligible',
+        'Allowed in personalized recommendations',
+        _recommendationEligible,
+        (v) => setState(() => _recommendationEligible = v),
+      ),
     ];
     return LayoutBuilder(
       builder: (context, c) {
@@ -1003,31 +1168,34 @@ class _CmsResourceEditorScreenState
         return Wrap(
           spacing: 12,
           runSpacing: 12,
-          children: [
-            for (final t in tiles) SizedBox(width: tileW, child: t),
-          ],
+          children: [for (final t in tiles) SizedBox(width: tileW, child: t)],
         );
       },
     );
   }
 
-  Widget _field(String key, String label,
-      {bool required = false,
-      bool number = false,
-      int maxLines = 1,
-      String? Function(String?)? validator,
-      ValueChanged<String>? onChanged}) {
+  Widget _field(
+    String key,
+    String label, {
+    bool required = false,
+    bool number = false,
+    int maxLines = 1,
+    String? Function(String?)? validator,
+    ValueChanged<String>? onChanged,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: TextFormField(
         controller: _c[key],
         maxLines: maxLines,
         keyboardType: number ? TextInputType.number : null,
-        inputFormatters:
-            number ? [FilteringTextInputFormatter.digitsOnly] : null,
+        inputFormatters: number
+            ? [FilteringTextInputFormatter.digitsOnly]
+            : null,
         decoration: InputDecoration(labelText: label),
         onChanged: onChanged,
-        validator: validator ??
+        validator:
+            validator ??
             (required
                 ? (v) => (v == null || v.trim().isEmpty) ? 'Required' : null
                 : null),
@@ -1066,11 +1234,12 @@ class _CmsResourceEditorScreenState
                     Padding(
                       padding: const EdgeInsets.only(right: 8),
                       child: Icon(
-                          valid
-                              ? Icons.check_circle_rounded
-                              : Icons.error_outline_rounded,
-                          color: valid ? AppColors.success : AppColors.danger,
-                          size: 20),
+                        valid
+                            ? Icons.check_circle_rounded
+                            : Icons.error_outline_rounded,
+                        color: valid ? AppColors.success : AppColors.danger,
+                        size: 20,
+                      ),
                     ),
                 ],
               ),
@@ -1084,16 +1253,17 @@ class _CmsResourceEditorScreenState
               return null;
             },
           ),
-          if (valid) ...[
-            const SizedBox(height: 8),
-            _ImagePreview(url: url),
-          ],
+          if (valid) ...[const SizedBox(height: 8), _ImagePreview(url: url)],
         ],
       ),
     );
   }
 
-  Widget _dateField(String label, DateTime? value, ValueChanged<DateTime?> set) {
+  Widget _dateField(
+    String label,
+    DateTime? value,
+    ValueChanged<DateTime?> set,
+  ) {
     return InkWell(
       onTap: () async {
         final now = DateTime.now();
@@ -1115,15 +1285,21 @@ class _CmsResourceEditorScreenState
                   onPressed: () => set(null),
                 ),
         ),
-        child: Text(value == null
-            ? 'Not set'
-            : '${value.year}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}'),
+        child: Text(
+          value == null
+              ? 'Not set'
+              : '${value.year}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}',
+        ),
       ),
     );
   }
 
-  Widget _switchTile(String title, String subtitle, bool value,
-      ValueChanged<bool> onChanged) {
+  Widget _switchTile(
+    String title,
+    String subtitle,
+    bool value,
+    ValueChanged<bool> onChanged,
+  ) {
     final theme = Theme.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
@@ -1135,13 +1311,18 @@ class _CmsResourceEditorScreenState
       child: SwitchListTile(
         contentPadding: EdgeInsets.zero,
         dense: true,
-        title: Text(title,
-            style: theme.textTheme.labelLarge
-                ?.copyWith(fontWeight: FontWeight.w600)),
-        subtitle: Text(subtitle,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
+        title: Text(
+          title,
+          style: theme.textTheme.labelLarge?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        subtitle: Text(
+          subtitle,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
+        ),
         value: value,
         onChanged: onChanged,
       ),
@@ -1159,12 +1340,18 @@ class _CmsResourceEditorScreenState
         children: [
           Row(
             children: [
-              const Icon(Icons.public_rounded,
-                  size: 18, color: AppColors.primary),
+              const Icon(
+                Icons.public_rounded,
+                size: 18,
+                color: AppColors.primary,
+              ),
               const SizedBox(width: 8),
-              Text('Regional offers (per country)',
-                  style: theme.textTheme.labelLarge
-                      ?.copyWith(fontWeight: FontWeight.w700)),
+              Text(
+                'Regional offers (per country)',
+                style: theme.textTheme.labelLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 4),
@@ -1192,14 +1379,17 @@ class _CmsResourceEditorScreenState
                         child: TextField(
                           controller: _regional[i].countries,
                           decoration: const InputDecoration(
-                              labelText: 'Country(ies), comma-separated',
-                              isDense: true),
+                            labelText: 'Country(ies), comma-separated',
+                            isDense: true,
+                          ),
                         ),
                       ),
                       IconButton(
                         tooltip: 'Remove region',
-                        icon: const Icon(Icons.delete_outline_rounded,
-                            color: AppColors.danger),
+                        icon: const Icon(
+                          Icons.delete_outline_rounded,
+                          color: AppColors.danger,
+                        ),
                         onPressed: () => setState(() {
                           _regional.removeAt(i).dispose();
                         }),
@@ -1210,15 +1400,18 @@ class _CmsResourceEditorScreenState
                   TextField(
                     controller: _regional[i].price,
                     decoration: const InputDecoration(
-                        labelText: 'Price / headline for this region (e.g. ₹59/mo)',
-                        isDense: true),
+                      labelText:
+                          'Price / headline for this region (e.g. ₹59/mo)',
+                      isDense: true,
+                    ),
                   ),
                   const SizedBox(height: 6),
                   TextField(
                     controller: _regional[i].url,
                     decoration: const InputDecoration(
-                        labelText: 'Link for this region (optional)',
-                        isDense: true),
+                      labelText: 'Link for this region (optional)',
+                      isDense: true,
+                    ),
                   ),
                 ],
               ),
@@ -1236,7 +1429,6 @@ class _CmsResourceEditorScreenState
     );
   }
 }
-
 
 /// A bounded, framed thumbnail preview for an image/logo URL, with graceful
 /// loading and error states.
@@ -1274,12 +1466,18 @@ class _ImagePreview extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.broken_image_rounded,
-                  color: AppColors.danger, size: 22),
+              const Icon(
+                Icons.broken_image_rounded,
+                color: AppColors.danger,
+                size: 22,
+              ),
               const SizedBox(height: 6),
-              Text('Could not load image',
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: theme.hintColor)),
+              Text(
+                'Could not load image',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.hintColor,
+                ),
+              ),
             ],
           ),
         ),
@@ -1319,13 +1517,20 @@ class _QualityCard extends StatelessWidget {
             children: [
               Icon(Icons.verified_rounded, color: color, size: 20),
               const SizedBox(width: 8),
-              Text('Content quality',
-                  style: theme.textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w700)),
+              Text(
+                'Content quality',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
               const Spacer(),
-              Text('${report.score}/100',
-                  style: theme.textTheme.titleMedium
-                      ?.copyWith(color: color, fontWeight: FontWeight.w800)),
+              Text(
+                '${report.score}/100',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  color: color,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 10),
@@ -1340,38 +1545,54 @@ class _QualityCard extends StatelessWidget {
           ),
           if (report.errors.isNotEmpty) ...[
             const SizedBox(height: 14),
-            Text(publishing ? 'Errors (blocking publish)' : 'Errors',
-                style: theme.textTheme.labelLarge
-                    ?.copyWith(color: AppColors.danger)),
+            Text(
+              publishing ? 'Errors (blocking publish)' : 'Errors',
+              style: theme.textTheme.labelLarge?.copyWith(
+                color: AppColors.danger,
+              ),
+            ),
             const SizedBox(height: 6),
             for (final e in report.errors)
               _IssueRow(
-                  icon: Icons.error_outline_rounded,
-                  color: AppColors.danger,
-                  text: e.message),
+                icon: Icons.error_outline_rounded,
+                color: AppColors.danger,
+                text: e.message,
+              ),
           ],
           if (report.warnings.isNotEmpty) ...[
             const SizedBox(height: 14),
-            Text('Warnings',
-                style: theme.textTheme.labelLarge
-                    ?.copyWith(color: AppColors.warning)),
+            Text(
+              'Warnings',
+              style: theme.textTheme.labelLarge?.copyWith(
+                color: AppColors.warning,
+              ),
+            ),
             const SizedBox(height: 6),
             for (final w in report.warnings)
               _IssueRow(
-                  icon: Icons.warning_amber_rounded,
-                  color: AppColors.warning,
-                  text: w.message),
+                icon: Icons.warning_amber_rounded,
+                color: AppColors.warning,
+                text: w.message,
+              ),
           ],
           if (report.errors.isEmpty && report.warnings.isEmpty) ...[
             const SizedBox(height: 10),
-            Row(children: [
-              const Icon(Icons.check_circle_rounded,
-                  color: AppColors.success, size: 18),
-              const SizedBox(width: 6),
-              Text('Looks great — ready to publish.',
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: theme.hintColor)),
-            ]),
+            Row(
+              children: [
+                const Icon(
+                  Icons.check_circle_rounded,
+                  color: AppColors.success,
+                  size: 18,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  'Looks great — ready to publish.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.hintColor,
+                  ),
+                ),
+              ],
+            ),
           ],
         ],
       ),
@@ -1383,8 +1604,11 @@ class _IssueRow extends StatelessWidget {
   final IconData icon;
   final Color color;
   final String text;
-  const _IssueRow(
-      {required this.icon, required this.color, required this.text});
+  const _IssueRow({
+    required this.icon,
+    required this.color,
+    required this.text,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1408,8 +1632,11 @@ class _CategoryChip extends StatelessWidget {
   final String label;
   final bool selected;
   final VoidCallback onTap;
-  const _CategoryChip(
-      {required this.label, required this.selected, required this.onTap});
+  const _CategoryChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1419,8 +1646,9 @@ class _CategoryChip extends StatelessWidget {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(24),
         side: BorderSide(
-            color: selected ? AppColors.primary : theme.dividerColor,
-            width: 1.2),
+          color: selected ? AppColors.primary : theme.dividerColor,
+          width: 1.2,
+        ),
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -1434,12 +1662,15 @@ class _CategoryChip extends StatelessWidget {
                 const Icon(Icons.check_rounded, size: 14, color: Colors.white),
                 const SizedBox(width: 5),
               ],
-              Text(label,
-                  style: theme.textTheme.labelMedium?.copyWith(
-                      color: selected
-                          ? Colors.white
-                          : theme.textTheme.bodyMedium?.color,
-                      fontWeight: FontWeight.w600)),
+              Text(
+                label,
+                style: theme.textTheme.labelMedium?.copyWith(
+                  color: selected
+                      ? Colors.white
+                      : theme.textTheme.bodyMedium?.color,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ],
           ),
         ),
@@ -1448,7 +1679,6 @@ class _CategoryChip extends StatelessWidget {
   }
 }
 
-
 /// Mutable editor row backing a [RegionalOffer] (per-country price/link).
 class _RegionalDraft {
   final TextEditingController countries;
@@ -1456,25 +1686,25 @@ class _RegionalDraft {
   final TextEditingController url;
 
   _RegionalDraft({String countries = '', String price = '', String url = ''})
-      : countries = TextEditingController(text: countries),
-        price = TextEditingController(text: price),
-        url = TextEditingController(text: url);
+    : countries = TextEditingController(text: countries),
+      price = TextEditingController(text: price),
+      url = TextEditingController(text: url);
 
   factory _RegionalDraft.fromOffer(RegionalOffer o) => _RegionalDraft(
-        countries: o.countries.join(', '),
-        price: o.discountText ?? '',
-        url: o.url ?? '',
-      );
+    countries: o.countries.join(', '),
+    price: o.discountText ?? '',
+    url: o.url ?? '',
+  );
 
   RegionalOffer toOffer() => RegionalOffer(
-        countries: countries.text
-            .split(',')
-            .map((s) => s.trim())
-            .where((s) => s.isNotEmpty)
-            .toList(),
-        discountText: price.text.trim().isEmpty ? null : price.text.trim(),
-        url: url.text.trim().isEmpty ? null : url.text.trim(),
-      );
+    countries: countries.text
+        .split(',')
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList(),
+    discountText: price.text.trim().isEmpty ? null : price.text.trim(),
+    url: url.text.trim().isEmpty ? null : url.text.trim(),
+  );
 
   String signature() => '${countries.text}|${price.text}|${url.text}';
 

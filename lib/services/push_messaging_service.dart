@@ -41,7 +41,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     );
   } catch (_) {/* already initialised for this isolate */}
   // No further work required: notification messages are shown by the OS.
-  debugPrint('[FCM] background message: ${message.messageId}');
+  if (kDebugMode) debugPrint('[FCM] background message: ${message.messageId}');
 }
 
 /// Wires Firebase Cloud Messaging into the app so pushes sent from the Firebase
@@ -52,7 +52,8 @@ class PushMessagingService {
       : _local = localPlugin ?? FlutterLocalNotificationsPlugin();
 
   final FlutterLocalNotificationsPlugin _local;
-  final FirebaseMessaging _fcm = FirebaseMessaging.instance;
+  // Lazy so constructing the service (e.g. in tests) never touches Firebase.
+  FirebaseMessaging get _fcm => FirebaseMessaging.instance;
   bool _ready = false;
 
   /// The country topic this device is currently subscribed to (e.g.
@@ -136,12 +137,10 @@ class PushMessagingService {
           requestSoundPermission: false,
         ),
       ),
-      onDidReceiveNotificationResponse: (resp) {
-        final p = resp.payload;
-        if (p != null && p.isNotEmpty) {
-          NotificationService.selectedPayload.value = p;
-        }
-      },
+      // Same handler as NotificationService (they share one plugin, and the
+      // last initialize() owns the callback), so Present/Absent action taps
+      // are marked no matter which service initialised last.
+      onDidReceiveNotificationResponse: NotificationService.handleResponse,
     );
 
     // 5. Foreground messages → draw a local notification ourselves.
@@ -165,15 +164,16 @@ class PushMessagingService {
       } catch (_) {/* topic subscription is best-effort */}
     }
 
-    // 9. Log the device token — handy for targeting a single device from the
-    //    console's "Send test message" during testing. Bounded by a timeout:
-    //    getToken() is a known offline/no-Play-Services hang, so we never let
-    //    it block initialisation.
-    try {
-      final token =
-          await _fcm.getToken().timeout(const Duration(seconds: 5));
-      debugPrint('[FCM] device token: $token');
-    } catch (_) {/* token may be unavailable (offline / no APNs / timeout) */}
+    // 9. Debug builds only: log the device token for the console's "Send test
+    //    message". Never in release — debugPrint is NOT stripped there, so the
+    //    token (which can target this phone) would land in the system log.
+    if (kDebugMode) {
+      try {
+        final token =
+            await _fcm.getToken().timeout(const Duration(seconds: 5));
+        debugPrint('[FCM] device token: $token');
+      } catch (_) {/* token may be unavailable (offline / no APNs / timeout) */}
+    }
 
     _ready = true;
   }
@@ -222,12 +222,12 @@ final pushMessagingServiceProvider = Provider<PushMessagingService>(
   (ref) => PushMessagingService(),
 );
 
-/// Keeps the device subscribed to its profile country's FCM topic so
-/// CMS country-targeted notifications are delivered. Watch it where the app is
-/// alive (HomeShell) so it re-runs when the profile country changes.
+/// Keeps the device subscribed to its country's FCM topic so CMS
+/// country-targeted notifications are delivered. Uses the SAME country as
+/// opportunities ([effectiveCountryProvider]: profile choice, else detected).
+/// Watch it where the app is alive (HomeShell) so it re-runs on change.
 final pushCountryTopicSyncProvider = Provider<void>((ref) {
-  final country =
-      ref.watch(userProfileProvider.select((a) => a.valueOrNull?.country));
+  final country = ref.watch(effectiveCountryProvider);
   // Fire-and-forget; the service call is bounded and never throws.
   ref.read(pushMessagingServiceProvider).setCountryTopic(country);
 });

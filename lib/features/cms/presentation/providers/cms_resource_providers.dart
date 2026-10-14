@@ -7,8 +7,7 @@ import '../../data/cms_resource_repository.dart';
 /// Write-capable resource repository bound to the signed-in editor (null when
 /// signed out). The CMS assumes the caller holds an editor+ role; Firestore
 /// rules are the authoritative gate.
-final cmsResourceRepositoryProvider =
-    Provider<CmsResourceRepository?>((ref) {
+final cmsResourceRepositoryProvider = Provider<CmsResourceRepository?>((ref) {
   final uid = ref.watch(currentUidProvider);
   if (uid == null) return null;
   return CmsResourceRepository(

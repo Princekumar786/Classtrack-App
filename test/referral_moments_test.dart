@@ -10,23 +10,41 @@ void main() {
     test('parses a full server payload', () {
       final info = ReferralInfo.fromMap({
         'code': 'K7P2QM9',
-        'referralCount': 3,
+        'referralCount': 12,
         'referredBy': 'someUid',
-        'rewardDays': 14,
+        'rewardDays': 3,
+        'milestoneSize': 5,
+        'milestoneDays': 7,
       });
       expect(info.code, 'K7P2QM9');
-      expect(info.referralCount, 3);
+      expect(info.referralCount, 12);
       expect(info.hasRedeemed, isTrue);
-      expect(info.earnedDays, 42); // 3 invites * 14 days
+      expect(info.milestonesReached, 2);
+      expect(info.earnedDays, 14); // 2 groups of 5 * 7 days
+      expect(info.inCurrentCycle, 2);
+      expect(info.friendsToNextReward, 3);
     });
 
-    test('applies safe defaults for a sparse payload', () {
+    test('applies safe defaults for a sparse payload (older backend)', () {
       final info = ReferralInfo.fromMap({'code': 'ABCD123'});
       expect(info.referralCount, 0);
       expect(info.referredBy, isNull);
       expect(info.hasRedeemed, isFalse);
       expect(info.rewardDays, 3);
+      expect(info.milestoneSize, 5);
+      expect(info.milestoneDays, 7);
       expect(info.earnedDays, 0);
+      expect(info.friendsToNextReward, 5);
+    });
+
+    test('4 friends earn nothing yet; the 5th unlocks 7 days', () {
+      const four = ReferralInfo(code: 'X', referralCount: 4, referredBy: null);
+      expect(four.earnedDays, 0);
+      expect(four.friendsToNextReward, 1);
+      final five = four.copyWith(referralCount: 5);
+      expect(five.earnedDays, 7);
+      expect(five.friendsToNextReward, 5);
+      expect(five.cycleProgress, 0);
     });
   });
 

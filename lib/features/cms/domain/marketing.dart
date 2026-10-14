@@ -105,6 +105,11 @@ class CmsBanner {
   final String placement;
   final bool sponsored;
   final bool published;
+
+  /// Whether Pro subscribers see this banner. Off = shown to free users only
+  /// (e.g. upgrade offers or ads you don't want paying users to see). Missing
+  /// in older docs, which default to true so existing banners keep showing.
+  final bool showToPro;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -122,6 +127,7 @@ class CmsBanner {
     this.placement = Placements.home,
     this.sponsored = false,
     this.published = false,
+    this.showToPro = true,
     this.createdAt,
     this.updatedAt,
   });
@@ -139,11 +145,15 @@ class CmsBanner {
     DateTime? ts(dynamic v) => (v as Timestamp?)?.toDate();
     return CmsBanner(
       id: id,
-      title: Validators.sanitizeText((m['title'] as String?) ?? '', maxLength: 120),
+      title: Validators.sanitizeText(
+        (m['title'] as String?) ?? '',
+        maxLength: 120,
+      ),
       imageUrl: m['imageUrl'] as String?,
       ctaLabel: m['ctaLabel'] as String?,
       destination: m['destination'] as String?,
-      countries: (m['countries'] as List?)
+      countries:
+          (m['countries'] as List?)
               ?.map((e) => e.toString())
               .where((e) => e.isNotEmpty)
               .toList() ??
@@ -155,29 +165,31 @@ class CmsBanner {
       placement: (m['placement'] as String?) ?? Placements.home,
       sponsored: (m['sponsored'] as bool?) ?? false,
       published: (m['published'] as bool?) ?? false,
+      showToPro: (m['showToPro'] as bool?) ?? true,
       createdAt: ts(m['createdAt']),
       updatedAt: ts(m['updatedAt']),
     );
   }
 
   Map<String, dynamic> toMap() => {
-        'title': title,
-        'imageUrl': imageUrl,
-        'ctaLabel': ctaLabel,
-        'destination': destination,
-        'countries': countries,
-        'category': category,
-        'startDate': startDate != null ? Timestamp.fromDate(startDate!) : null,
-        'endDate': endDate != null ? Timestamp.fromDate(endDate!) : null,
-        'priority': priority,
-        'placement': placement,
-        'sponsored': sponsored,
-        'published': published,
-        'createdAt': createdAt != null
-            ? Timestamp.fromDate(createdAt!)
-            : FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      };
+    'title': title,
+    'imageUrl': imageUrl,
+    'ctaLabel': ctaLabel,
+    'destination': destination,
+    'countries': countries,
+    'category': category,
+    'startDate': startDate != null ? Timestamp.fromDate(startDate!) : null,
+    'endDate': endDate != null ? Timestamp.fromDate(endDate!) : null,
+    'priority': priority,
+    'placement': placement,
+    'sponsored': sponsored,
+    'published': published,
+    'showToPro': showToPro,
+    'createdAt': createdAt != null
+        ? Timestamp.fromDate(createdAt!)
+        : FieldValue.serverTimestamp(),
+    'updatedAt': FieldValue.serverTimestamp(),
+  };
 }
 
 /// A sponsored campaign (PRD §11) — links a sponsor to a resource/placement
@@ -227,11 +239,17 @@ class Campaign {
     DateTime? ts(dynamic v) => (v as Timestamp?)?.toDate();
     return Campaign(
       id: id,
-      company:
-          Validators.sanitizeText((m['company'] as String?) ?? '', maxLength: 120),
-      name: Validators.sanitizeText((m['name'] as String?) ?? '', maxLength: 140),
+      company: Validators.sanitizeText(
+        (m['company'] as String?) ?? '',
+        maxLength: 120,
+      ),
+      name: Validators.sanitizeText(
+        (m['name'] as String?) ?? '',
+        maxLength: 140,
+      ),
       resourceId: m['resourceId'] as String?,
-      countries: (m['countries'] as List?)
+      countries:
+          (m['countries'] as List?)
               ?.map((e) => e.toString())
               .where((e) => e.isNotEmpty)
               .toList() ??
@@ -249,20 +267,20 @@ class Campaign {
   }
 
   Map<String, dynamic> toMap() => {
-        'company': company,
-        'name': name,
-        'resourceId': resourceId,
-        'countries': countries,
-        'targetAudience': targetAudience,
-        'startDate': startDate != null ? Timestamp.fromDate(startDate!) : null,
-        'endDate': endDate != null ? Timestamp.fromDate(endDate!) : null,
-        'placement': placement,
-        'priority': priority,
-        'sponsored': sponsored,
-        'published': published,
-        'createdAt': createdAt != null
-            ? Timestamp.fromDate(createdAt!)
-            : FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      };
+    'company': company,
+    'name': name,
+    'resourceId': resourceId,
+    'countries': countries,
+    'targetAudience': targetAudience,
+    'startDate': startDate != null ? Timestamp.fromDate(startDate!) : null,
+    'endDate': endDate != null ? Timestamp.fromDate(endDate!) : null,
+    'placement': placement,
+    'priority': priority,
+    'sponsored': sponsored,
+    'published': published,
+    'createdAt': createdAt != null
+        ? Timestamp.fromDate(createdAt!)
+        : FieldValue.serverTimestamp(),
+    'updatedAt': FieldValue.serverTimestamp(),
+  };
 }

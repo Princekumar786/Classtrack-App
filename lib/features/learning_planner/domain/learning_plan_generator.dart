@@ -125,6 +125,9 @@ class LearningPlanGenerator {
             : _criteriaFor(t.title, t.objectives),
         difficulty: t.difficulty,
         isReview: t.isReview,
+        actualMinutes: t.actualMinutes,
+        links: t.links,
+        doneSubtopics: t.doneSubtopics,
         status: t.status,
       ));
     }

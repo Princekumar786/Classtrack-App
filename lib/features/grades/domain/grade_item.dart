@@ -12,6 +12,10 @@ class GradeItem {
   final DateTime? date;
   final DateTime? createdAt;
 
+  /// Archived semester this grade belongs to (null = current semester).
+  /// Omitted from [toMap] when null so edits never un-archive it.
+  final String? semesterId;
+
   const GradeItem({
     required this.id,
     this.subjectId,
@@ -21,6 +25,7 @@ class GradeItem {
     this.weight,
     this.date,
     this.createdAt,
+    this.semesterId,
   });
 
   /// Percentage scored on this assessment (0..100, can exceed 100 for bonus).
@@ -49,6 +54,7 @@ class GradeItem {
       weight: clearWeight ? null : (weight ?? this.weight),
       date: clearDate ? null : (date ?? this.date),
       createdAt: createdAt,
+      semesterId: semesterId,
     );
   }
 
@@ -59,6 +65,7 @@ class GradeItem {
         'maxScore': maxScore,
         'weight': weight,
         'date': date != null ? Timestamp.fromDate(date!) : null,
+        if (semesterId != null) 'semesterId': semesterId,
         'createdAt': createdAt != null
             ? Timestamp.fromDate(createdAt!)
             : FieldValue.serverTimestamp(),
@@ -74,6 +81,7 @@ class GradeItem {
       weight: (map['weight'] as num?)?.toDouble(),
       date: (map['date'] as Timestamp?)?.toDate(),
       createdAt: (map['createdAt'] as Timestamp?)?.toDate(),
+      semesterId: map['semesterId'] as String?,
     );
   }
 }

@@ -16,4 +16,20 @@ class PaywallPricing {
     final pct = ((1 - discounted / original) * 100).round();
     return pct >= 1 ? pct : null;
   }
+
+  /// The "compare at" price for a multi-month plan: what the same time would
+  /// cost on the monthly plan ([monthlyPrice] × [months]). Shown struck out
+  /// next to the real [planPrice] (e.g. ₹399 × 3 = ₹1,197 → ₹999).
+  ///
+  /// Null when it isn't a real saving — no monthly price, a 1-month (or
+  /// unknown) plan, bad numbers, or a saving below 1%.
+  static double? compareAtPrice({
+    required double? monthlyPrice,
+    required int? months,
+    required double planPrice,
+  }) {
+    if (monthlyPrice == null || months == null || months < 2) return null;
+    final full = monthlyPrice * months;
+    return percentOff(full, planPrice) == null ? null : full;
+  }
 }

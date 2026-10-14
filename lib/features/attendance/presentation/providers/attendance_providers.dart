@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/providers/firebase_providers.dart';
 import '../../../../core/utils/date_utils.dart';
+import '../../../../services/error_reporter.dart';
 import '../../../subjects/presentation/providers/subject_providers.dart';
 import '../../data/attendance_repository.dart';
 import '../../domain/attendance_record.dart';
@@ -271,6 +272,7 @@ class AttendanceController {
       status: status,
     );
     if (!decision.changed) return false;
+    ErrorReporter.log('mark attendance: ${status.name}');
     attendance
         .setStatus(
           subjectId: subjectId,
@@ -279,8 +281,10 @@ class AttendanceController {
           status: status,
           knownOldStatus: decision.previousStatus,
         )
-        .catchError((_) {
+        .catchError((Object e, StackTrace st) {
       _pending.forget(subjectId: subjectId, dateId: dateId, slot: slot);
+      // A rejected write means the mark was NOT saved — make it visible.
+      ErrorReporter.report(e, st, reason: 'attendance_mark');
     });
     return true;
   }

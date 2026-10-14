@@ -1,11 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:uuid/uuid.dart';
 
+import '../../../../core/providers/firebase_providers.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../services/push_deep_link.dart';
 import '../../../../shared/widgets/ui_kit.dart';
 import '../../domain/marketing.dart';
 import '../providers/cms_marketing_providers.dart';
+
+/// True when a banner destination opens the Pro pricing page. Same rule the
+/// app uses to always hide such banners from Pro users.
+bool _isPaywall(String? destination) =>
+    PushDeepLink.parse(destination) is PaywallDeepLink;
 
 class CmsBannersScreen extends ConsumerWidget {
   const CmsBannersScreen({super.key});
@@ -16,7 +26,8 @@ class CmsBannersScreen extends ConsumerWidget {
     final async = ref.watch(cmsBannersProvider);
 
     void openEditor(CmsBanner? b) => Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => CmsBannerEditorScreen(existing: b)));
+      MaterialPageRoute(settings: const RouteSettings(name: 'Cms Banner Editor'), builder: (_) => CmsBannerEditorScreen(existing: b)),
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -33,8 +44,9 @@ class CmsBannersScreen extends ConsumerWidget {
             children: [
               Text('Banners', style: theme.textTheme.headlineSmall),
               FilledButton.icon(
-                style:
-                    FilledButton.styleFrom(backgroundColor: AppColors.primary),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                ),
                 onPressed: () => openEditor(null),
                 icon: const Icon(Icons.add_rounded),
                 label: const Text('New banner'),
@@ -45,13 +57,17 @@ class CmsBannersScreen extends ConsumerWidget {
         Expanded(
           child: async.when(
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, __) => Center(child: Text('Failed to load banners.\n$e')),
+            error: (e, __) =>
+                Center(child: Text('Failed to load banners.\n$e')),
             data: (banners) {
               if (banners.isEmpty) {
                 return Center(
-                  child: Text('No banners yet.',
-                      style: theme.textTheme.bodyMedium
-                          ?.copyWith(color: theme.hintColor)),
+                  child: Text(
+                    'No banners yet.',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.hintColor,
+                    ),
+                  ),
                 );
               }
               return ListView.separated(
@@ -65,42 +81,57 @@ class CmsBannersScreen extends ConsumerWidget {
                     borderRadius: BorderRadius.circular(14),
                     child: Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 12),
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
                       decoration: softCard(context),
                       child: Row(
                         children: [
-                          const Icon(Icons.view_carousel_rounded,
-                              color: AppColors.primary),
+                          const Icon(
+                            Icons.view_carousel_rounded,
+                            color: AppColors.primary,
+                          ),
                           const SizedBox(width: 14),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(b.title,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: theme.textTheme.titleMedium
-                                        ?.copyWith(
-                                            fontWeight: FontWeight.w600)),
                                 Text(
-                                    '${Placements.label(b.placement)}'
-                                    '${b.isLive() ? ' · live' : ''}',
-                                    style: theme.textTheme.bodySmall
-                                        ?.copyWith(color: theme.hintColor)),
+                                  b.title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                Text(
+                                  '${Placements.label(b.placement)}'
+                                  '${b.isLive() ? ' · live' : ''}'
+                                  '${b.showToPro && !_isPaywall(b.destination) ? '' : ' · free users only'}',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: theme.hintColor,
+                                  ),
+                                ),
                               ],
                             ),
                           ),
                           if (b.sponsored)
                             const Padding(
                               padding: EdgeInsets.only(right: 8),
-                              child: Icon(Icons.star_rounded,
-                                  size: 16, color: AppColors.accent),
+                              child: Icon(
+                                Icons.star_rounded,
+                                size: 16,
+                                color: AppColors.accent,
+                              ),
                             ),
-                          Text(b.published ? 'Published' : 'Draft',
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                  color: b.published
-                                      ? AppColors.success
-                                      : theme.hintColor)),
+                          Text(
+                            b.published ? 'Published' : 'Draft',
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: b.published
+                                  ? AppColors.success
+                                  : theme.hintColor,
+                            ),
+                          ),
                           Switch(
                             value: b.published,
                             onChanged: (v) => ref
@@ -139,8 +170,9 @@ class CmsBannersScreen extends ConsumerWidget {
         content: Text('Delete "$title"?'),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
             onPressed: () => Navigator.pop(ctx, true),
@@ -174,9 +206,11 @@ class _CmsBannerEditorScreenState extends ConsumerState<CmsBannerEditorScreen> {
   String _placement = Placements.home;
   bool _sponsored = false;
   bool _published = false;
+  bool _showToPro = true;
   DateTime? _start;
   DateTime? _end;
   bool _saving = false;
+  bool _uploadingImage = false;
 
   @override
   void initState() {
@@ -193,6 +227,7 @@ class _CmsBannerEditorScreenState extends ConsumerState<CmsBannerEditorScreen> {
       _placement = b.placement;
       _sponsored = b.sponsored;
       _published = b.published;
+      _showToPro = b.showToPro;
       _start = b.startDate;
       _end = b.endDate;
     }
@@ -207,7 +242,7 @@ class _CmsBannerEditorScreenState extends ConsumerState<CmsBannerEditorScreen> {
       _destination,
       _category,
       _countries,
-      _priority
+      _priority,
     ]) {
       c.dispose();
     }
@@ -222,28 +257,34 @@ class _CmsBannerEditorScreenState extends ConsumerState<CmsBannerEditorScreen> {
     final navigator = Navigator.of(context);
     setState(() => _saving = true);
     try {
-      await repo.saveBanner(CmsBanner(
-        id: widget.existing?.id ?? '',
-        title: _title.text.trim(),
-        imageUrl: _nn(_imageUrl.text),
-        ctaLabel: _nn(_cta.text),
-        destination: _nn(_destination.text),
-        category: _nn(_category.text),
-        countries: _list(_countries.text),
-        priority: int.tryParse(_priority.text.trim()) ?? 0,
-        placement: _placement,
-        sponsored: _sponsored,
-        published: _published,
-        startDate: _start,
-        endDate: _end,
-        createdAt: widget.existing?.createdAt,
-      ));
+      await repo.saveBanner(
+        CmsBanner(
+          id: widget.existing?.id ?? '',
+          title: _title.text.trim(),
+          imageUrl: _nn(_imageUrl.text),
+          ctaLabel: _nn(_cta.text),
+          destination: _nn(_destination.text),
+          category: _nn(_category.text),
+          countries: _list(_countries.text),
+          priority: int.tryParse(_priority.text.trim()) ?? 0,
+          placement: _placement,
+          sponsored: _sponsored,
+          published: _published,
+          showToPro: _showToPro,
+          startDate: _start,
+          endDate: _end,
+          createdAt: widget.existing?.createdAt,
+        ),
+      );
       messenger.showSnackBar(const SnackBar(content: Text('Saved ✓')));
       navigator.pop();
     } catch (e) {
-      messenger.showSnackBar(SnackBar(
+      messenger.showSnackBar(
+        SnackBar(
           content: Text('Could not save: $e'),
-          backgroundColor: AppColors.danger));
+          backgroundColor: AppColors.danger,
+        ),
+      );
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -252,6 +293,78 @@ class _CmsBannerEditorScreenState extends ConsumerState<CmsBannerEditorScreen> {
   String? _nn(String s) => s.trim().isEmpty ? null : s.trim();
   List<String> _list(String s) =>
       s.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+
+  /// Allowed raster image types, matching the Storage rules for `cms/media/**`
+  /// (png/jpeg/jpg/webp/gif, under 5 MB). SVG is intentionally excluded.
+  static const int _maxImageBytes = 5 * 1024 * 1024;
+
+  /// Picks an image from the gallery, uploads it to Firebase Storage under
+  /// `cms/media/banners/`, and fills the Image URL field with its public
+  /// download URL. The manual Image URL field still works for external images.
+  Future<void> _pickAndUploadImage() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final XFile? file = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 85,
+      maxWidth: 2000,
+    );
+    if (file == null) return;
+    final bytes = await file.readAsBytes();
+    if (bytes.length > _maxImageBytes) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Image must be under 5 MB.'),
+          backgroundColor: AppColors.danger,
+        ),
+      );
+      return;
+    }
+    final ext = _imageExt(file.name);
+    final contentType = _imageContentType(ext);
+    setState(() => _uploadingImage = true);
+    try {
+      final path = 'cms/media/banners/${const Uuid().v4()}.$ext';
+      final storageRef = ref.read(firebaseStorageProvider).ref().child(path);
+      await storageRef.putData(
+        bytes,
+        SettableMetadata(contentType: contentType),
+      );
+      final url = await storageRef.getDownloadURL();
+      if (!mounted) return;
+      setState(() => _imageUrl.text = url);
+      messenger.showSnackBar(const SnackBar(content: Text('Image uploaded ✓')));
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Upload failed: $e'),
+          backgroundColor: AppColors.danger,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _uploadingImage = false);
+    }
+  }
+
+  /// A Storage-rules-safe extension for [name]; defaults to jpg when unknown.
+  static String _imageExt(String name) {
+    final match = RegExp(r'\.([^.]+)$').firstMatch(name);
+    final ext = match?.group(1)?.toLowerCase();
+    const allowed = {'png', 'jpg', 'jpeg', 'webp', 'gif'};
+    return (ext != null && allowed.contains(ext)) ? ext : 'jpg';
+  }
+
+  static String _imageContentType(String ext) {
+    switch (ext) {
+      case 'png':
+        return 'image/png';
+      case 'webp':
+        return 'image/webp';
+      case 'gif':
+        return 'image/gif';
+      default:
+        return 'image/jpeg';
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -281,36 +394,80 @@ class _CmsBannerEditorScreenState extends ConsumerState<CmsBannerEditorScreen> {
                 ),
                 const SizedBox(height: 12),
                 TextFormField(
-                    controller: _imageUrl,
-                    decoration: const InputDecoration(labelText: 'Image URL')),
+                  controller: _imageUrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Image URL',
+                    helperText: 'Paste a URL or upload an image below.',
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: OutlinedButton.icon(
+                    onPressed: _uploadingImage ? null : _pickAndUploadImage,
+                    icon: _uploadingImage
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.upload_rounded, size: 18),
+                    label: Text(
+                      _uploadingImage ? 'Uploading…' : 'Upload image',
+                    ),
+                  ),
+                ),
                 const SizedBox(height: 12),
                 TextFormField(
-                    controller: _cta,
-                    decoration: const InputDecoration(labelText: 'CTA label')),
+                  controller: _cta,
+                  decoration: const InputDecoration(labelText: 'CTA label'),
+                ),
                 const SizedBox(height: 12),
                 TextFormField(
-                    controller: _destination,
-                    decoration: const InputDecoration(
-                        labelText: 'Destination (URL or route)')),
+                  controller: _destination,
+                  // Refresh the "Show to Pro users" hint as the link changes.
+                  onChanged: (_) => setState(() {}),
+                  decoration: const InputDecoration(
+                    labelText: 'Destination (URL or route)',
+                    helperText: 'Web link, or app://paywall for the Pro page.',
+                  ),
+                ),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: () => setState(
+                      () => _destination.text = PushDeepLink.paywall,
+                    ),
+                    icon: const Icon(Icons.workspace_premium_rounded, size: 18),
+                    label: const Text('Use pricing page'),
+                  ),
+                ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
                   initialValue: _placement,
                   decoration: const InputDecoration(labelText: 'Placement'),
                   items: [
                     for (final p in Placements.all)
-                      DropdownMenuItem(value: p, child: Text(Placements.label(p))),
+                      DropdownMenuItem(
+                        value: p,
+                        child: Text(Placements.label(p)),
+                      ),
                   ],
-                  onChanged: (v) => setState(() => _placement = v ?? _placement),
+                  onChanged: (v) =>
+                      setState(() => _placement = v ?? _placement),
                 ),
                 const SizedBox(height: 12),
                 TextFormField(
-                    controller: _category,
-                    decoration: const InputDecoration(labelText: 'Category')),
+                  controller: _category,
+                  decoration: const InputDecoration(labelText: 'Category'),
+                ),
                 const SizedBox(height: 12),
                 TextFormField(
-                    controller: _countries,
-                    decoration: const InputDecoration(
-                        labelText: 'Countries (comma-separated; "Global" = all)')),
+                  controller: _countries,
+                  decoration: const InputDecoration(
+                    labelText: 'Countries (comma-separated; "Global" = all)',
+                  ),
+                ),
                 const SizedBox(height: 12),
                 TextFormField(
                   controller: _priority,
@@ -322,16 +479,20 @@ class _CmsBannerEditorScreenState extends ConsumerState<CmsBannerEditorScreen> {
                 Row(
                   children: [
                     Expanded(
-                        child: _DateTile(
-                            label: 'Start',
-                            value: _start,
-                            onPick: (d) => setState(() => _start = d))),
+                      child: _DateTile(
+                        label: 'Start',
+                        value: _start,
+                        onPick: (d) => setState(() => _start = d),
+                      ),
+                    ),
                     const SizedBox(width: 12),
                     Expanded(
-                        child: _DateTile(
-                            label: 'End',
-                            value: _end,
-                            onPick: (d) => setState(() => _end = d))),
+                      child: _DateTile(
+                        label: 'End',
+                        value: _end,
+                        onPick: (d) => setState(() => _end = d),
+                      ),
+                    ),
                   ],
                 ),
                 SwitchListTile(
@@ -339,6 +500,22 @@ class _CmsBannerEditorScreenState extends ConsumerState<CmsBannerEditorScreen> {
                   title: const Text('Sponsored'),
                   value: _sponsored,
                   onChanged: (v) => setState(() => _sponsored = v),
+                ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Show to Pro users'),
+                  subtitle: Text(
+                    _isPaywall(_destination.text)
+                        ? 'Pricing-page banners are always hidden from Pro users.'
+                        : _showToPro
+                            ? 'Everyone sees this banner.'
+                            : 'Only free users see this banner.',
+                  ),
+                  value: _showToPro &&
+                      !_isPaywall(_destination.text),
+                  onChanged: _isPaywall(_destination.text)
+                      ? null
+                      : (v) => setState(() => _showToPro = v),
                 ),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
@@ -361,8 +538,11 @@ class _DateTile extends StatelessWidget {
   final String label;
   final DateTime? value;
   final ValueChanged<DateTime?> onPick;
-  const _DateTile(
-      {required this.label, required this.value, required this.onPick});
+  const _DateTile({
+    required this.label,
+    required this.value,
+    required this.onPick,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -384,11 +564,14 @@ class _DateTile extends StatelessWidget {
               ? const Icon(Icons.calendar_today_rounded, size: 18)
               : IconButton(
                   icon: const Icon(Icons.clear_rounded, size: 18),
-                  onPressed: () => onPick(null)),
+                  onPressed: () => onPick(null),
+                ),
         ),
-        child: Text(value == null
-            ? 'Not set'
-            : '${value!.year}-${value!.month.toString().padLeft(2, '0')}-${value!.day.toString().padLeft(2, '0')}'),
+        child: Text(
+          value == null
+              ? 'Not set'
+              : '${value!.year}-${value!.month.toString().padLeft(2, '0')}-${value!.day.toString().padLeft(2, '0')}',
+        ),
       ),
     );
   }

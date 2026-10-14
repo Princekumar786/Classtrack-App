@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
+
+import '../../services/error_reporter.dart';
 
 /// Defensive Firestore document parsing.
 ///
@@ -52,19 +53,11 @@ void _reportBadDoc(
         '${path != null ? ' at $path' : ''}'
         '${context != null ? ' ($context)' : ''}: $error');
   }
-  // Best-effort, non-blocking. Never let telemetry throw over the UI.
-  // Crashlytics has no web implementation, so skip it there.
-  if (kIsWeb) return;
-  try {
-    FirebaseCrashlytics.instance.recordError(
-      error,
-      stack,
-      reason: 'Skipped malformed document'
-          '${context != null ? ' in $context' : ''}'
-          '${path != null ? ' at $path' : ''}',
-      fatal: false,
-    );
-  } catch (_) {
-    // Crashlytics not initialised (e.g. unit tests) — ignore.
-  }
+  // Best-effort, non-blocking, never fatal: both Crashlytics and PostHog.
+  ErrorReporter.report(
+    error,
+    stack,
+    reason: 'bad_doc:${context ?? 'unknown'}',
+    extra: {if (path != null) 'doc_path': path},
+  );
 }

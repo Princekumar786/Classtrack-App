@@ -4,11 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/providers/firebase_providers.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/utils/destination_handler.dart';
 import '../../core/utils/firestore_parsing.dart';
-import '../../core/utils/url_launcher_util.dart';
 import '../../features/auth/presentation/providers/auth_providers.dart';
 import '../../features/cms/domain/marketing.dart';
 import '../../services/analytics_service.dart';
+import '../../services/metrics_service.dart';
 
 /// Live, published banners for a given [placement] (e.g. Opportunities,
 /// Discounts), targeted to the user's country. Reuses the [CmsBanner] model —
@@ -16,7 +17,7 @@ import '../../services/analytics_service.dart';
 final placementBannersProvider =
     StreamProvider.family<List<CmsBanner>, String>((ref, placement) {
   final db = ref.watch(firestoreProvider);
-  final country = ref.watch(userProfileProvider).valueOrNull?.country;
+  final country = ref.watch(effectiveCountryProvider);
   return db
       .collection(AppConstants.bannersCollection)
       .where('published', isEqualTo: true)
@@ -69,13 +70,15 @@ class _PlacementBannerState extends ConsumerState<PlacementBanner> {
     ref
         .read(analyticsProvider)
         .log('banner_viewed', {'id': id, 'placement': widget.placement});
+    ref.read(metricsServiceProvider).recordBanner(id, 'impression');
   }
 
   @override
   Widget build(BuildContext context) {
-    final banners =
+    final banners = visibleBannersFor(
+        ref,
         ref.watch(placementBannersProvider(widget.placement)).valueOrNull ??
-            const [];
+            const []);
     if (banners.isEmpty) return const SizedBox.shrink();
     final banner = banners.first;
     WidgetsBinding.instance.addPostFrameCallback((_) => _logView(banner.id));
@@ -89,9 +92,8 @@ class _PlacementBannerState extends ConsumerState<PlacementBanner> {
   Future<void> _onTap(CmsBanner banner) async {
     ref.read(analyticsProvider).log(
         'banner_clicked', {'id': banner.id, 'placement': widget.placement});
-    if (banner.destination != null && banner.destination!.isNotEmpty) {
-      await openUrl(context, banner.destination);
-    }
+    ref.read(metricsServiceProvider).recordBanner(banner.id, 'click');
+    await handleDestination(context, ref, banner.destination);
   }
 }
 

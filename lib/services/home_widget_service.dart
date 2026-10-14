@@ -13,17 +13,25 @@ import '../features/tasks/presentation/providers/task_providers.dart';
 class HomeWidgetService {
   static const String androidProvider = 'ClassTrackWidgetProvider';
 
+  /// Last snapshot pushed, so unchanged data (e.g. every attendance tap
+  /// re-running the sync) doesn't cost four platform calls each time.
+  String? _lastPushed;
+
   Future<void> update({
     required String title,
     required String line1,
     required String line2,
   }) async {
+    final sig = '$title\n$line1\n$line2';
+    if (sig == _lastPushed) return;
+    _lastPushed = sig;
     try {
       await HomeWidget.saveWidgetData<String>('title', title);
       await HomeWidget.saveWidgetData<String>('line1', line1);
       await HomeWidget.saveWidgetData<String>('line2', line2);
       await HomeWidget.updateWidget(androidName: androidProvider);
     } catch (_) {
+      _lastPushed = null; // retry next time
       // No widget installed / unsupported platform — safe to ignore.
     }
   }

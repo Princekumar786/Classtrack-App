@@ -1,7 +1,7 @@
 name: classtrack
 description: "ClassTrack — Attendance & class schedule tracker with Gemini AI import."
 publish_to: "none"
-version: 1.0.53+55
+version: 1.0.58+60
 
 environment:
   sdk: ">=3.8.0 <4.0.0"
@@ -68,6 +68,9 @@ dependencies:
   google_fonts: ^8.0.0
   flutter_animate: ^4.5.0
   confetti: ^0.8.0
+  # Renders the official multi-colour Google "G" logo (SVG) on the auth
+  # buttons, per Google's sign-in branding guidelines.
+  flutter_svg: ^2.0.10
 
   # Utils
   intl: ^0.20.0
@@ -101,6 +104,7 @@ flutter:
     - assets/fonts/
     - assets/mascot/
     - assets/characters/
+    - assets/brand/
 
   # Bundled fonts. Shipping the .ttf assets locally means the very first frame
   # renders in Poppins/Inter with NO runtime download — removing the launch

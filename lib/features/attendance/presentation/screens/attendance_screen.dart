@@ -69,6 +69,7 @@ class AttendanceScreen extends ConsumerWidget {
                     semanticLabel: 'Add subject',
                     onTap: () => Navigator.of(context).push(
                       MaterialPageRoute(
+                          settings: const RouteSettings(name: 'Edit Subject'),
                           builder: (_) => const EditSubjectScreen()),
                     ),
                   ),
@@ -280,6 +281,7 @@ class _SubjectAttendanceCard extends ConsumerWidget {
             borderRadius: BorderRadius.circular(14),
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute(
+                settings: const RouteSettings(name: 'Subject Detail'),
                 builder: (_) => SubjectDetailScreen(subjectId: subject.id),
               ),
             ),
@@ -868,6 +870,7 @@ class _NoSubjectsView extends ConsumerWidget {
                 onTap: () {
                   Navigator.pop(ctx);
                   Navigator.of(context).push(MaterialPageRoute(
+                      settings: const RouteSettings(name: 'Edit Subject'),
                       builder: (_) => const EditSubjectScreen()));
                 },
               ),
@@ -880,6 +883,7 @@ class _NoSubjectsView extends ConsumerWidget {
                   Navigator.pop(ctx);
                   Navigator.of(context).push(
                     MaterialPageRoute(
+                        settings: const RouteSettings(name: 'Import'),
                         builder: (_) => const ImportScreen(freeAccess: true)),
                   );
                 },

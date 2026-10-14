@@ -17,8 +17,10 @@ import '../../../chat/domain/ai_errors.dart';
 import '../../../subscription/presentation/widgets/upgrade_prompt.dart';
 import '../../../tips/domain/discoverable_feature.dart';
 import '../../../tips/presentation/providers/tips_providers.dart';
+import '../../data/import_draft_store.dart';
 import '../../domain/parsed_schedule.dart';
 import '../providers/import_providers.dart';
+import '../widgets/import_draft_banner.dart';
 import 'review_screen.dart';
 
 class ImportScreen extends ConsumerStatefulWidget {
@@ -108,6 +110,17 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     if (error is FirebaseFunctionsException) {
       switch (error.code) {
         case 'resource-exhausted':
+          // Only the free allowance is an "upgrade" moment. The daily safety
+          // cap (Pro) or a server rate limit must never show the paywall.
+          if (aiErrorReason(error) == 'rate_limit') {
+            _fail('You’ve hit today’s import limit. Please try again tomorrow.');
+            return 'daily_cap';
+          }
+          if (aiErrorReason(error) == null) {
+            // No quota reason = the server itself was overloaded (Cloud Run).
+            _fail('Lots of students are importing right now. Please try again in a minute.');
+            return 'busy';
+          }
           await _showLimitReached();
           return 'limit_reached';
         case 'unauthenticated':
@@ -122,8 +135,10 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
           _showNotATimetableHint();
           return 'not_a_timetable';
         case 'unavailable':
-          _fail('The AI is busy right now — please try again in a moment.');
-          return 'unavailable';
+          _fail(aiErrorReason(error) == 'busy'
+              ? 'Lots of students are importing right now. Please try again in a minute.'
+              : 'The AI is busy right now — please try again in a moment.');
+          return aiErrorReason(error) == 'busy' ? 'busy' : 'unavailable';
         case 'deadline-exceeded':
           _fail('That took too long. Try again, or use a clearer photo or a '
               'smaller PDF.');
@@ -238,9 +253,13 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       );
       // Feature discovery: photo/AI timetable import has now been tried.
       ref.read(featureUsageProvider.notifier).markUsed(FeatureId.photoImport);
+      // Keep the result safe BEFORE the review opens: if the app is killed or
+      // swiped away now, the scan isn't lost and can be resumed.
+      await ref.read(importDraftProvider.notifier).save(result);
+      if (!mounted) return;
       Navigator.of(
         context,
-      ).push(MaterialPageRoute(builder: (_) => ReviewScreen(schedule: result)));
+      ).push(MaterialPageRoute(settings: const RouteSettings(name: 'Review'), builder: (_) => ReviewScreen(schedule: result)));
     } catch (e) {
       final reason = await _handleError(e);
       // Guard: _handleError may await a paywall/dialog, during which the user
@@ -355,6 +374,9 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
                 20 + MediaQuery.of(context).padding.bottom,
               ),
               children: [
+                // An unsaved import from before: offer it first, so the
+                // student doesn't spend another scan re-doing it.
+                const ImportDraftBanner(padding: EdgeInsets.only(bottom: 20)),
                 if (_hint != null) ...[
                   _hintCard(theme, _hint!),
                   const SizedBox(height: 20),

@@ -41,9 +41,12 @@ class _CmsUsersScreenState extends ConsumerState<CmsUsersScreen> {
   Future<void> _apply(CmsRole caller, UserLookup user) async {
     final messenger = ScaffoldMessenger.of(context);
     if (!CmsRole.canAssign(caller, _role)) {
-      messenger.showSnackBar(const SnackBar(
+      messenger.showSnackBar(
+        const SnackBar(
           content: Text('You are not allowed to assign that role.'),
-          backgroundColor: AppColors.danger));
+          backgroundColor: AppColors.danger,
+        ),
+      );
       return;
     }
     final err = await ref
@@ -51,16 +54,22 @@ class _CmsUsersScreenState extends ConsumerState<CmsUsersScreen> {
         .assign(uid: user.uid, roleKey: _role?.key ?? 'none');
     if (!mounted) return;
     if (err == null) {
-      messenger.showSnackBar(SnackBar(
-          content: Text(_role == null
-              ? 'Revoked access for ${user.email}'
-              : 'Granted ${_role!.label} to ${user.email}')));
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            _role == null
+                ? 'Revoked access for ${user.email}'
+                : 'Granted ${_role!.label} to ${user.email}',
+          ),
+        ),
+      );
       setState(() => _roleTouched = false);
       // Refresh the shown current role.
       await ref.read(userLookupControllerProvider.notifier).lookup(user.email);
     } else {
       messenger.showSnackBar(
-          SnackBar(content: Text(err), backgroundColor: AppColors.danger));
+        SnackBar(content: Text(err), backgroundColor: AppColors.danger),
+      );
     }
   }
 
@@ -71,7 +80,8 @@ class _CmsUsersScreenState extends ConsumerState<CmsUsersScreen> {
 
     if (!caller.canManageUsers) {
       return const Center(
-          child: Text('You do not have access to user management.'));
+        child: Text('You do not have access to user management.'),
+      );
     }
 
     final lookup = ref.watch(userLookupControllerProvider);
@@ -89,8 +99,9 @@ class _CmsUsersScreenState extends ConsumerState<CmsUsersScreen> {
               'Find a user by email, review their role & permissions, then grant '
               'or revoke access. Changes take effect on the user\'s next token '
               'refresh and are recorded in the audit log.',
-              style:
-                  theme.textTheme.bodyMedium?.copyWith(color: theme.hintColor),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.hintColor,
+              ),
             ),
             const SizedBox(height: 20),
             Container(
@@ -113,15 +124,19 @@ class _CmsUsersScreenState extends ConsumerState<CmsUsersScreen> {
                   const SizedBox(width: 12),
                   FilledButton.icon(
                     style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.primary,
-                        minimumSize: const Size(0, 56)),
+                      backgroundColor: AppColors.primary,
+                      minimumSize: const Size(0, 56),
+                    ),
                     onPressed: lookup.isLoading ? null : _find,
                     icon: lookup.isLoading
                         ? const SizedBox(
                             width: 16,
                             height: 16,
                             child: CircularProgressIndicator(
-                                strokeWidth: 2, color: Colors.white))
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
                         : const Icon(Icons.search_rounded),
                     label: const Text('Find'),
                   ),
@@ -136,8 +151,11 @@ class _CmsUsersScreenState extends ConsumerState<CmsUsersScreen> {
                 decoration: softCard(context),
                 child: Row(
                   children: [
-                    const Icon(Icons.error_outline_rounded,
-                        color: AppColors.danger, size: 18),
+                    const Icon(
+                      Icons.error_outline_rounded,
+                      color: AppColors.danger,
+                      size: 18,
+                    ),
                     const SizedBox(width: 10),
                     Expanded(child: Text('$e')),
                   ],
@@ -154,12 +172,18 @@ class _CmsUsersScreenState extends ConsumerState<CmsUsersScreen> {
   }
 
   Widget _userCard(
-      ThemeData theme, CmsRole caller, UserLookup user, bool busy) {
+    ThemeData theme,
+    CmsRole caller,
+    UserLookup user,
+    bool busy,
+  ) {
     final currentRole = CmsRole.fromClaim(user.roleKey);
-    final assignable =
-        CmsRole.values.where((r) => CmsRole.canAssign(caller, r)).toList();
+    final assignable = CmsRole.values
+        .where((r) => CmsRole.canAssign(caller, r))
+        .toList();
     // Mirror the server rule: only a super admin may modify an admin/super admin.
-    final locked = currentRole != null &&
+    final locked =
+        currentRole != null &&
         currentRole.rank >= CmsRole.admin.rank &&
         caller != CmsRole.superAdmin;
 
@@ -179,7 +203,9 @@ class _CmsUsersScreenState extends ConsumerState<CmsUsersScreen> {
                           : user.email[0])
                       .toUpperCase(),
                   style: const TextStyle(
-                      color: AppColors.primary, fontWeight: FontWeight.w700),
+                    color: AppColors.primary,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
@@ -187,42 +213,62 @@ class _CmsUsersScreenState extends ConsumerState<CmsUsersScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(user.displayName ?? user.email,
-                        style: theme.textTheme.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w700)),
-                    Text(user.email,
-                        style: theme.textTheme.bodySmall
-                            ?.copyWith(color: theme.hintColor)),
+                    Text(
+                      user.displayName ?? user.email,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Text(
+                      user.email,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.hintColor,
+                      ),
+                    ),
                   ],
                 ),
               ),
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
                 decoration: BoxDecoration(
-                  color: (currentRole == null ? theme.hintColor : AppColors.primary)
-                      .withValues(alpha: 0.14),
+                  color:
+                      (currentRole == null
+                              ? theme.hintColor
+                              : AppColors.primary)
+                          .withValues(alpha: 0.14),
                   borderRadius: BorderRadius.circular(20),
                 ),
-                child: Text(currentRole?.label ?? 'No access',
-                    style: TextStyle(
-                        color: currentRole == null
-                            ? theme.hintColor
-                            : AppColors.primary,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700)),
+                child: Text(
+                  currentRole?.label ?? 'No access',
+                  style: TextStyle(
+                    color: currentRole == null
+                        ? theme.hintColor
+                        : AppColors.primary,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ),
             ],
           ),
           const SizedBox(height: 14),
-          Text('Permissions',
-              style: theme.textTheme.labelLarge
-                  ?.copyWith(fontWeight: FontWeight.w700)),
+          Text(
+            'Permissions',
+            style: theme.textTheme.labelLarge?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
           const SizedBox(height: 6),
           if (currentRole == null)
-            Text('No CMS access.',
-                style:
-                    theme.textTheme.bodySmall?.copyWith(color: theme.hintColor))
+            Text(
+              'No CMS access.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.hintColor,
+              ),
+            )
           else
             Wrap(
               spacing: 8,
@@ -230,42 +276,61 @@ class _CmsUsersScreenState extends ConsumerState<CmsUsersScreen> {
               children: [
                 for (final p in currentRole.permissionLabels)
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
                     decoration: BoxDecoration(
                       color: AppColors.success.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(20),
                     ),
-                    child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      const Icon(Icons.check_rounded,
-                          size: 13, color: AppColors.success),
-                      const SizedBox(width: 4),
-                      Text(p,
-                          style: theme.textTheme.labelSmall
-                              ?.copyWith(color: AppColors.success)),
-                    ]),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.check_rounded,
+                          size: 13,
+                          color: AppColors.success,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          p,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: AppColors.success,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
               ],
             ),
           const Divider(height: 28),
           if (locked)
-            Row(children: [
-              const Icon(Icons.lock_outline_rounded,
-                  size: 16, color: AppColors.warning),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
+            Row(
+              children: [
+                const Icon(
+                  Icons.lock_outline_rounded,
+                  size: 16,
+                  color: AppColors.warning,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
                     'Only a super admin can modify an admin or super admin.',
-                    style: theme.textTheme.bodySmall),
-              ),
-            ])
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ),
+              ],
+            )
           else ...[
             DropdownButtonFormField<CmsRole?>(
               initialValue: _roleTouched ? _role : null,
               decoration: const InputDecoration(labelText: 'Change role to'),
               items: [
                 const DropdownMenuItem<CmsRole?>(
-                    value: null, child: Text('Revoke access (none)')),
+                  value: null,
+                  child: Text('Revoke access (none)'),
+                ),
                 for (final r in assignable)
                   DropdownMenuItem<CmsRole?>(value: r, child: Text(r.label)),
               ],
@@ -277,20 +342,25 @@ class _CmsUsersScreenState extends ConsumerState<CmsUsersScreen> {
             const SizedBox(height: 16),
             FilledButton.icon(
               style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  minimumSize: const Size.fromHeight(48)),
-              onPressed:
-                  (!_roleTouched || busy) ? null : () => _apply(caller, user),
+                backgroundColor: AppColors.primary,
+                minimumSize: const Size.fromHeight(48),
+              ),
+              onPressed: (!_roleTouched || busy)
+                  ? null
+                  : () => _apply(caller, user),
               icon: busy
                   ? const SizedBox(
                       width: 16,
                       height: 16,
                       child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white))
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
                   : const Icon(Icons.verified_user_rounded),
-              label: Text(_roleTouched && _role == null
-                  ? 'Revoke access'
-                  : 'Apply role'),
+              label: Text(
+                _roleTouched && _role == null ? 'Revoke access' : 'Apply role',
+              ),
             ),
           ],
         ],

@@ -67,24 +67,33 @@ class _CmsLoginScreenState extends ConsumerState<CmsLoginScreen> {
                             width: 44,
                             height: 44,
                             decoration: BoxDecoration(
-                              gradient: const LinearGradient(colors: [
-                                AppColors.primaryLight,
-                                AppColors.primary
-                              ]),
+                              gradient: const LinearGradient(
+                                colors: [
+                                  AppColors.primaryLight,
+                                  AppColors.primary,
+                                ],
+                              ),
                               borderRadius: BorderRadius.circular(14),
                             ),
-                            child: const Icon(Icons.dashboard_customize_rounded,
-                                color: Colors.white),
+                            child: const Icon(
+                              Icons.dashboard_customize_rounded,
+                              color: Colors.white,
+                            ),
                           ),
                           const SizedBox(width: 12),
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text('ClassTracks CMS',
-                                  style: theme.textTheme.titleLarge),
-                              Text('Content management',
-                                  style: theme.textTheme.bodySmall
-                                      ?.copyWith(color: theme.hintColor)),
+                              Text(
+                                'ClassTracks CMS',
+                                style: theme.textTheme.titleLarge,
+                              ),
+                              Text(
+                                'Content management',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.hintColor,
+                                ),
+                              ),
                             ],
                           ),
                         ],
@@ -110,9 +119,11 @@ class _CmsLoginScreenState extends ConsumerState<CmsLoginScreen> {
                           labelText: 'Password',
                           prefixIcon: const Icon(Icons.lock_outline_rounded),
                           suffixIcon: IconButton(
-                            icon: Icon(_obscure
-                                ? Icons.visibility_outlined
-                                : Icons.visibility_off_outlined),
+                            icon: Icon(
+                              _obscure
+                                  ? Icons.visibility_outlined
+                                  : Icons.visibility_off_outlined,
+                            ),
                             onPressed: () =>
                                 setState(() => _obscure = !_obscure),
                           ),
@@ -132,13 +143,19 @@ class _CmsLoginScreenState extends ConsumerState<CmsLoginScreen> {
                           ),
                           child: Row(
                             children: [
-                              const Icon(Icons.error_outline_rounded,
-                                  color: AppColors.danger, size: 18),
+                              const Icon(
+                                Icons.error_outline_rounded,
+                                color: AppColors.danger,
+                                size: 18,
+                              ),
                               const SizedBox(width: 8),
                               Expanded(
-                                child: Text(error,
-                                    style: theme.textTheme.bodySmall
-                                        ?.copyWith(color: AppColors.danger)),
+                                child: Text(
+                                  error,
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: AppColors.danger,
+                                  ),
+                                ),
                               ),
                             ],
                           ),
@@ -156,7 +173,9 @@ class _CmsLoginScreenState extends ConsumerState<CmsLoginScreen> {
                                 width: 20,
                                 height: 20,
                                 child: CircularProgressIndicator(
-                                    strokeWidth: 2, color: Colors.white),
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
                               )
                             : const Text('Sign in'),
                       ),
@@ -164,8 +183,9 @@ class _CmsLoginScreenState extends ConsumerState<CmsLoginScreen> {
                       Text(
                         'Access is restricted to authorised CMS staff.',
                         textAlign: TextAlign.center,
-                        style: theme.textTheme.bodySmall
-                            ?.copyWith(color: theme.hintColor),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.hintColor,
+                        ),
                       ),
                     ],
                   ),

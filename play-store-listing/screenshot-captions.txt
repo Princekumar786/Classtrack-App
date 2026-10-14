@@ -1,32 +1,36 @@
-SCREENSHOT CAPTIONS (the headline text on each Play Store screenshot)
-Keep them to 2-5 words and order them like this. Screens 1-3 matter most:
-most people only see those in search results.
+SCREENSHOT CAPTIONS
+Use 2-5 words for each headline. Screens 1-3 do most of the conversion work.
+Show the feature named in the caption clearly; do not use a collage for the first screen.
 
-1. Never drop below 75%
-   Screen: dashboard with the attendance ring + bunk calculator ("You can skip 2 more classes")
+1. Keep attendance on track
+   Screen: attendance dashboard and bunk calculator. Show a clear result such as "You can skip 2 classes".
 
-2. Snap your timetable. Done.
-   Screen: AI import - photo of a timetable turning into a weekly schedule
+2. Import your timetable
+   Screen: timetable photo or PDF becoming a weekly class schedule.
 
-3. Your week at a glance
-   Screen: weekly timetable view, colour-coded subjects
+3. Plan every class
+   Screen: clean weekly timetable with colour-coded subjects.
 
-4. Every deadline, handled
-   Screen: tasks + exam countdowns
+4. Never miss a deadline
+   Screen: homework list and exam countdowns.
 
-5. An AI study planner
-   Screen: AI weekly planner / AI assistant chat
+5. Build your study plan
+   Screen: AI weekly planner or study assistant.
 
-6. Scholarships & student deals
-   Screen: opportunities feed (internships, scholarships, discounts)
+6. Find student opportunities
+   Screen: scholarships, internships and discounts feed.
 
-7. Know your GPA
-   Screen: grades & GPA card
+7. Track GPA goals
+   Screen: grades and GPA target card.
 
-8. Notes, flashcards & focus
-   Screen: notes with flashcards or the focus timer
+8. Notes, flashcards, focus
+   Screen: smart notes with flashcards, or focus timer.
 
+FEATURE GRAPHIC (1024 x 500)
+Headline: Attendance tracker for students
+Sub-line: Bunk calculator | Timetable | Homework | Exam planner
 
-FEATURE GRAPHIC (1024x500) text
-Headline: Never drop below 75% attendance
-Sub-line: Attendance • Timetable • Homework • AI planner
+DESIGN CHECK
+- Use one benefit-led message, large readable text and real in-app UI in every image.
+- Keep the first screenshot about attendance, not AI or a generic dashboard.
+- Do not add ratings, prices, "best", "#1", download claims or competitor names to graphics.

@@ -25,10 +25,24 @@ final gradesForSubjectProvider =
   return all.where((g) => g.subjectId == subjectId).toList();
 });
 
-/// Grades not linked to any subject.
+/// Grades not linked to any current subject: no subject at all, or pointing at
+/// a subject that no longer exists (deleted before the unlink fix). Orphans are
+/// only detected once subjects have loaded, so nothing flickers in on start-up.
 final unassignedGradesProvider = Provider<List<GradeItem>>((ref) {
   final all = ref.watch(gradesStreamProvider).valueOrNull ?? const [];
-  return all.where((g) => g.subjectId == null).toList();
+  final subjects = ref.watch(subjectsStreamProvider).valueOrNull;
+  final ids = subjects?.map((s) => s.id).toSet();
+  return all
+      .where((g) =>
+          g.subjectId == null || (ids != null && !ids.contains(g.subjectId)))
+      .toList();
+});
+
+/// Every grade, including archived semesters (Past semesters screens).
+final allGradesStreamProvider = StreamProvider<List<GradeItem>>((ref) {
+  final repo = ref.watch(gradeRepositoryProvider);
+  if (repo == null) return Stream.value(const []);
+  return repo.watchAllGrades();
 });
 
 /// Aggregated grade for one subject.

@@ -50,3 +50,8 @@ firebase-debug.log
 
 # Node
 node_modules/
+
+# Local Flutter logs
+_flog.txt
+# Crashlytics symbol tool (downloaded by the Firebase CLI)
+.crashlytics/

@@ -100,6 +100,33 @@ else {
 }
 if ($LASTEXITCODE -ne 0) { Fail "flutter build failed." }
 
+# --- Upload Dart symbols to Crashlytics ------------------------------------
+# The build is obfuscated, so without these symbols every Dart crash in
+# Firebase Crashlytics shows unreadable frames. The Gradle plugin uploads the
+# Android (R8) mapping by itself, but NOT the Dart symbols. Needs the Firebase
+# CLI (npm i -g firebase-tools) and `firebase login`. A failure here does not
+# fail the build: re-run the printed command later (keep build/debug-info!).
+$crashlyticsAppId = if ($Ios) { $env:FIREBASE_IOS_APP_ID } else { "1:401205940629:android:caaf9d27160a016651a69c" }
+if (-not [string]::IsNullOrWhiteSpace($crashlyticsAppId)) {
+    # The symbol tool needs `java`. Use Android Studio's bundled one when Java
+    # isn't installed separately.
+    if (-not (Get-Command java -ErrorAction SilentlyContinue)) {
+        $jbr = @("C:\Program Files\Android\Android Studio\jbr", "$env:LOCALAPPDATA\Programs\Android Studio\jbr") |
+            Where-Object { Test-Path "$_\bin\java.exe" } | Select-Object -First 1
+        if ($jbr) { $env:JAVA_HOME = $jbr; $env:Path = "$jbr\bin;$env:Path" }
+    }
+    $uploadCmd = "firebase crashlytics:symbols:upload --app=$crashlyticsAppId build/debug-info"
+    Write-Host "==> $uploadCmd" -ForegroundColor Cyan
+    try {
+        firebase crashlytics:symbols:upload --app=$crashlyticsAppId build/debug-info
+        if ($LASTEXITCODE -ne 0) { throw "exit $LASTEXITCODE" }
+    } catch {
+        Write-Host "WARNING: symbol upload failed ($_). Run later: $uploadCmd" -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "WARNING: set FIREBASE_IOS_APP_ID to upload iOS Dart symbols to Crashlytics." -ForegroundColor Yellow
+}
+
 # --- Report artifact path -------------------------------------------------
 $artifact = if ($Ios) {
     "build/ios/ipa/*.ipa"

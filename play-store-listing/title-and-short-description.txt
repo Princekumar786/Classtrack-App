@@ -1,22 +1,24 @@
-APP TITLE (max 30 characters)
-=============================
+APP NAME (max 30 characters)
+============================
 
-USE THIS ONE:
+PUBLISH NOW:
 ClassTrack: Attendance Tracker
 
-Other options for a Store Listing Experiment:
+This uses the strongest precise search term while keeping the ClassTrack name.
+
+OPTIONS FOR A STORE LISTING EXPERIMENT (test one at a time):
 ClassTrack: Student Planner
-ClassTrack - Timetable & Tasks
+ClassTrack: Timetable & Tasks
 
 
 SHORT DESCRIPTION (max 80 characters)
 =====================================
 
-USE THIS ONE (A):
-Stay above 75% attendance. AI timetable, homework, exams & GPA in one app
+PUBLISH NOW (A - 76 characters):
+Attendance tracker & bunk calculator with timetable, homework, exams and GPA
 
-B (test against A):
-Attendance tracker with bunk calculator, timetable, homework & exam planner
+B (test after A):
+Stay above 75% attendance with timetable, homework, exams and GPA
 
-C (test against A):
-Snap your timetable, track attendance and never miss an assignment or exam
+C (test after A):
+Track attendance, plan classes and manage homework, exams and GPA

@@ -147,8 +147,9 @@ class _CmsShellState extends ConsumerState<CmsShell> {
 
   Widget _buildShell(BuildContext context, CmsRole role, String email) {
     final theme = Theme.of(context);
-    final sections =
-        cmsSections.where((s) => s.visibleTo(role)).toList(growable: false);
+    final sections = cmsSections
+        .where((s) => s.visibleTo(role))
+        .toList(growable: false);
     if (_index >= sections.length) _index = 0;
 
     return Scaffold(
@@ -166,11 +167,15 @@ class _CmsShellState extends ConsumerState<CmsShell> {
                 height: 40,
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
-                      colors: [AppColors.primaryLight, AppColors.primary]),
+                    colors: [AppColors.primaryLight, AppColors.primary],
+                  ),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(Icons.dashboard_customize_rounded,
-                    color: Colors.white, size: 22),
+                child: const Icon(
+                  Icons.dashboard_customize_rounded,
+                  color: Colors.white,
+                  size: 22,
+                ),
               ),
             ),
             destinations: [
@@ -221,9 +226,13 @@ class _TopBar extends ConsumerWidget {
               color: AppColors.primary.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(20),
             ),
-            child: Text(role.label,
-                style: theme.textTheme.labelMedium?.copyWith(
-                    color: AppColors.primary, fontWeight: FontWeight.w700)),
+            child: Text(
+              role.label,
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: AppColors.primary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ),
           const SizedBox(width: 12),
           Text(email, style: theme.textTheme.bodySmall),
@@ -261,8 +270,11 @@ class _NoAccess extends ConsumerWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.lock_person_rounded,
-                  size: 56, color: AppColors.danger),
+              const Icon(
+                Icons.lock_person_rounded,
+                size: 56,
+                color: AppColors.danger,
+              ),
               const SizedBox(height: 16),
               Text('No CMS access', style: theme.textTheme.headlineSmall),
               const SizedBox(height: 8),
@@ -270,8 +282,9 @@ class _NoAccess extends ConsumerWidget {
                 'This account is signed in but has not been granted a CMS role. '
                 'Ask a super admin to grant you access.',
                 textAlign: TextAlign.center,
-                style:
-                    theme.textTheme.bodyMedium?.copyWith(color: theme.hintColor),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.hintColor,
+                ),
               ),
               const SizedBox(height: 24),
               OutlinedButton.icon(

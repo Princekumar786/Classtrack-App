@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -6,7 +8,11 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/date_utils.dart';
 import '../../../../services/analytics_service.dart';
 import '../../../../shared/widgets/buttons.dart';
+import '../../../semesters/domain/semester.dart';
+import '../../../semesters/presentation/screens/wrap_up_semester_screen.dart';
+import '../../../subjects/presentation/providers/subject_providers.dart';
 import '../../domain/parsed_schedule.dart';
+import '../../data/import_draft_store.dart';
 import '../../data/import_repository.dart';
 import '../providers/import_providers.dart';
 
@@ -20,14 +26,94 @@ class ReviewScreen extends ConsumerStatefulWidget {
   ConsumerState<ReviewScreen> createState() => _ReviewScreenState();
 }
 
-class _ReviewScreenState extends ConsumerState<ReviewScreen> {
+class _ReviewScreenState extends ConsumerState<ReviewScreen>
+    with WidgetsBindingObserver {
   late ParsedSchedule _schedule;
   bool _saving = false;
+
+  /// Unsaved-import draft (see [ImportDraftStore]). Cached so it can still be
+  /// flushed from [dispose], when `ref` must no longer be used.
+  late final ImportDraftStore _drafts;
+  Timer? _persistTimer;
+
+  /// True once the import is saved or discarded: stop writing the draft.
+  bool _finished = false;
 
   @override
   void initState() {
     super.initState();
     _schedule = widget.schedule;
+    _drafts = ref.read(importDraftProvider.notifier);
+    WidgetsBinding.instance.addObserver(this);
+    _schedulePersist();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _persistTimer?.cancel();
+    // Leaving with unsaved edits (e.g. a back gesture we didn't intercept):
+    // keep the latest version.
+    if (!_finished) _drafts.saveSoon(_schedule);
+    super.dispose();
+  }
+
+  /// Every UI change in this screen goes through setState, so autosave hooks
+  /// in here (debounced) instead of at each of the many edit points.
+  @override
+  void setState(VoidCallback fn) {
+    super.setState(fn);
+    _schedulePersist();
+  }
+
+  void _schedulePersist() {
+    if (_finished) return;
+    _persistTimer?.cancel();
+    _persistTimer = Timer(const Duration(milliseconds: 600), _persistNow);
+  }
+
+  void _persistNow() {
+    _persistTimer?.cancel();
+    if (_finished) return;
+    _drafts.save(_schedule);
+  }
+
+  /// The OS may kill a backgrounded app without warning: flush immediately.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) _persistNow();
+  }
+
+  /// Back without saving: keep the draft for later, discard it, or stay.
+  Future<void> _onBack() async {
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Leave without saving?'),
+        content: const Text(
+            'Your scanned timetable isn’t in ClassTrack yet. Keep it to finish '
+            'later, or discard it.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, 'discard'),
+              child: const Text('Discard',
+                  style: TextStyle(color: AppColors.danger))),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, 'keep'),
+              child: const Text('Keep for later')),
+        ],
+      ),
+    );
+    if (!mounted || choice == null) return;
+    if (choice == 'discard') {
+      _finished = true;
+      _persistTimer?.cancel();
+      await _drafts.clear();
+      ref.read(analyticsProvider).log('import_draft_discarded');
+    } else {
+      _persistNow();
+    }
+    if (mounted) Navigator.of(context).pop();
   }
 
   Color _confidenceColor() => switch (_schedule.confidence) {
@@ -68,12 +154,80 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
       .where((s) => _timeIssue(s) != null)
       .length;
 
+  /// Asked once per review: a reply of "add anyway" isn't asked again.
+  bool _semesterAsked = false;
+
+  /// When the import looks like a NEW semester's timetable while old subjects
+  /// are still current, offer to wrap up the old semester first (Pro).
+  /// Returns false when the save should stop (user cancelled, or went to the
+  /// wrap-up screen and backed out).
+  Future<bool> _maybeOfferWrapUp() async {
+    if (_semesterAsked) return true;
+    var current = ref.read(subjectsStreamProvider).valueOrNull;
+    if (current == null) {
+      try {
+        current = await ref
+            .read(subjectsStreamProvider.future)
+            .timeout(const Duration(seconds: 3));
+      } catch (_) {
+        return true; // can't tell: never block the import
+      }
+      if (!mounted) return false;
+    }
+    final existing = current;
+    final incoming = [
+      for (final s in _schedule.subjects)
+        if (s.include) s.name,
+    ];
+    if (!looksLikeNewSemester(
+        existingNames: existing.map((s) => s.name),
+        incomingNames: incoming)) {
+      return true;
+    }
+    _semesterAsked = true;
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Starting a new semester?'),
+        content: Text(
+            'You still have ${existing.length} subject'
+            '${existing.length == 1 ? '' : 's'} from your current semester. '
+            'Wrap it up first to save its marks, exams and attendance '
+            'separately, so your new timetable and GPA start fresh.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, 'add'),
+              child: const Text('Just add these')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, 'wrap'),
+              child: const Text('Wrap up first')),
+        ],
+      ),
+    );
+    if (!mounted) return false;
+    ref.read(analyticsProvider).log('import_new_semester_prompt',
+        {'choice': choice ?? 'dismissed'});
+    if (choice == 'add') return true;
+    if (choice != 'wrap') {
+      _semesterAsked = false; // dismissed: ask again next time
+      return false;
+    }
+    final wrapped = await startSemesterWrapUp(context, ref, returnWhenDone: true);
+    // Wrapped up → import into the fresh semester. Backed out → stay here.
+    return wrapped && mounted;
+  }
+
   Future<void> _commit() async {
     final repo = ref.read(importRepositoryProvider);
     if (repo == null) return;
+    if (!await _maybeOfferWrapUp()) return;
     setState(() => _saving = true);
     try {
       final result = await repo.commit(_schedule);
+      // Saved to Firestore (syncs everywhere): the local draft is done.
+      _finished = true;
+      _persistTimer?.cancel();
+      await _drafts.clear();
       if (!mounted) return;
       ref
           .read(analyticsProvider)
@@ -173,7 +327,12 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Scaffold(
+    return PopScope(
+      canPop: _finished,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _onBack();
+      },
+      child: Scaffold(
       appBar: AppBar(title: const Text('Review & confirm')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
@@ -234,6 +393,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
           ),
         ),
       ),
+      ),
     );
   }
 
@@ -260,7 +420,10 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                       ? 'No due date'
                       : 'Due ${DateUtilsX.prettyDate(task.due!)}',
                 ),
-                onChanged: (v) => task.title = v,
+                onChanged: (v) {
+                  task.title = v;
+                  _schedulePersist();
+                },
               ),
             ),
             IconButton(
@@ -299,7 +462,10 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                       border: InputBorder.none,
                       hintText: 'Subject name',
                     ),
-                    onChanged: (v) => subject.name = v,
+                    onChanged: (v) {
+                      subject.name = v;
+                      _schedulePersist();
+                    },
                   ),
                 ),
                 IconButton(
@@ -321,7 +487,10 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                 labelText: 'Professor (optional)',
                 prefixIcon: Icon(Icons.school_outlined),
               ),
-              onChanged: (v) => subject.professor = v,
+              onChanged: (v) {
+                subject.professor = v;
+                _schedulePersist();
+              },
             ),
             const SizedBox(height: 12),
             TextFormField(
@@ -332,7 +501,10 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                 labelText: 'Class link (Zoom / Meet / Teams)',
                 prefixIcon: Icon(Icons.videocam_outlined),
               ),
-              onChanged: (v) => subject.classLink = v,
+              onChanged: (v) {
+                subject.classLink = v;
+                _schedulePersist();
+              },
             ),
             const SizedBox(height: 14),
             Row(

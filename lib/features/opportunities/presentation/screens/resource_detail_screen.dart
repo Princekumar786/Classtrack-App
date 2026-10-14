@@ -16,6 +16,7 @@ import '../../data/resource_repository.dart';
 import '../../domain/resource.dart';
 import '../../domain/resource_status.dart';
 import '../providers/opportunities_providers.dart';
+import '../widgets/content_blocks_view.dart';
 import '../widgets/resource_card.dart';
 
 /// Full detail page for a [Resource]. Handles save/share, external apply /
@@ -48,7 +49,7 @@ class _ResourceDetailScreenState extends ConsumerState<ResourceDetailScreen> {
     // Safety net: never open the link while the resource is "Opening soon".
     if (r.effectiveStatus == ResourceStatus.openingSoon) return;
     // Discounts resolve to the viewer's country-specific link when one exists.
-    final country = ref.read(userProfileProvider).valueOrNull?.country;
+    final country = ref.read(effectiveCountryProvider);
     final resolved = r.effectiveOffer(country);
     final url = r.type.isDiscount
         ? (resolved.url ?? r.affiliateUrl ?? r.applicationUrl)
@@ -152,11 +153,13 @@ class _ResourceDetailScreenState extends ConsumerState<ResourceDetailScreen> {
     final isDiscount = r.type.isDiscount;
     final match = ref.watch(resourceScoreProvider(r));
     final resolvedOffer =
-        r.effectiveOffer(ref.watch(userProfileProvider).valueOrNull?.country);
+        r.effectiveOffer(ref.watch(effectiveCountryProvider));
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(r.type.label),
+        // No title: with three actions it truncated ("Student discou…"), and
+        // the hero card below already shows the type pill.
+        scrolledUnderElevation: 0,
         actions: [
           IconButton(
             icon: Icon(isSaved
@@ -194,92 +197,133 @@ class _ResourceDetailScreenState extends ConsumerState<ResourceDetailScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              ResourceThumb(resource: r, size: 64, preferLogo: true),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
+          // ── Hero identity card ──────────────────────────────────────────
+          // Groups the logo, title, brand and status pills into one cohesive
+          // header so the "what/who/state" reads at a glance.
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(18),
+            decoration: softCard(context),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(r.title, style: theme.textTheme.titleLarge),
-                    const SizedBox(height: 4),
-                    Text(r.brandName,
-                        style: theme.textTheme.bodyMedium
-                            ?.copyWith(color: theme.hintColor)),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(18),
+                      child: ResourceThumb(
+                          resource: r, size: 72, preferLogo: true),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(r.title,
+                              style: theme.textTheme.titleLarge?.copyWith(
+                                  fontWeight: FontWeight.w800, height: 1.2)),
+                          if (_showBrand) ...[
+                            const SizedBox(height: 6),
+                            Row(
+                              children: [
+                                Flexible(
+                                  child: Text(r.brandName,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: theme.textTheme.bodyMedium
+                                          ?.copyWith(
+                                              color: theme.hintColor,
+                                              fontWeight: FontWeight.w600)),
+                                ),
+                                if (r.verified) ...[
+                                  const SizedBox(width: 6),
+                                  const Icon(Icons.verified_rounded,
+                                      size: 16, color: AppColors.info),
+                                ],
+                              ],
+                            ),
+                          ] else if (r.verified) ...[
+                            const SizedBox(height: 6),
+                            Row(
+                              children: [
+                                const Icon(Icons.verified_rounded,
+                                    size: 16, color: AppColors.info),
+                                const SizedBox(width: 4),
+                                Text('Verified partner',
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                        color: AppColors.info,
+                                        fontWeight: FontWeight.w600)),
+                              ],
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
                   ],
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              ResourcePill(
-                  label: r.type.label,
-                  color: r.type.color,
-                  icon: r.type.icon),
-              if (!isDiscount && match.personalized && match.score > 0)
-                ResourcePill(
-                  label: '${match.score}% · ${match.tier.label}',
-                  color: AppColors.success,
-                  icon: Icons.auto_awesome_rounded,
+                const SizedBox(height: 16),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    ResourcePill(
+                        label: r.type.label,
+                        color: r.type.color,
+                        icon: r.type.icon),
+                    if (!isDiscount && match.personalized && match.score > 0)
+                      ResourcePill(
+                        label: '${match.score}% · ${match.tier.label}',
+                        color: AppColors.success,
+                        icon: Icons.auto_awesome_rounded,
+                      ),
+                    ResourcePill(label: status.label, color: status.color),
+                    if (r.sponsored)
+                      const ResourcePill(
+                          label: 'Sponsored', color: AppColors.accent),
+                    if (r.remote == true)
+                      const ResourcePill(
+                          label: 'Remote', color: AppColors.primary),
+                    if (r.paid == true)
+                      const ResourcePill(
+                          label: 'Paid', color: AppColors.success),
+                  ],
                 ),
-              ResourcePill(label: status.label, color: status.color),
-              if (r.sponsored)
-                const ResourcePill(label: 'Sponsored', color: AppColors.accent),
-              if (r.verified)
-                const ResourcePill(
-                    label: 'Verified',
-                    color: AppColors.info,
-                    icon: Icons.verified_rounded),
-              if (r.remote == true)
-                const ResourcePill(label: 'Remote', color: AppColors.primary),
-              if (r.paid == true)
-                const ResourcePill(label: 'Paid', color: AppColors.success),
-            ],
+              ],
+            ),
           ),
           const SizedBox(height: 16),
-          if (isDiscount && (resolvedOffer.discountText?.isNotEmpty ?? false))
+          if (isDiscount &&
+              (resolvedOffer.discountText?.isNotEmpty ?? false)) ...[
             _discountBanner(theme, resolvedOffer.discountText!),
+          ],
           if (r.deadline != null) _deadlineCard(theme),
-          if (r.description.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            _section(theme, 'About'),
-            Text(r.description, style: theme.textTheme.bodyMedium),
-          ],
-          if (!isDiscount && r.benefits != null && r.benefits!.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            _section(theme, 'Benefits'),
-            Text(r.benefits!, style: theme.textTheme.bodyMedium),
-          ],
-          if (r.eligibility != null && r.eligibility!.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            _section(theme, 'Eligibility'),
-            Text(r.eligibility!, style: theme.textTheme.bodyMedium),
-          ],
+          if (r.description.isNotEmpty)
+            _sectionCard(theme, 'About', Icons.info_outline_rounded,
+                ContentBlocksView(text: r.description, collapsible: true)),
+          if (!isDiscount && r.benefits != null && r.benefits!.isNotEmpty)
+            _sectionCard(theme, 'Benefits', Icons.emoji_events_outlined,
+                ContentBlocksView(
+                    text: r.benefits!, accent: AppColors.success)),
+          if (r.eligibility != null && r.eligibility!.isNotEmpty)
+            _sectionCard(theme, 'Eligibility', Icons.how_to_reg_outlined,
+                ContentBlocksView(text: r.eligibility!)),
           if (!isDiscount &&
               r.howToApply != null &&
-              r.howToApply!.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            _section(theme, 'How to apply'),
-            Text(r.howToApply!, style: theme.textTheme.bodyMedium),
-          ],
+              r.howToApply!.isNotEmpty)
+            _sectionCard(theme, 'How to apply', Icons.route_rounded,
+                ContentBlocksView(text: r.howToApply!)),
           if (isDiscount &&
               r.redemptionInstructions != null &&
-              r.redemptionInstructions!.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            _section(theme, 'How to redeem'),
-            Text(r.redemptionInstructions!, style: theme.textTheme.bodyMedium),
-          ],
+              r.redemptionInstructions!.isNotEmpty)
+            _sectionCard(theme, 'How to redeem', Icons.route_rounded,
+                ContentBlocksView(text: r.redemptionInstructions!)),
           if (isDiscount && r.verificationRequired) ...[
             const SizedBox(height: 12),
             Container(
-              padding: const EdgeInsets.all(12),
-              decoration: softCard(context),
+              padding: const EdgeInsets.all(14),
+              decoration: softCard(context,
+                  color: AppColors.info.withValues(alpha: 0.08), shadow: false),
               child: Row(
                 children: [
                   const Icon(Icons.verified_user_outlined,
@@ -289,7 +333,7 @@ class _ResourceDetailScreenState extends ConsumerState<ResourceDetailScreen> {
                     child: Text(
                       'Student verification is handled by the partner on their '
                       'site when you redeem.',
-                      style: theme.textTheme.bodySmall,
+                      style: theme.textTheme.bodySmall?.copyWith(height: 1.4),
                     ),
                   ),
                 ],
@@ -297,7 +341,7 @@ class _ResourceDetailScreenState extends ConsumerState<ResourceDetailScreen> {
             ),
           ],
           if (r.tags.isNotEmpty) ...[
-            const SizedBox(height: 16),
+            const SizedBox(height: 20),
             _section(theme, 'Tags'),
             Wrap(
               spacing: 8,
@@ -313,20 +357,22 @@ class _ResourceDetailScreenState extends ConsumerState<ResourceDetailScreen> {
             ),
           ],
           if (isDiscount && r.terms != null && r.terms!.isNotEmpty) ...[
-            const SizedBox(height: 16),
+            const SizedBox(height: 20),
             _section(theme, 'Terms'),
             Text(r.terms!,
                 style: theme.textTheme.bodySmall
-                    ?.copyWith(color: theme.hintColor)),
+                    ?.copyWith(color: theme.hintColor, height: 1.5)),
           ],
           if (related.isNotEmpty) ...[
-            const SizedBox(height: 24),
-            _section(theme, isDiscount ? 'Related deals' : 'Related opportunities'),
+            const SizedBox(height: 26),
+            _section(theme,
+                isDiscount ? 'Related deals' : 'Related opportunities'),
             const SizedBox(height: 4),
             for (final rel in related)
               ResourceCard(
                 resource: rel,
                 onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                    settings: const RouteSettings(name: 'Resource Detail'),
                     builder: (_) => ResourceDetailScreen(resource: rel))),
               ),
           ],
@@ -342,18 +388,53 @@ class _ResourceDetailScreenState extends ConsumerState<ResourceDetailScreen> {
     final comingSoon = status == ResourceStatus.openingSoon;
     final canAct = !comingSoon && (status.isOpen || r.type.isDiscount);
     final label = r.type.isDiscount ? 'Redeem perk' : 'Apply now';
+    final icon = r.type.isDiscount
+        ? Icons.redeem_rounded
+        : Icons.open_in_new_rounded;
+
+    if (!canAct) {
+      return SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+          child: FilledButton.icon(
+            onPressed: null,
+            icon: Icon(icon),
+            label: Text(status.label),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(56),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
+            ),
+          ),
+        ),
+      );
+    }
+
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-        child: FilledButton.icon(
-          onPressed: canAct ? _open : null,
-          icon: Icon(r.type.isDiscount
-              ? Icons.redeem_rounded
-              : Icons.open_in_new_rounded),
-          label: Text(canAct ? label : status.label),
-          style: FilledButton.styleFrom(
-            minimumSize: const Size.fromHeight(52),
-            backgroundColor: AppColors.primary,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            gradient: const LinearGradient(
+              colors: [AppColors.primaryLight, AppColors.primary],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            boxShadow: AppColors.softShadow(opacity: 0.28, blur: 18),
+          ),
+          child: FilledButton.icon(
+            onPressed: _open,
+            icon: Icon(icon),
+            label: Text(label),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(56),
+              backgroundColor: Colors.transparent,
+              foregroundColor: Colors.white,
+              shadowColor: Colors.transparent,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
+            ),
           ),
         ),
       ),
@@ -363,24 +444,39 @@ class _ResourceDetailScreenState extends ConsumerState<ResourceDetailScreen> {
   Widget _discountBanner(ThemeData theme, String text) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           colors: [AppColors.primaryLight, AppColors.primary],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: AppColors.softShadow(opacity: 0.22, blur: 18),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          const Text('Student offer',
-              style: TextStyle(color: Colors.white70, fontSize: 12)),
-          const SizedBox(height: 4),
-          Text(text,
-              style: theme.textTheme.headlineSmall?.copyWith(
-                  color: Colors.white, fontWeight: FontWeight.w800)),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Student offer',
+                    style: TextStyle(color: Colors.white70, fontSize: 12.5)),
+                const SizedBox(height: 4),
+                Text(text,
+                    style: theme.textTheme.headlineSmall?.copyWith(
+                        color: Colors.white, fontWeight: FontWeight.w800)),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.2),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.local_offer_rounded, color: Colors.white),
+          ),
         ],
       ),
     );
@@ -389,27 +485,36 @@ class _ResourceDetailScreenState extends ConsumerState<ResourceDetailScreen> {
   Widget _deadlineCard(ThemeData theme) {
     final days = r.daysUntilDeadline;
     final closed = days != null && days < 0;
+    final accent = closed ? AppColors.danger : AppColors.primary;
     return Padding(
       padding: const EdgeInsets.only(top: 12),
       child: Container(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(16),
         decoration: softCard(context),
         child: Row(
           children: [
-            Icon(Icons.event_rounded,
-                color: closed ? AppColors.danger : AppColors.primary),
-            const SizedBox(width: 12),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: accent.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(Icons.event_rounded, color: accent),
+            ),
+            const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(closed ? 'Applications closed' : 'Deadline',
-                      style: theme.textTheme.labelMedium),
+                      style: theme.textTheme.labelMedium
+                          ?.copyWith(color: theme.hintColor)),
+                  const SizedBox(height: 2),
                   Text(
                     '${DateUtilsX.prettyDate(r.deadline!)}'
                     '${days != null && days >= 0 ? ' · in $days days' : ''}',
-                    style: theme.textTheme.bodyMedium
-                        ?.copyWith(fontWeight: FontWeight.w600),
+                    style: theme.textTheme.titleMedium
+                        ?.copyWith(fontWeight: FontWeight.w700),
                   ),
                 ],
               ),
@@ -420,9 +525,71 @@ class _ResourceDetailScreenState extends ConsumerState<ResourceDetailScreen> {
     );
   }
 
+  /// Hide the brand line when it just repeats the title ("Wix" / "Wix").
+  bool get _showBrand {
+    final brand = r.brandName.trim().toLowerCase();
+    return brand.isNotEmpty && brand != r.title.trim().toLowerCase();
+  }
+
+  /// A content section grouped in its own card: tinted icon + title header,
+  /// then the structured body. Cards give each section a clear boundary so
+  /// long pages scan as distinct chunks instead of one text stream.
+  Widget _sectionCard(
+      ThemeData theme, String title, IconData icon, Widget child) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 14),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+        decoration: softCard(context, radius: 22),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(7),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(icon, size: 18, color: AppColors.primary),
+                ),
+                const SizedBox(width: 10),
+                Semantics(
+                  header: true,
+                  child: Text(title,
+                      style: theme.textTheme.titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w700)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            child,
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _section(ThemeData theme, String text) => Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: Text(text, style: theme.textTheme.titleMedium),
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Row(
+          children: [
+            Container(
+              width: 4,
+              height: 18,
+              decoration: BoxDecoration(
+                color: AppColors.primary,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Text(text,
+                style: theme.textTheme.titleMedium
+                    ?.copyWith(fontWeight: FontWeight.w700)),
+          ],
+        ),
       );
 
   /// Related = same type, feed-visible, excluding this resource. Powers the
@@ -439,7 +606,7 @@ class _ResourceDetailScreenState extends ConsumerState<ResourceDetailScreen> {
     final isPro = ref.watch(isProProvider);
     if (isPro) return related;
 
-    final country = ref.watch(userProfileProvider).valueOrNull?.country;
+    final country = ref.watch(effectiveCountryProvider);
     final hidden =
         ref.watch(hiddenResourceIdsProvider).valueOrNull ?? const <String>{};
     final feed = all

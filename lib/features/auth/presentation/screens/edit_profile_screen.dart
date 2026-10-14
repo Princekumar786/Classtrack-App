@@ -43,6 +43,9 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   late final TextEditingController _graduationYear;
 
   String? _country;
+
+  /// Auto-detected from the phone (read-only; used when [_country] is unset).
+  String? _detectedCountry;
   String? _careerGoal;
   final Set<String> _interests = {};
 
@@ -83,6 +86,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     _semester.text = user.semester?.toString() ?? '';
     _graduationYear.text = user.graduationYear?.toString() ?? '';
     _country = user.country;
+    _detectedCountry = user.detectedCountry;
     _careerGoal = user.careerGoal;
     _uid = user.uid;
     _avatarCharacter = ProfileAvatars.resolve(user.avatarCharacter, user.uid);
@@ -227,13 +231,25 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                   decoration: _decoration(theme, 'Country',
                       icon: Icons.public_rounded),
                   items: [
-                    const DropdownMenuItem<String>(
-                        value: null, child: Text('Not set')),
+                    DropdownMenuItem<String>(
+                        value: null,
+                        child: Text(_detectedCountry == null
+                            ? 'Not set'
+                            : 'Auto · $_detectedCountry')),
                     ...ProfileOptions.countries.map((c) =>
                         DropdownMenuItem<String>(value: c, child: Text(c))),
                   ],
                   onChanged: (v) => setState(() => _country = v),
                 ),
+                if (_country == null && _detectedCountry != null) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    'Detected from your phone. You\'ll see opportunities and '
+                    'notifications for $_detectedCountry. Pick a country to '
+                    'change it.',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ],
                 const SizedBox(height: 12),
                 _input(_state, 'State / region', icon: Icons.map_rounded),
                 const SizedBox(height: 12),

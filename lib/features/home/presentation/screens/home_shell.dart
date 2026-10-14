@@ -11,13 +11,18 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/providers/app_settings_provider.dart';
+import '../../../../core/utils/destination_handler.dart'
+    show openPaywallOrProStatus;
 import '../../../../core/utils/shared_intake.dart';
+import '../../../../core/utils/url_launcher_util.dart';
 import '../../../../shared/widgets/ui_kit.dart';
 import '../../../../services/analytics_service.dart';
 import '../../../../services/calendar_auto_sync.dart';
 import '../../../../services/notification_service.dart';
 import '../../../../services/push_deep_link.dart';
 import '../../../../services/push_messaging_service.dart';
+import '../../../../services/country_detector.dart';
+import '../../../../services/analytics_identity.dart';
 import '../../../../services/reminder_scheduler.dart';
 import '../../../../services/home_widget_service.dart';
 import '../../../insights/presentation/screens/daily_agenda_screen.dart';
@@ -205,7 +210,18 @@ Future<void> showQuickAddSheet(BuildContext context) async {
       );
 
   Future<void> openScreen(Widget screen) =>
-      Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
+      Navigator.of(context).push(MaterialPageRoute(
+          // Readable PostHog/Firebase screen names (class names are
+          // obfuscated in release builds, so they're mapped explicitly).
+          settings: RouteSettings(
+              name: switch (screen) {
+            EditSessionScreen() => 'Edit Class',
+            EditSubjectScreen() => 'Edit Subject',
+            ImportScreen() => 'Import',
+            NoteEditorScreen() => 'Note Editor',
+            _ => 'Quick Add Screen',
+          }),
+          builder: (_) => screen));
 
   switch (action) {
     case _QuickAddAction.task:
@@ -274,11 +290,11 @@ class _HomeShellState extends ConsumerState<HomeShell>
   String? _lastMarkSig;
   DateTime? _lastMarkAt;
 
-  /// True while the AttendanceScreen route opened from a Present/Absent
-  /// notification action is still on the stack. Guards against pushing it
-  /// again for a re-delivered/replayed action tap (Android can deliver the
-  /// same action response several times), which otherwise stacked multiple
-  /// identical routes so the user had to press back once per copy.
+  /// True while an AttendanceScreen opened from a notification (plain tap OR
+  /// Present/Absent button) is still on the stack. Guards against pushing it
+  /// again for a re-delivered tap (Android can deliver the same response
+  /// several times), which stacked identical pages so the user had to press
+  /// Back once per copy. See [_openAttendanceOnce].
   bool _attendanceMarkRouteOpen = false;
 
   /// Signature of the last shared payload we actually handled, persisted so a
@@ -345,7 +361,7 @@ class _HomeShellState extends ConsumerState<HomeShell>
     await ref.read(tipsPromptShownProvider.notifier).markShown();
     if (!mounted) return;
     await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const TipsScreen()),
+      MaterialPageRoute(settings: const RouteSettings(name: 'Tips'), builder: (_) => const TipsScreen()),
     );
   }
 
@@ -540,12 +556,7 @@ class _HomeShellState extends ConsumerState<HomeShell>
                 ? 'Marked present$label ✅'
                 : 'Marked absent$label');
         setState(() => _index = 0);
-        _attendanceMarkRouteOpen = true;
-        Navigator.of(context)
-            .push(
-              MaterialPageRoute(builder: (_) => const AttendanceScreen()),
-            )
-            .whenComplete(() => _attendanceMarkRouteOpen = false);
+        _openAttendanceOnce();
       });
       return;
     }
@@ -553,11 +564,10 @@ class _HomeShellState extends ConsumerState<HomeShell>
     // Plain tap on the check-in notification → open the Attendance tab to mark.
     if (payload.startsWith('${NotificationService.attendanceCheckInPrefix}|')) {
       NotificationService.selectedPayload.value = null;
-      if (mounted) {
-        Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const AttendanceScreen()),
-        );
-      }
+      // Same guard as the action path: a re-delivered tap must never stack a
+      // second (third, fourth…) Attendance page — that's what made Back need
+      // 5–6 presses to leave it.
+      WidgetsBinding.instance.addPostFrameCallback((_) => _openAttendanceOnce());
       return;
     }
 
@@ -566,7 +576,7 @@ class _HomeShellState extends ConsumerState<HomeShell>
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const DailyAgendaScreen()),
+          MaterialPageRoute(settings: const RouteSettings(name: 'Daily Agenda'), builder: (_) => const DailyAgendaScreen()),
         );
       });
       return;
@@ -588,7 +598,8 @@ class _HomeShellState extends ConsumerState<HomeShell>
       return;
     }
 
-    // CMS push deep links (`resource:<id>`, `tab:<name>`).
+    // CMS push deep links (`app://paywall`, `resource:<id>`, `tab:<name>`,
+    // `https://…`).
     final link = PushDeepLink.parse(payload);
     if (link != null) {
       NotificationService.selectedPayload.value = null;
@@ -597,6 +608,12 @@ class _HomeShellState extends ConsumerState<HomeShell>
           if (mounted) setState(() => _index = index);
         case ResourceDeepLink(:final resourceId):
           _openResourceFromPush(resourceId);
+        case PaywallDeepLink():
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) openPaywallOrProStatus(context, ref);
+          });
+        case UrlDeepLink(:final url):
+          openUrl(context, url);
       }
     }
   }
@@ -604,6 +621,21 @@ class _HomeShellState extends ConsumerState<HomeShell>
   /// Guards against Android re-delivering the same push tap and stacking two
   /// detail pages.
   String? _openingResourceId;
+
+  /// Opens the Attendance page from a notification — at most ONE copy at a
+  /// time, however many times the tap is (re-)delivered. Returning to Home
+  /// therefore always takes a single Back press.
+  void _openAttendanceOnce() {
+    if (!mounted || _attendanceMarkRouteOpen) return;
+    _attendanceMarkRouteOpen = true;
+    Navigator.of(context)
+        .push(
+          MaterialPageRoute(
+              settings: const RouteSettings(name: 'Attendance'),
+              builder: (_) => const AttendanceScreen()),
+        )
+        .whenComplete(() => _attendanceMarkRouteOpen = false);
+  }
 
   /// Loads the pushed resource and opens its detail page on top of the
   /// Explore tab (so Back lands somewhere related). Falls back to the Explore
@@ -635,6 +667,7 @@ class _HomeShellState extends ConsumerState<HomeShell>
         'type': resource.type.key,
       });
       await Navigator.of(context).push(MaterialPageRoute(
+          settings: const RouteSettings(name: 'Resource Detail'),
           builder: (_) => ResourceDetailScreen(resource: resource)));
     } finally {
       _openingResourceId = null;
@@ -670,8 +703,13 @@ class _HomeShellState extends ConsumerState<HomeShell>
     ref.watch(plannerReminderSyncProvider);
     // Keep RevenueCat's identity tied to the signed-in Firebase user.
     ref.watch(subscriptionAuthLinkProvider);
-    // Keep the device subscribed to its profile country's push topic.
+    // Keep the device subscribed to its country's push topic (profile
+    // country, else the auto-detected one).
     ref.watch(pushCountryTopicSyncProvider);
+    // Detect the phone's country (SIM / network / region) for targeting.
+    ref.watch(countryDetectionSyncProvider);
+    // Keep the PostHog person (name, email, country, Pro…) in sync.
+    ref.watch(posthogIdentitySyncProvider);
     // Keep the home-screen widget's "today" snapshot fresh.
     ref.watch(homeWidgetSyncProvider);
     return PopScope(

@@ -9,14 +9,18 @@ import '../../../../shared/widgets/progress_ring.dart';
 import '../../../../shared/widgets/ui_kit.dart';
 import '../../domain/learning_plan.dart';
 import '../../domain/learning_plan_generator.dart';
+import '../../domain/planner_insights.dart';
 import '../providers/learning_planner_providers.dart';
 import '../widgets/planner_widgets.dart';
+import '../widgets/topic_checklist.dart';
 import 'day_view_screen.dart';
 import 'plan_adjustment_screen.dart';
 import 'plan_progress_screen.dart';
+import 'topic_detail_screen.dart';
 
 /// Screen 8 — Plan Overview. The full learning roadmap: summary, progress ring,
-/// headline stats and the week-by-week / day-by-day topic breakdown.
+/// headline stats and a continuous day-by-day list where every topic and
+/// subtopic can be ticked in place.
 class PlanOverviewScreen extends ConsumerWidget {
   final String planId;
   const PlanOverviewScreen({super.key, required this.planId});
@@ -55,9 +59,12 @@ class PlanOverviewScreen extends ConsumerWidget {
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
                 child: Row(
                   children: [
-                    Text('Your Learning Plan',
-                        style: theme.textTheme.titleLarge),
-                    const Spacer(),
+                    Expanded(
+                      child: Text('Your Learning Plan',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleLarge),
+                    ),
                     GestureDetector(
                       onTap: () => Navigator.of(context).push(MaterialPageRoute(
                           settings:
@@ -71,13 +78,16 @@ class PlanOverviewScreen extends ConsumerWidget {
                 ),
               ),
             ),
-            const SliverToBoxAdapter(child: _WhyOrderCard()),
-            for (var wi = 0; wi < plan.weeks.length; wi++)
+            if (!plan.isCustom)
+              const SliverToBoxAdapter(child: _WhyOrderCard()),
+            // One continuous list of study days — no week grouping.
+            for (final (i, day) in plan.allDays.indexed)
               SliverToBoxAdapter(
-                child: _WeekBlock(plan: plan, week: plan.weeks[wi])
-                    .animate()
-                    .fadeIn(delay: (120 + wi * 80).ms, duration: 360.ms)
-                    .slideY(begin: 0.1, end: 0, curve: Curves.easeOutCubic),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+                  child: _DayRow(plan: plan, day: day)
+                      .listEntrance(i, stepMs: 50, maxAnimated: 6),
+                ),
               ),
             const SliverToBoxAdapter(child: SizedBox(height: 120)),
           ],
@@ -402,6 +412,8 @@ class _SummaryHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final subsTotal = plan.topics.fold<int>(0, (s, t) => s + t.subtopicTotal);
+    final subsDone = plan.topics.fold<int>(0, (s, t) => s + t.subtopicsDone);
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
       child: Row(
@@ -410,8 +422,8 @@ class _SummaryHeader extends StatelessWidget {
             percent: plan.percent,
             size: 92,
             strokeWidth: 9,
-            color: AppColors.primary,
-            centerLabel: '${plan.percent.toStringAsFixed(0)}%',
+            color: plan.percent >= 100 ? AppColors.success : AppColors.primary,
+            centerLabel: '${plan.percent.floor()}%',
             subLabel: 'done',
           ),
           const SizedBox(width: 18),
@@ -419,37 +431,45 @@ class _SummaryHeader extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(plan.subject,
-                    style: theme.textTheme.headlineSmall?.copyWith(fontSize: 20),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis),
-                const SizedBox(height: 6),
+                Text(
+                    '${plan.completedTopics} of ${plan.totalTopics} topics done',
+                    style: theme.textTheme.titleMedium
+                        ?.copyWith(fontWeight: FontWeight.w700)),
+                if (subsTotal > 0) ...[
+                  const SizedBox(height: 2),
+                  Text('$subsDone of $subsTotal subtopics ticked',
+                      style: theme.textTheme.bodySmall),
+                ],
+                const SizedBox(height: 10),
                 Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
+                  spacing: 6,
+                  runSpacing: 6,
                   children: [
-                    PillTag(
-                      label: plan.level.shortLabel,
-                      background: AppColors.lavender,
-                      foreground: AppColors.primary,
-                    ),
-                    PillTag(
-                      label: plan.goal.title,
-                      background: AppColors.lavenderSoft,
-                      foreground: AppColors.primaryDark,
-                    ),
-                    PillTag(
-                      label: plan.program.short,
-                      icon: Icons.school_outlined,
-                      background: AppColors.lavenderSoft,
-                      foreground: AppColors.primaryDark,
-                    ),
+                    if (plan.isCustom)
+                      const PillTag(
+                        label: 'Your own plan',
+                        icon: Icons.edit_note_rounded,
+                        background: AppColors.lavender,
+                        foreground: AppColors.primary,
+                      )
+                    else ...[
+                      PillTag(
+                        label: plan.level.shortLabel,
+                        background: AppColors.lavender,
+                        foreground: AppColors.primary,
+                      ),
+                      PillTag(
+                        label: plan.goal.title,
+                        background: AppColors.lavenderSoft,
+                        foreground: AppColors.primaryDark,
+                      ),
+                    ],
                     if (plan.region != StudyRegion.global)
                       PillTag(
                         label: plan.region.short,
                         icon: Icons.public_rounded,
-                        background: AppColors.lavender,
-                        foreground: AppColors.primary,
+                        background: AppColors.lavenderSoft,
+                        foreground: AppColors.primaryDark,
                       ),
                   ],
                 ),
@@ -523,10 +543,13 @@ class _StatsBlock extends StatelessWidget {
                   const Icon(Icons.flag_rounded,
                       size: 18, color: AppColors.primary),
                   const SizedBox(width: 10),
-                  Text('Complete by ${df.format(plan.targetDate)}',
-                      style: theme.textTheme.labelLarge
-                          ?.copyWith(color: AppColors.primary)),
-                  const Spacer(),
+                  Expanded(
+                    child: Text('Complete by ${df.format(plan.targetDate)}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.labelLarge
+                            ?.copyWith(color: AppColors.primary)),
+                  ),
                   Text('estimate', style: theme.textTheme.bodySmall),
                 ],
               ),
@@ -538,71 +561,140 @@ class _StatsBlock extends StatelessWidget {
   }
 }
 
-class _WeekBlock extends ConsumerStatefulWidget {
+/// One study day: date + status, then each topic with tickable subtopics.
+class _DayRow extends StatelessWidget {
   final LearningPlan plan;
-  final WeekPlan week;
-  const _WeekBlock({required this.plan, required this.week});
-
-  @override
-  ConsumerState<_WeekBlock> createState() => _WeekBlockState();
-}
-
-class _WeekBlockState extends ConsumerState<_WeekBlock> {
-  bool _expanded = true;
+  final DayPlan day;
+  const _DayRow({required this.plan, required this.day});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final plan = widget.plan;
-    final week = widget.week;
-    final topicCount =
-        week.days.fold<int>(0, (s, d) => s + d.topicIds.length);
-    final minutes = week.days.fold<int>(
-        0,
-        (s, d) =>
-            s +
-            d.topicIds
-                .map(plan.topicById)
-                .fold<int>(0, (a, t) => a + (t?.estMinutes ?? 0)));
+    final topics =
+        day.topicIds.map(plan.topicById).whereType<LearningTopic>().toList();
+    final done = isDayDone(plan, day);
+    final today = dateOnly(DateTime.now());
+    final date = dateOnly(day.date);
+    final isToday = sameDay(date, today);
+    final overdue = !done && date.isBefore(today);
+    final mins = topics.fold<int>(0, (s, t) => s + t.estMinutes);
+    final dateLabel = isToday
+        ? 'Today'
+        : sameDay(date, today.add(const Duration(days: 1)))
+            ? 'Tomorrow'
+            : DateFormat('EEE, d MMM').format(day.date);
+    final (statusText, statusColor) = done
+        ? ('Done', AppColors.success)
+        : overdue
+            ? ('Catch up', AppColors.danger)
+            : isToday
+                ? ('Today', AppColors.primary)
+                : (null, AppColors.primary);
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          InkWell(
-            onTap: () => setState(() => _expanded = !_expanded),
-            borderRadius: BorderRadius.circular(10),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Row(
+    void openDay() => Navigator.of(context).push(MaterialPageRoute(
+        settings: const RouteSettings(name: 'Planner: Day'),
+        builder: (_) => DayViewScreen(planId: plan.id, dayNumber: day.dayNumber)));
+
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isToday && !done
+              ? AppColors.primary.withValues(alpha: 0.45)
+              : theme.dividerColor.withValues(alpha: 0.4),
+          width: isToday && !done ? 1.5 : 1,
+        ),
+        boxShadow: theme.brightness == Brightness.light
+            ? AppColors.softShadow(opacity: 0.04, blur: 12)
+            : null,
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: Column(
+          children: [
+            InkWell(
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+              onTap: openDay,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 12, 6, 6),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 42,
+                      height: 42,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: done
+                            ? AppColors.success.withValues(alpha: 0.14)
+                            : AppColors.lavenderSoft,
+                        borderRadius: BorderRadius.circular(13),
+                      ),
+                      child: done
+                          ? const Icon(Icons.check_rounded, color: AppColors.success)
+                          : Text('${day.dayNumber}',
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                  color: AppColors.primary, fontWeight: FontWeight.w800)),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Day ${day.dayNumber} · $dateLabel',
+                              style: theme.textTheme.titleSmall
+                                  ?.copyWith(fontWeight: FontWeight.w700)),
+                          Text(
+                              '${topics.length} topic${topics.length == 1 ? '' : 's'} · ~${formatEstMinutes(mins)}',
+                              style: theme.textTheme.bodySmall),
+                        ],
+                      ),
+                    ),
+                    if (statusText != null)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: statusColor.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(statusText,
+                            style: theme.textTheme.labelSmall?.copyWith(
+                                color: statusColor, fontWeight: FontWeight.w700)),
+                      ),
+                    IconButton(
+                      tooltip: 'Open day',
+                      onPressed: openDay,
+                      icon: Icon(Icons.chevron_right_rounded,
+                          color: theme.textTheme.bodySmall?.color),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 0, 4, 6),
+              child: Column(
                 children: [
-                  Expanded(
-                    child: Text('WEEK ${week.weekNumber} — ${week.title.toUpperCase()}',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                            fontSize: 13.5, letterSpacing: 0.3)),
-                  ),
-                  Text('$topicCount topics · ~${formatEstMinutes(minutes)}',
-                      style: theme.textTheme.bodySmall),
-                  const SizedBox(width: 6),
-                  AnimatedRotation(
-                    turns: _expanded ? 0.5 : 0,
-                    duration: const Duration(milliseconds: 200),
-                    child: Icon(Icons.keyboard_arrow_down_rounded,
-                        color: theme.textTheme.bodySmall?.color),
-                  ),
+                  for (final t in topics)
+                    TopicChecklistCard(
+                      key: ValueKey('ov_${t.id}'),
+                      planId: plan.id,
+                      topic: t,
+                      dense: true,
+                      onOpen: () => Navigator.of(context).push(MaterialPageRoute(
+                          settings: const RouteSettings(name: 'Planner: Topic'),
+                          builder: (_) =>
+                              TopicDetailScreen(planId: plan.id, topicId: t.id))),
+                    ),
                 ],
               ),
             ),
-          ),
-          if (_expanded)
-            for (final day in week.days) _DayRow(plan: plan, day: day),
-        ],
+          ],
+        ),
       ),
     );
   }
 }
-
 /// A subtle "why this order" explanation card.
 class _WhyOrderCard extends StatefulWidget {
   const _WhyOrderCard();
@@ -682,125 +774,6 @@ class _PausedBanner extends StatelessWidget {
                   style: theme.textTheme.bodySmall),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _DayRow extends StatelessWidget {
-  final LearningPlan plan;
-  final DayPlan day;
-  const _DayRow({required this.plan, required this.day});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final topics =
-        day.topicIds.map(plan.topicById).whereType<LearningTopic>().toList();
-    final allDone = topics.isNotEmpty && topics.every((t) => t.isDone);
-    final df = DateFormat('EEE, d MMM');
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: softCard(context, radius: 18),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(18),
-          onTap: () => Navigator.of(context).push(MaterialPageRoute(
-              settings: const RouteSettings(name: 'Planner: Day'),
-              builder: (_) =>
-                  DayViewScreen(planId: plan.id, dayNumber: day.dayNumber))),
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: allDone
-                            ? AppColors.success.withValues(alpha: 0.14)
-                            : AppColors.lavenderSoft,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (allDone) ...[
-                            const Icon(Icons.check_circle_rounded,
-                                size: 14, color: AppColors.success),
-                            const SizedBox(width: 5),
-                          ],
-                          Text('Day ${day.dayNumber}',
-                              style: theme.textTheme.labelMedium?.copyWith(
-                                color: allDone
-                                    ? AppColors.success
-                                    : AppColors.primary,
-                                fontWeight: FontWeight.w700,
-                              )),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Text(df.format(day.date),
-                        style: theme.textTheme.bodySmall),
-                    const Spacer(),
-                    Icon(Icons.chevron_right_rounded,
-                        size: 20, color: theme.textTheme.bodySmall?.color),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                for (final t in topics)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 6),
-                    child: Row(
-                      children: [
-                        Icon(
-                          t.isDone
-                              ? Icons.check_circle_rounded
-                              : (t.isReview
-                                  ? Icons.replay_circle_filled_rounded
-                                  : Icons.circle_outlined),
-                          size: 17,
-                          color: t.isDone
-                              ? AppColors.success
-                              : (t.isReview
-                                  ? AppColors.accent
-                                  : difficultyColor(t.difficulty)
-                                      .withValues(alpha: 0.6)),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(t.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                decoration: t.isDone
-                                    ? TextDecoration.lineThrough
-                                    : null,
-                                color: t.isDone
-                                    ? theme.textTheme.bodySmall?.color
-                                    : null,
-                              )),
-                        ),
-                        const SizedBox(width: 8),
-                        if (t.isReview)
-                          const DifficultyChip(
-                              difficulty: TopicDifficulty.easy, review: true)
-                        else
-                          Text('~${t.estMinutes} min',
-                              style: theme.textTheme.bodySmall),
-                      ],
-                    ),
-                  ),
-              ],
-            ),
-          ),
         ),
       ),
     );

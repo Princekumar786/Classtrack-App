@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:cloud_functions/cloud_functions.dart';
@@ -63,18 +64,18 @@ class GeminiService {
     Uint8List? imageBytes,
     Uint8List? pdfBytes,
   }) async {
-    final Map<String, dynamic> payload;
+    final Future<Map<String, dynamic>> Function() buildPayload;
     if (text != null && text.trim().isNotEmpty) {
-      payload = {'sourceType': 'text', 'text': text};
+      buildPayload = () async => {'sourceType': 'text', 'text': text};
     } else if (pdfBytes != null || imageBytes != null) {
       final isPdf = pdfBytes != null;
       final bytes = (pdfBytes ?? imageBytes)!;
       final mime = sniffMimeType(bytes, isPdf ? 'application/pdf' : 'image/jpeg');
-      payload = {
-        'sourceType': isPdf ? 'pdf' : 'image',
-        'mimeType': mime,
-        ...await _fileField(bytes, mime),
-      };
+      buildPayload = () async => {
+            'sourceType': isPdf ? 'pdf' : 'image',
+            'mimeType': mime,
+            ...await _fileField(bytes, mime),
+          };
     } else {
       return ParsedSchedule(subjects: const [], confidence: 'low');
     }
@@ -83,10 +84,50 @@ class GeminiService {
       'parseSchedule',
       options: HttpsCallableOptions(timeout: parseTimeout),
     );
-    final res = await callable.call(payload);
+    final res = await callWithRetry(
+      // Re-builds the payload each time: a large file's Storage copy is
+      // deleted by the server after it's read, so a retry re-uploads it.
+      () async => callable.call(await buildPayload()),
+    );
     // Deep-convert the callable result into plain JSON maps/lists.
     final map = jsonDecode(jsonEncode(res.data)) as Map<String, dynamic>;
     return ParsedSchedule.fromJson(map);
+  }
+
+  /// Max automatic retries when the backend is overloaded.
+  static const int maxBusyRetries = 2;
+
+  /// Runs [call], retrying ONLY when the server says it's overloaded
+  /// (`unavailable` / Cloud Run's 429-style `resource-exhausted` without a
+  /// quota reason). Waits a random 3–8 s (then 6–16 s) so thousands of phones
+  /// never retry in lock-step. Quota, invalid-input and auth errors are
+  /// returned straight away. [sleep] is injectable for tests.
+  static Future<T> callWithRetry<T>(
+    Future<T> Function() call, {
+    Future<void> Function(Duration)? sleep,
+    Random? random,
+  }) async {
+    final wait = sleep ?? Future<void>.delayed;
+    final rnd = random ?? Random();
+    for (var attempt = 0;; attempt++) {
+      try {
+        return await call();
+      } on FirebaseFunctionsException catch (e) {
+        if (attempt >= maxBusyRetries || !isRetryableBusyError(e)) rethrow;
+        final baseMs = 3000 * (1 << attempt); // 3 s, 6 s
+        await wait(Duration(milliseconds: baseMs + rnd.nextInt(baseMs * 5 ~/ 3)));
+      }
+    }
+  }
+
+  /// Whether a callable error means "server overloaded, try again soon".
+  static bool isRetryableBusyError(FirebaseFunctionsException e) {
+    final d = e.details;
+    final reason = d is Map ? d['reason']?.toString() : null;
+    if (e.code == 'unavailable') return true;
+    // Cloud Run "no instance available" arrives as resource-exhausted with NO
+    // reason; our own quota errors always carry one (free_limit, rate_limit).
+    return e.code == 'resource-exhausted' && reason == null;
   }
 
   /// `inlineData` for normal files; for large ones, uploads to the user's own

@@ -78,6 +78,7 @@ class SavedOpportunitiesScreen extends ConsumerWidget {
                 return ResourceCard(
                   resource: r,
                   onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                      settings: const RouteSettings(name: 'Resource Detail'),
                       builder: (_) => ResourceDetailScreen(resource: r))),
                 );
               },

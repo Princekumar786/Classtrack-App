@@ -7,8 +7,7 @@ import '../../domain/audience_counts.dart';
 import '../../domain/cms_notification.dart';
 import '../../domain/marketing.dart';
 
-final cmsMarketingRepositoryProvider =
-    Provider<CmsMarketingRepository?>((ref) {
+final cmsMarketingRepositoryProvider = Provider<CmsMarketingRepository?>((ref) {
   final uid = ref.watch(currentUidProvider);
   if (uid == null) return null;
   return CmsMarketingRepository(

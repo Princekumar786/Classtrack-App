@@ -2,6 +2,8 @@ import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:posthog_flutter/posthog_flutter.dart';
 
+import 'error_reporter.dart';
+
 /// App-wide access to [AnalyticsService].
 final analyticsProvider = Provider<AnalyticsService>(
   (ref) => AnalyticsService(),
@@ -22,20 +24,28 @@ class AnalyticsService {
   /// Logs a custom event. Parameter values must be String or num (no bools) —
   /// a Firebase constraint we keep so the same map is safe for both sinks.
   Future<void> log(String name, [Map<String, Object>? params]) async {
-    try {
-      await _fa.logEvent(name: name, parameters: params);
-    } catch (_) {
-      // Analytics must never surface as an app error.
-    }
-    try {
-      await Posthog().capture(eventName: name, properties: params);
-    } catch (_) {
-      // PostHog is opted-out in debug / not set up on some surfaces — ignore.
-    }
+    // PostHog first and in parallel with Firebase, so a slow Firebase call
+    // never delays the event reaching PostHog's live view.
+    final ph = () async {
+      try {
+        await Posthog().capture(eventName: name, properties: params);
+      } catch (_) {
+        // PostHog is opted-out in debug / not set up on some surfaces.
+      }
+    }();
+    final fa = () async {
+      try {
+        await _fa.logEvent(name: name, parameters: params);
+      } catch (_) {
+        // Analytics must never surface as an app error.
+      }
+    }();
+    await Future.wait([ph, fa]);
   }
 
   /// Logs a screen/feature view to both sinks.
   Future<void> screen(String name) async {
+    ErrorReporter.setScreen(name);
     try {
       await _fa.logScreenView(screenName: name);
     } catch (_) {}
@@ -46,7 +56,13 @@ class AnalyticsService {
 
   // --- Convenience helpers for the events we care about --------------------
 
-  Future<void> tab(String name) => log('tab_select', {'tab': name});
+  /// Bottom-bar tab switch: an event AND a screen view, so PostHog's activity
+  /// timeline reads "Home → Planner → Explore" like real screens.
+  Future<void> tab(String name) async {
+    final pretty =
+        name.isEmpty ? name : name[0].toUpperCase() + name.substring(1);
+    await Future.wait([log('tab_select', {'tab': name}), screen(pretty)]);
+  }
 
   Future<void> openFeature(String name) =>
       log('open_feature', {'feature': name});

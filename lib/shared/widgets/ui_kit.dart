@@ -122,21 +122,32 @@ class FilterPill extends StatelessWidget {
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (icon != null) ...[
-                Icon(icon, size: 15, color: selected ? Colors.white : color),
-                const SizedBox(width: 6),
+          child: LayoutBuilder(builder: (context, constraints) {
+            final text = Text(label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.labelMedium?.copyWith(
+                    color: selected
+                        ? Colors.white
+                        : theme.textTheme.bodyMedium?.color,
+                    fontWeight: FontWeight.w600));
+            return Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (icon != null) ...[
+                  Icon(icon, size: 15, color: selected ? Colors.white : color),
+                  const SizedBox(width: 6),
+                ],
+                // In a bounded parent (Wrap/Row) a long label — e.g. an exam
+                // name at large text size — truncates instead of overflowing.
+                // Unbounded parents (horizontal lists) keep the natural width.
+                if (constraints.hasBoundedWidth)
+                  Flexible(child: text)
+                else
+                  text,
               ],
-              Text(label,
-                  style: theme.textTheme.labelMedium?.copyWith(
-                      color: selected
-                          ? Colors.white
-                          : theme.textTheme.bodyMedium?.color,
-                      fontWeight: FontWeight.w600)),
-            ],
-          ),
+            );
+          }),
         ),
       ),
     );

@@ -1,8 +1,12 @@
 package com.classtrack.classtrack
 
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.telephony.TelephonyManager
 import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.MethodChannel
 
 /// When ClassTrack is relaunched from the Recents screen (or the launcher)
 /// after having once been started by a "share" (ACTION_SEND) intent, Android
@@ -15,6 +19,35 @@ import io.flutter.embedding.android.FlutterActivity
 /// so a historical relaunch is treated as a plain app open and the stale share
 /// is never processed again.
 class MainActivity : FlutterActivity() {
+    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
+        super.configureFlutterEngine(flutterEngine)
+        // Country detection for targeting (opportunities + CMS pushes). Reads
+        // the SIM / mobile-network country — no permission, no location.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "classtrack/country")
+            .setMethodCallHandler { call, result ->
+                if (call.method == "getTelephonyCountry") {
+                    result.success(telephonyCountries())
+                } else {
+                    result.notImplemented()
+                }
+            }
+    }
+
+    /// ISO 3166 alpha-2 codes (lower-case, may be empty) for the SIM and the
+    /// network the phone is on. Never throws: missing telephony → empty map.
+    private fun telephonyCountries(): Map<String, String> {
+        return try {
+            val tm = getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
+                ?: return emptyMap()
+            mapOf(
+                "sim" to (tm.simCountryIso ?: ""),
+                "network" to (tm.networkCountryIso ?: ""),
+            )
+        } catch (_: Exception) {
+            emptyMap()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         clearIntentIfFromHistory(intent)?.let { setIntent(it) }
         super.onCreate(savedInstanceState)

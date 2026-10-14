@@ -1,38 +1,46 @@
 # ClassTrack Play Store listing (ASO)
 
-Files to paste into Play Console → Grow → Store presence → Main store listing:
+Paste the files in this folder into Play Console under **Grow > Store presence > Main store listing**.
 
 | File | Play Console field | Limit |
 |---|---|---|
-| `title-and-short-description.txt` | App name, Short description | 30 / 80 |
-| `full-description.txt` | Full description | 4000 |
-| `screenshot-captions.txt` | Screenshot text, feature graphic | – |
-| `release-notes.txt` | Release notes | 500 |
+| `title-and-short-description.txt` | App name and Short description | 30 / 80 characters |
+| `full-description.txt` | Full description | 4,000 characters |
+| `screenshot-captions.txt` | Screenshot and feature-graphic text | - |
+| `ASO-STRATEGY.md` | Keyword map, experiment plan and reporting checks | Internal guide |
+| `release-notes.txt` | Release notes | 500 characters |
 
 ## Positioning
 
-MyStudyLife, Power Planner and myHomework own "student planner", and TickTick and Todoist own "to-do list". A new app won't outrank them on those terms. None of them does **attendance and bunk calculation**, which is what you win on. So:
+ClassTrack should win on a clear student problem: **tracking attendance and knowing whether a class can be skipped**. The listing then proves it is also a complete class timetable, homework, exam and GPA app. This is more specific and more convincing than leading only with "student planner".
 
-- **Title** targets `attendance tracker` (lots of searches, few strong competitors, and exactly what the app does).
-- **Short description** adds `75% attendance`, `timetable`, `homework`, `exams`, `GPA`.
-- **Full description** repeats the main terms naturally (attendance, timetable, class schedule, student planner, homework, assignments, exam, GPA, study planner, scholarships, internships). Aim for each main term about 3–6 times. More than that counts as keyword stuffing.
+- **App name:** targets the exact high-intent term `attendance tracker`.
+- **Short description:** adds `bunk calculator`, `timetable`, `homework`, `exams` and `GPA` once, naturally.
+- **First 250 characters:** explain attendance tracking and mention the core supporting terms. This is the most important part of the long description.
+- **Full description:** uses each important feature only where it helps a student understand the app. It is not a keyword list.
 
-## Category & tags (Play Console → Store presence → Store settings)
+Google Play has no separate keyword field. Search reach comes from truthful, relevant title and description text, app quality, ratings, conversion, retention and the country/language of the listing.
 
-- **App category: Education.** MyStudyLife, Power Planner and myHomework are listed there. In Productivity you'd be up against TickTick and Todoist.
-- **Tags (max 5):** Education, Productivity, Calendar, Study guide, Notebook
-- **Other tags you could swap in:** Personal assistant (for the AI features), Test preparation (for exams). Tag names can change, so pick from the list shown in Play Console.
+## Store settings
 
-## Do NOT
+- **Category:** Education.
+- **Tags (choose up to five offered by Play Console):** Education, Productivity, Calendar, Study guide, Notebook.
+- **Optional tag swaps:** Personal assistant for AI positioning, or Test preparation for an exam-led experiment.
+- **Primary locale:** use the optimized English listing first. Add a professionally reviewed Hindi listing only after the English version is live and measured.
 
-- Put competitor names (MyStudyLife, TickTick, and so on) anywhere in the listing. That breaks Google Play's Metadata policy and can get the app suspended.
-- Use "best", "#1", "top" or "free" in the title or icon, or emojis in the title. These are also against policy.
-- Claim anything the app can't do. Misleading listings lead to 1-star reviews, and that hurts conversion more than any keyword helps.
+## Do not do this
 
-## Beyond the text (these make the biggest difference to conversion)
+- Do not place competitor names, repeated keyword lists, "best", "#1", prices, ratings or download claims in metadata or screenshots.
+- Do not promise 75% attendance. The app can help students track attendance; it cannot control university records or rules.
+- Do not claim a feature that is unavailable in the released build. Mark paid features as Pro exactly as they work in the app.
+- Do not change title, short description and screenshots in the same experiment. You will not know which change helped.
 
-1. **Store listing experiments**: A/B test short description A vs B vs C, then test screenshot 1. Run each for at least 7 days.
-2. **Screenshots**: screen 1 must show the bunk calculator or attendance ring. It's your unique hook.
-3. **Ratings**: ask for an in-app review (`in_app_review` package) after a positive moment, such as attendance going above target or finishing an AI import. Don't ask on first launch.
-4. **Custom store listing for India** (optional): keep "75%" and "bunk" in it. Use a separate listing for US/UK students that leads with "Student planner & attendance tracker".
-5. **Translations**: add Hindi (`hi-IN`) listing text next. It's a cheap way to rank in a less crowded search pool.
+## Publish order
+
+1. Publish the app name, short description and long description in this folder.
+2. Replace screenshot 1 with the attendance/bunk-calculator benefit. Keep screens 2 and 3 focused on timetable and deadlines.
+3. Wait until Play reporting has caught up, then record Store listing acquisition conversion and search traffic for a full 14-day window.
+4. Run one Store listing experiment: short description A versus B. Keep all other assets unchanged.
+5. Test the first screenshot only after the text test finishes. Keep a winner only if the result is meaningful and conversion does not fall.
+
+See `ASO-STRATEGY.md` for the keyword map, regional direction and checks for the October traffic drop.

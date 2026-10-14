@@ -18,8 +18,8 @@ class MediaRepository {
     required FirebaseFirestore db,
     required FirebaseStorage storage,
     required this.uid,
-  })  : _db = db,
-        _storage = storage;
+  }) : _db = db,
+       _storage = storage;
 
   CollectionReference<Map<String, dynamic>> get _col =>
       _db.collection(AppConstants.mediaAssetsCollection);
@@ -29,8 +29,13 @@ class MediaRepository {
         .orderBy('createdAt', descending: true)
         .limit(limit)
         .snapshots()
-        .map((snap) => parseDocsSafely(snap.docs, MediaAsset.fromMap,
-            context: 'mediaAssets'));
+        .map(
+          (snap) => parseDocsSafely(
+            snap.docs,
+            MediaAsset.fromMap,
+            context: 'mediaAssets',
+          ),
+        );
   }
 
   /// Uploads [bytes] and indexes the asset; returns the created record.
@@ -43,10 +48,7 @@ class MediaRepository {
     final id = DateTime.now().microsecondsSinceEpoch.toString();
     final path = 'cms/media/$id/$safe';
     final ref = _storage.ref(path);
-    await ref.putData(
-      bytes,
-      SettableMetadata(contentType: contentType),
-    );
+    await ref.putData(bytes, SettableMetadata(contentType: contentType));
     final url = await ref.getDownloadURL();
     final doc = await _col.add({
       'url': url,

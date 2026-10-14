@@ -140,7 +140,7 @@ class _EditSessionScreenState extends ConsumerState<EditSessionScreen> {
         .map((s) => s.id)
         .toSet();
     await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const EditSubjectScreen()),
+      MaterialPageRoute(settings: const RouteSettings(name: 'Edit Subject'), builder: (_) => const EditSubjectScreen()),
     );
     if (!mounted) return;
     // The subjects stream (Firestore with local latency compensation) usually

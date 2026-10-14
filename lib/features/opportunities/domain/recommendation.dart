@@ -62,7 +62,7 @@ class Recommender {
       }
     }
 
-    final profileCountry = user?.country;
+    final profileCountry = user?.effectiveCountry;
     // Country: applies whenever the resource targets specific countries.
     final targetsSpecificCountries = r.countries.isNotEmpty &&
         !r.countries.any((c) => c.toLowerCase() == 'global');

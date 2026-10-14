@@ -17,13 +17,13 @@ class SubjectsScreen extends ConsumerWidget {
 
   void _openEditor(BuildContext context, {Subject? subject}) {
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => EditSubjectScreen(subject: subject)),
+      MaterialPageRoute(settings: const RouteSettings(name: 'Edit Subject'), builder: (_) => EditSubjectScreen(subject: subject)),
     );
   }
 
   void _openPhotoImport(BuildContext context) {
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const ImportScreen()),
+      MaterialPageRoute(settings: const RouteSettings(name: 'Import'), builder: (_) => const ImportScreen()),
     );
   }
 
@@ -130,6 +130,7 @@ class _SubjectCard extends ConsumerWidget {
         borderRadius: BorderRadius.circular(20),
         onTap: () => Navigator.of(context).push(
           MaterialPageRoute(
+            settings: const RouteSettings(name: 'Subject Detail'),
             builder: (_) => SubjectDetailScreen(subjectId: subject.id),
           ),
         ),

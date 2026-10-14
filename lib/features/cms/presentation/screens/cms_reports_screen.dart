@@ -47,8 +47,11 @@ class _CmsReportsScreenState extends ConsumerState<CmsReportsScreen> {
           child: async.when(
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (e, __) => Center(
-                child: Text('Failed to load reports.\n$e',
-                    textAlign: TextAlign.center)),
+              child: Text(
+                'Failed to load reports.\n$e',
+                textAlign: TextAlign.center,
+              ),
+            ),
             data: (all) {
               final rows = _filter == null
                   ? all
@@ -60,8 +63,9 @@ class _CmsReportsScreenState extends ConsumerState<CmsReportsScreen> {
                     all.isEmpty
                         ? 'No reports yet. Student-submitted reports appear here.'
                         : 'No reports match this filter.',
-                    style: theme.textTheme.bodyMedium
-                        ?.copyWith(color: theme.hintColor),
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.hintColor,
+                    ),
                   ),
                 );
               }
@@ -73,7 +77,7 @@ class _CmsReportsScreenState extends ConsumerState<CmsReportsScreen> {
                   report: rows[i],
                   otherActiveForResource:
                       (activeCounts[rows[i].resourceId] ?? 0) -
-                          (rows[i].status.isActive ? 1 : 0),
+                      (rows[i].status.isActive ? 1 : 0),
                   onAction: (s) => _setStatus(rows[i], s),
                 ),
               );
@@ -91,11 +95,15 @@ class _CmsReportsScreenState extends ConsumerState<CmsReportsScreen> {
     try {
       await repo.setStatus(r.id, status);
       messenger.showSnackBar(
-          SnackBar(content: Text('Marked ${status.label.toLowerCase()}')));
+        SnackBar(content: Text('Marked ${status.label.toLowerCase()}')),
+      );
     } catch (e) {
-      messenger.showSnackBar(SnackBar(
+      messenger.showSnackBar(
+        SnackBar(
           content: Text('Could not update: $e'),
-          backgroundColor: AppColors.danger));
+          backgroundColor: AppColors.danger,
+        ),
+      );
     }
   }
 }
@@ -146,38 +154,50 @@ class _ReportRow extends StatelessWidget {
                             : r.resourceTitle,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w600),
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
                     if (otherActiveForResource > 0) ...[
                       const SizedBox(width: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 2),
+                          horizontal: 8,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
                           color: AppColors.danger.withValues(alpha: 0.14),
                           borderRadius: BorderRadius.circular(20),
                         ),
-                        child: Text('+$otherActiveForResource more',
-                            style: theme.textTheme.labelSmall?.copyWith(
-                                color: AppColors.danger,
-                                fontWeight: FontWeight.w700)),
+                        child: Text(
+                          '+$otherActiveForResource more',
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: AppColors.danger,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
                       ),
                     ],
                   ],
                 ),
                 const SizedBox(height: 2),
-                Text(r.reason.label,
-                    style: theme.textTheme.bodyMedium
-                        ?.copyWith(fontWeight: FontWeight.w600)),
+                Text(
+                  r.reason.label,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
                 if (r.message != null && r.message!.isNotEmpty) ...[
                   const SizedBox(height: 2),
-                  Text('“${r.message}”',
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall
-                          ?.copyWith(color: theme.hintColor)),
+                  Text(
+                    '“${r.message}”',
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.hintColor,
+                    ),
+                  ),
                 ],
               ],
             ),
@@ -187,17 +207,22 @@ class _ReportRow extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
                 decoration: BoxDecoration(
                   color: _statusColor(r.status).withValues(alpha: 0.14),
                   borderRadius: BorderRadius.circular(20),
                 ),
-                child: Text(r.status.label,
-                    style: TextStyle(
-                        color: _statusColor(r.status),
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700)),
+                child: Text(
+                  r.status.label,
+                  style: TextStyle(
+                    color: _statusColor(r.status),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ),
               PopupMenuButton<ReportStatus>(
                 tooltip: 'Update status',
@@ -205,7 +230,10 @@ class _ReportRow extends StatelessWidget {
                 itemBuilder: (_) => [
                   for (final s in ReportStatus.values)
                     if (s != report.status)
-                      PopupMenuItem(value: s, child: Text('Mark ${s.label.toLowerCase()}')),
+                      PopupMenuItem(
+                        value: s,
+                        child: Text('Mark ${s.label.toLowerCase()}'),
+                      ),
                 ],
               ),
             ],

@@ -59,4 +59,57 @@ void main() {
       expect(many.length - ids.length, 3); // 8 total − 5 free = 3 locked
     });
   });
+
+  group('splitPerksForDisplay (perks search can\'t bypass the gate)', () {
+    Resource perk(String id, int daysAgo, {bool featured = false}) => Resource(
+          id: id,
+          type: ResourceType.discount,
+          title: id,
+          organization: id,
+          featured: featured,
+          updatedAt: DateTime.now().subtract(Duration(days: daysAgo)),
+        );
+    // p0..p4 are the free five; p5..p7 are locked.
+    final perks = List.generate(8, (i) => perk('p$i', i));
+    final allowed = freeAllowedIds(perks, isPro: false)!;
+
+    test('REGRESSION: searching for a locked perk shows nothing of it', () {
+      // The search result is ONLY a locked perk (e.g. user typed its name).
+      final split = splitPerksForDisplay([perks[7]],
+          allowedIds: allowed, searching: true);
+      expect(split.carousel, isEmpty);
+      expect(split.deals, isEmpty);
+    });
+
+    test('searching shows only the allowed matches, with no carousel', () {
+      final split = splitPerksForDisplay([perks[1], perks[6]],
+          allowedIds: allowed, searching: true);
+      expect(split.carousel, isEmpty);
+      expect(split.deals.map((r) => r.id), ['p1']);
+    });
+
+    test('category filter with only locked perks: fallback carousel is empty',
+        () {
+      final split = splitPerksForDisplay([perks[5], perks[6]],
+          allowedIds: allowed, searching: false);
+      expect(split.carousel, isEmpty);
+      expect(split.deals, isEmpty);
+    });
+
+    test('fallback carousel uses allowed perks only; deals exclude them', () {
+      final split =
+          splitPerksForDisplay(perks, allowedIds: allowed, searching: false);
+      expect(split.carousel.map((r) => r.id), ['p0', 'p1', 'p2']);
+      expect(split.deals.map((r) => r.id), ['p3', 'p4']);
+      for (final r in [...split.carousel, ...split.deals]) {
+        expect(allowed.contains(r.id), isTrue);
+      }
+    });
+
+    test('Pro (null gate) sees everything when searching', () {
+      final split =
+          splitPerksForDisplay(perks, allowedIds: null, searching: true);
+      expect(split.deals.length, perks.length);
+    });
+  });
 }

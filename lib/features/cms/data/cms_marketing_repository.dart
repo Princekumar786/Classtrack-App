@@ -11,8 +11,10 @@ import '../domain/marketing.dart';
 class CmsMarketingRepository {
   final FirebaseFirestore _db;
   final String editorUid;
-  CmsMarketingRepository({required FirebaseFirestore db, required this.editorUid})
-      : _db = db;
+  CmsMarketingRepository({
+    required FirebaseFirestore db,
+    required this.editorUid,
+  }) : _db = db;
 
   CollectionReference<Map<String, dynamic>> get _banners =>
       _db.collection(AppConstants.bannersCollection);
@@ -25,8 +27,9 @@ class CmsMarketingRepository {
         .orderBy('updatedAt', descending: true)
         .limit(limit)
         .snapshots()
-        .map((s) =>
-            parseDocsSafely(s.docs, CmsBanner.fromMap, context: 'banners'));
+        .map(
+          (s) => parseDocsSafely(s.docs, CmsBanner.fromMap, context: 'banners'),
+        );
   }
 
   Future<String> saveBanner(CmsBanner b) async {
@@ -55,8 +58,10 @@ class CmsMarketingRepository {
         .orderBy('updatedAt', descending: true)
         .limit(limit)
         .snapshots()
-        .map((s) =>
-            parseDocsSafely(s.docs, Campaign.fromMap, context: 'campaigns'));
+        .map(
+          (s) =>
+              parseDocsSafely(s.docs, Campaign.fromMap, context: 'campaigns'),
+        );
   }
 
   Future<String> saveCampaign(Campaign c) async {
@@ -88,8 +93,13 @@ class CmsMarketingRepository {
         .orderBy('createdAt', descending: true)
         .limit(limit)
         .snapshots()
-        .map((s) => parseDocsSafely(s.docs, CmsNotification.fromMap,
-            context: 'notifications'));
+        .map(
+          (s) => parseDocsSafely(
+            s.docs,
+            CmsNotification.fromMap,
+            context: 'notifications',
+          ),
+        );
   }
 
   /// Enqueues a notification for the backend to deliver. `country` null/empty

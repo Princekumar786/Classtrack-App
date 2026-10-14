@@ -59,7 +59,8 @@ class _CmsNotificationsScreenState
     final messenger = ScaffoldMessenger.of(context);
     if (_title.text.trim().isEmpty || _body.text.trim().isEmpty) {
       messenger.showSnackBar(
-          const SnackBar(content: Text('Title and message are required.')));
+        const SnackBar(content: Text('Title and message are required.')),
+      );
       return;
     }
     setState(() => _sending = true);
@@ -70,8 +71,9 @@ class _CmsNotificationsScreenState
         country: _country,
         payload: _payload.text.trim(),
       );
-      messenger.showSnackBar(const SnackBar(
-          content: Text('Queued for delivery ✓')));
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Queued for delivery ✓')),
+      );
       _title.clear();
       _body.clear();
       _payload.clear();
@@ -80,9 +82,12 @@ class _CmsNotificationsScreenState
         _linked = null;
       });
     } catch (e) {
-      messenger.showSnackBar(SnackBar(
+      messenger.showSnackBar(
+        SnackBar(
           content: Text('Could not queue: $e'),
-          backgroundColor: AppColors.danger));
+          backgroundColor: AppColors.danger,
+        ),
+      );
     } finally {
       if (mounted) setState(() => _sending = false);
     }
@@ -104,8 +109,9 @@ class _CmsNotificationsScreenState
             Text(
               'Send a targeted push. Leave country as "All" to broadcast to '
               'everyone. Avoid over-notifying.',
-              style:
-                  theme.textTheme.bodyMedium?.copyWith(color: theme.hintColor),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.hintColor,
+              ),
             ),
             const SizedBox(height: 20),
             Container(
@@ -127,10 +133,14 @@ class _CmsNotificationsScreenState
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String?>(
                     initialValue: _country,
-                    decoration: const InputDecoration(labelText: 'Target country'),
+                    decoration: const InputDecoration(
+                      labelText: 'Target country',
+                    ),
                     items: [
                       const DropdownMenuItem<String?>(
-                          value: null, child: Text('All (broadcast)')),
+                        value: null,
+                        child: Text('All (broadcast)'),
+                      ),
                       for (final c in ProfileOptions.countries)
                         DropdownMenuItem<String?>(value: c, child: Text(c)),
                     ],
@@ -160,41 +170,52 @@ class _CmsNotificationsScreenState
                     ),
                   ),
                   const SizedBox(height: 16),
-                  Builder(builder: (context) {
-                    final counts =
-                        ref.watch(audienceCountsProvider).valueOrNull;
-                    final est = counts?.estimate(country: _country);
-                    return Row(
-                      children: [
-                        const Icon(Icons.groups_rounded,
-                            size: 16, color: AppColors.info),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            est == null
-                                ? 'Estimated recipients: …'
-                                : _country == null
-                                    ? 'Estimated recipients: ~$est (everyone)'
-                                    : 'Estimated recipients: ~$est in $_country',
-                            style: theme.textTheme.bodySmall
-                                ?.copyWith(color: theme.hintColor),
+                  Builder(
+                    builder: (context) {
+                      final counts = ref
+                          .watch(audienceCountsProvider)
+                          .valueOrNull;
+                      final est = counts?.estimate(country: _country);
+                      return Row(
+                        children: [
+                          const Icon(
+                            Icons.groups_rounded,
+                            size: 16,
+                            color: AppColors.info,
                           ),
-                        ),
-                      ],
-                    );
-                  }),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              est == null
+                                  ? 'Estimated recipients: …'
+                                  : _country == null
+                                  ? 'Estimated recipients: ~$est (everyone)'
+                                  : 'Estimated recipients: ~$est in $_country',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.hintColor,
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
                   const SizedBox(height: 16),
                   FilledButton.icon(
                     style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.primary,
-                        minimumSize: const Size.fromHeight(48)),
+                      backgroundColor: AppColors.primary,
+                      minimumSize: const Size.fromHeight(48),
+                    ),
                     onPressed: _sending ? null : _send,
                     icon: _sending
                         ? const SizedBox(
                             width: 16,
                             height: 16,
                             child: CircularProgressIndicator(
-                                strokeWidth: 2, color: Colors.white))
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
                         : const Icon(Icons.send_rounded),
                     label: const Text('Send notification'),
                   ),
@@ -205,14 +226,16 @@ class _CmsNotificationsScreenState
             Text('Recent', style: theme.textTheme.titleMedium),
             const SizedBox(height: 8),
             history.when(
-              loading: () =>
-                  const Center(child: CircularProgressIndicator()),
+              loading: () => const Center(child: CircularProgressIndicator()),
               error: (e, __) => Text('Failed to load history: $e'),
               data: (items) {
                 if (items.isEmpty) {
-                  return Text('No notifications sent yet.',
-                      style: theme.textTheme.bodySmall
-                          ?.copyWith(color: theme.hintColor));
+                  return Text(
+                    'No notifications sent yet.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.hintColor,
+                    ),
+                  );
                 }
                 return Column(
                   children: [for (final n in items) _HistoryRow(n: n)],
@@ -254,15 +277,20 @@ class _HistoryRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(n.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.titleSmall
-                        ?.copyWith(fontWeight: FontWeight.w600)),
                 Text(
-                    '${n.country ?? 'All'}${n.topic != null ? ' · ${n.topic}' : ''}',
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: theme.hintColor)),
+                  n.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Text(
+                  '${n.country ?? 'All'}${n.topic != null ? ' · ${n.topic}' : ''}',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.hintColor,
+                  ),
+                ),
               ],
             ),
           ),
@@ -272,18 +300,20 @@ class _HistoryRow extends StatelessWidget {
               color: _statusColor().withValues(alpha: 0.14),
               borderRadius: BorderRadius.circular(20),
             ),
-            child: Text(n.status,
-                style: TextStyle(
-                    color: _statusColor(),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700)),
+            child: Text(
+              n.status,
+              style: TextStyle(
+                color: _statusColor(),
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ),
         ],
       ),
     );
   }
 }
-
 
 /// Search-as-you-type picker for the opportunity / discount a push opens.
 /// Only student-visible (published, non-expired) posts are offered, since a
@@ -312,16 +342,21 @@ class _ResourceLinkPicker extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Opens: ${s.title}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleSmall
-                          ?.copyWith(fontWeight: FontWeight.w600)),
                   Text(
-                      '${s.type.label}'
-                      '${s.organization.isNotEmpty ? ' · ${s.organization}' : ''}',
-                      style: theme.textTheme.bodySmall
-                          ?.copyWith(color: theme.hintColor)),
+                    'Opens: ${s.title}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  Text(
+                    '${s.type.label}'
+                    '${s.organization.isNotEmpty ? ' · ${s.organization}' : ''}',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.hintColor,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -343,10 +378,12 @@ class _ResourceLinkPicker extends ConsumerWidget {
         final q = value.text.trim().toLowerCase();
         if (q.isEmpty) return options.take(20);
         return options
-            .where((r) =>
-                r.title.toLowerCase().contains(q) ||
-                r.organization.toLowerCase().contains(q) ||
-                r.type.label.toLowerCase().contains(q))
+            .where(
+              (r) =>
+                  r.title.toLowerCase().contains(q) ||
+                  r.organization.toLowerCase().contains(q) ||
+                  r.type.label.toLowerCase().contains(q),
+            )
             .take(20);
       },
       onSelected: onSelected,
@@ -374,13 +411,17 @@ class _ResourceLinkPicker extends ConsumerWidget {
                   ListTile(
                     dense: true,
                     leading: Icon(r.type.icon, color: r.type.color),
-                    title: Text(r.title,
-                        maxLines: 1, overflow: TextOverflow.ellipsis),
+                    title: Text(
+                      r.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                     subtitle: Text(
-                        '${r.type.label}'
-                        '${r.organization.isNotEmpty ? ' · ${r.organization}' : ''}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis),
+                      '${r.type.label}'
+                      '${r.organization.isNotEmpty ? ' · ${r.organization}' : ''}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                     onTap: () => onSelect(r),
                   ),
               ],

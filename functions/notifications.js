@@ -22,6 +22,20 @@ export function topicForCountry(country) {
   return slug ? `country_${slug}` : "all";
 }
 
+/**
+ * The country a user is targeted by — the SAME rule the app uses
+ * (AppUser.effectiveCountry in lib/features/auth/domain/app_user.dart): the
+ * profile `country` the student chose, else the auto-`detectedCountry` from
+ * their phone. "Other" in the profile defers to detection. Null when unknown.
+ */
+export function effectiveCountry(user) {
+  if (!user || typeof user !== "object") return null;
+  const clean = (v) => (typeof v === "string" && v.trim() ? v.trim() : null);
+  const p = clean(user.country);
+  if (p && p.toLowerCase() !== "other") return p;
+  return clean(user.detectedCountry) || p;
+}
+
 /** Builds an FCM message for a topic send. Coerces data values to strings. */
 export function buildFcmMessage({ title, body, topic, data }) {
   const safeData =

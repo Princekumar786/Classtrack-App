@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../services/metrics_service.dart';
 import '../../../../shared/widgets/ui_kit.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../domain/resource.dart';
@@ -340,7 +341,7 @@ class ResourceCard extends ConsumerWidget {
     Color metaColor = theme.hintColor;
     if (resource.type.isDiscount) {
       final country =
-          previewCountry ?? ref.watch(userProfileProvider).valueOrNull?.country;
+          previewCountry ?? ref.watch(effectiveCountryProvider);
       final price = resource.effectiveOffer(country).discountText;
       if (price != null && price.isNotEmpty) {
         metaIcon = Icons.redeem_rounded;
@@ -370,6 +371,12 @@ class ResourceCard extends ConsumerWidget {
       metaIcon = Icons.auto_awesome_rounded;
       metaLabel = '${match.score}% match';
       metaColor = AppColors.success;
+    }
+
+    // Feed impression for sponsor reporting (deduped per session). Skipped in
+    // the CMS "preview as student" so staff browsing isn't counted.
+    if (previewCountry == null) {
+      ref.read(metricsServiceProvider).recordImpression(resource.id);
     }
 
     return GestureDetector(

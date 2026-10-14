@@ -52,8 +52,12 @@ CmsQualityReport evaluateResource(Resource r) {
     errors.add(const CmsIssue('title', 'Title is required.'));
   }
   if (r.organization.trim().isEmpty) {
-    errors.add(const CmsIssue('organization',
-        'Organization / company is required to publish.'));
+    errors.add(
+      const CmsIssue(
+        'organization',
+        'Organization / company is required to publish.',
+      ),
+    );
   }
   if (r.description.trim().isEmpty) {
     errors.add(const CmsIssue('description', 'A description is required.'));
@@ -62,56 +66,77 @@ CmsQualityReport evaluateResource(Resource r) {
   final hasApp = (r.applicationUrl?.trim().isNotEmpty ?? false);
   final hasAff = (r.affiliateUrl?.trim().isNotEmpty ?? false);
   if (!hasApp && !hasAff) {
-    errors.add(const CmsIssue('applicationUrl',
-        'An application or affiliate/redemption link is required to publish.'));
+    errors.add(
+      const CmsIssue(
+        'applicationUrl',
+        'An application or affiliate/redemption link is required to publish.',
+      ),
+    );
   }
 
   // Opportunities (everything except discounts) must spell out what the
   // student gets and how to apply before they can go live.
   if (!r.type.isDiscount) {
     if (r.benefits?.trim().isEmpty ?? true) {
-      errors.add(const CmsIssue(
-          'benefits', 'Benefits are required to publish an opportunity.'));
+      errors.add(
+        const CmsIssue(
+          'benefits',
+          'Benefits are required to publish an opportunity.',
+        ),
+      );
     }
     if (r.howToApply?.trim().isEmpty ?? true) {
-      errors.add(const CmsIssue('howToApply',
-          'How to apply is required to publish an opportunity.'));
+      errors.add(
+        const CmsIssue(
+          'howToApply',
+          'How to apply is required to publish an opportunity.',
+        ),
+      );
     }
   }
 
   if (r.startDate != null &&
       r.deadline != null &&
       r.deadline!.isBefore(r.startDate!)) {
-    errors.add(const CmsIssue(
-        'deadline', 'Deadline cannot be before the start date.'));
+    errors.add(
+      const CmsIssue('deadline', 'Deadline cannot be before the start date.'),
+    );
   }
 
   if (r.scheduledPublishAt != null &&
       r.scheduledUnpublishAt != null &&
       !r.scheduledUnpublishAt!.isAfter(r.scheduledPublishAt!)) {
-    errors.add(const CmsIssue('scheduledUnpublishAt',
-        'Scheduled unpublish time must be after the publish time.'));
+    errors.add(
+      const CmsIssue(
+        'scheduledUnpublishAt',
+        'Scheduled unpublish time must be after the publish time.',
+      ),
+    );
   }
 
   // ── Warnings (advisory) ────────────────────────────────────────────────
   if (r.description.trim().isNotEmpty && r.description.trim().length < 60) {
-    warnings.add(const CmsIssue(
-        'description', 'Description is short — add more detail.'));
+    warnings.add(
+      const CmsIssue('description', 'Description is short — add more detail.'),
+    );
   }
   if (r.deadline == null && !r.type.isDiscount) {
     warnings.add(const CmsIssue('deadline', 'No deadline set.'));
   }
   if ((r.eligibility?.trim().isEmpty ?? true)) {
-    warnings.add(
-        const CmsIssue('eligibility', 'No eligibility information.'));
+    warnings.add(const CmsIssue('eligibility', 'No eligibility information.'));
   }
   if ((r.logoUrl?.trim().isEmpty ?? true) &&
       (r.imageUrl?.trim().isEmpty ?? true)) {
     warnings.add(const CmsIssue('logoUrl', 'No logo or image.'));
   }
   if (r.countries.isEmpty) {
-    warnings.add(const CmsIssue(
-        'countries', 'No country targeting — this shows globally.'));
+    warnings.add(
+      const CmsIssue(
+        'countries',
+        'No country targeting — this shows globally.',
+      ),
+    );
   }
 
   // Syntactically invalid URLs (only when a value is present).

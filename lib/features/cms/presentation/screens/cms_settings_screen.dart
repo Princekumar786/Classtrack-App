@@ -73,9 +73,12 @@ class _CmsSettingsScreenState extends ConsumerState<CmsSettingsScreen> {
           .saveRecommendationWeights(_current());
       messenger.showSnackBar(const SnackBar(content: Text('Weights saved ✓')));
     } catch (e) {
-      messenger.showSnackBar(SnackBar(
+      messenger.showSnackBar(
+        SnackBar(
           content: Text('Could not save: $e'),
-          backgroundColor: AppColors.danger));
+          backgroundColor: AppColors.danger,
+        ),
+      );
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -103,8 +106,9 @@ class _CmsSettingsScreenState extends ConsumerState<CmsSettingsScreen> {
                 Text(
                   'Recommendation weights. The final match score is normalized '
                   'against the total, so relative sizes are what matter.',
-                  style: theme.textTheme.bodyMedium
-                      ?.copyWith(color: theme.hintColor),
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.hintColor,
+                  ),
                 ),
                 const SizedBox(height: 20),
                 Container(
@@ -124,12 +128,14 @@ class _CmsSettingsScreenState extends ConsumerState<CmsSettingsScreen> {
                                   controller: _c[key],
                                   keyboardType: TextInputType.number,
                                   inputFormatters: [
-                                    FilteringTextInputFormatter.digitsOnly
+                                    FilteringTextInputFormatter.digitsOnly,
                                   ],
                                   textAlign: TextAlign.center,
                                   onChanged: (_) => setState(() {}),
                                   decoration: const InputDecoration(
-                                      isDense: true, border: OutlineInputBorder()),
+                                    isDense: true,
+                                    border: OutlineInputBorder(),
+                                  ),
                                 ),
                               ),
                             ],
@@ -139,13 +145,18 @@ class _CmsSettingsScreenState extends ConsumerState<CmsSettingsScreen> {
                       Row(
                         children: [
                           Expanded(
-                            child: Text('Total (max raw score)',
-                                style: theme.textTheme.titleSmall),
+                            child: Text(
+                              'Total (max raw score)',
+                              style: theme.textTheme.titleSmall,
+                            ),
                           ),
-                          Text('$total',
-                              style: theme.textTheme.titleMedium?.copyWith(
-                                  color: AppColors.primary,
-                                  fontWeight: FontWeight.w800)),
+                          Text(
+                            '$total',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              color: AppColors.primary,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
                         ],
                       ),
                     ],
@@ -154,15 +165,19 @@ class _CmsSettingsScreenState extends ConsumerState<CmsSettingsScreen> {
                 const SizedBox(height: 20),
                 FilledButton.icon(
                   style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.primary,
-                      minimumSize: const Size.fromHeight(48)),
+                    backgroundColor: AppColors.primary,
+                    minimumSize: const Size.fromHeight(48),
+                  ),
                   onPressed: _saving ? null : _save,
                   icon: _saving
                       ? const SizedBox(
                           width: 16,
                           height: 16,
                           child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.white))
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
                       : const Icon(Icons.save_rounded),
                   label: const Text('Save weights'),
                 ),

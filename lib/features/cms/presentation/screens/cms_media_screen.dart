@@ -28,18 +28,21 @@ String? _contentTypeForExt(String? ext) {
 
 /// Picks an image file and uploads it to the media library. Returns the new
 /// asset's URL, or null if cancelled/failed (a snackbar explains failures).
-Future<String?> pickAndUploadMedia(
-    BuildContext context, WidgetRef ref) async {
+Future<String?> pickAndUploadMedia(BuildContext context, WidgetRef ref) async {
   final repo = ref.read(mediaRepositoryProvider);
   final messenger = ScaffoldMessenger.of(context);
   if (repo == null) return null;
-  final res = await FilePicker.platform
-      .pickFiles(type: FileType.image, withData: true);
+  final res = await FilePicker.platform.pickFiles(
+    type: FileType.image,
+    withData: true,
+  );
   if (res == null || res.files.isEmpty) return null;
   final f = res.files.first;
   final bytes = f.bytes;
   if (bytes == null) {
-    messenger.showSnackBar(const SnackBar(content: Text('Could not read file.')));
+    messenger.showSnackBar(
+      const SnackBar(content: Text('Could not read file.')),
+    );
     return null;
   }
   try {
@@ -48,13 +51,15 @@ Future<String?> pickAndUploadMedia(
       filename: f.name,
       contentType: _contentTypeForExt(f.extension),
     );
-    messenger
-        .showSnackBar(SnackBar(content: Text('Uploaded ${asset.name} ✓')));
+    messenger.showSnackBar(SnackBar(content: Text('Uploaded ${asset.name} ✓')));
     return asset.url;
   } catch (e) {
-    messenger.showSnackBar(SnackBar(
+    messenger.showSnackBar(
+      SnackBar(
         content: Text('Upload failed: $e'),
-        backgroundColor: AppColors.danger));
+        backgroundColor: AppColors.danger,
+      ),
+    );
     return null;
   }
 }
@@ -77,7 +82,8 @@ class CmsMediaScreen extends StatelessWidget {
   const CmsMediaScreen({super.key});
 
   @override
-  Widget build(BuildContext context) => const _MediaLibraryBody(pickMode: false);
+  Widget build(BuildContext context) =>
+      const _MediaLibraryBody(pickMode: false);
 }
 
 class _MediaLibraryBody extends ConsumerStatefulWidget {
@@ -114,18 +120,24 @@ class _MediaLibraryBodyState extends ConsumerState<_MediaLibraryBody> {
             spacing: 12,
             runSpacing: 12,
             children: [
-              Text(widget.pickMode ? 'Choose media' : 'Media',
-                  style: theme.textTheme.headlineSmall),
+              Text(
+                widget.pickMode ? 'Choose media' : 'Media',
+                style: theme.textTheme.headlineSmall,
+              ),
               FilledButton.icon(
-                style:
-                    FilledButton.styleFrom(backgroundColor: AppColors.primary),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                ),
                 onPressed: _busy ? null : _upload,
                 icon: _busy
                     ? const SizedBox(
                         width: 16,
                         height: 16,
                         child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white))
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
                     : const Icon(Icons.upload_rounded),
                 label: Text(_busy ? 'Uploading…' : 'Upload image'),
               ),
@@ -136,20 +148,25 @@ class _MediaLibraryBodyState extends ConsumerState<_MediaLibraryBody> {
           child: async.when(
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (e, __) => Center(
-                child: Text('Failed to load media.\n$e',
-                    textAlign: TextAlign.center)),
+              child: Text(
+                'Failed to load media.\n$e',
+                textAlign: TextAlign.center,
+              ),
+            ),
             data: (assets) {
               if (assets.isEmpty) {
                 return Center(
-                  child: Text('No media yet. Upload an image to get started.',
-                      style: theme.textTheme.bodyMedium
-                          ?.copyWith(color: theme.hintColor)),
+                  child: Text(
+                    'No media yet. Upload an image to get started.',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.hintColor,
+                    ),
+                  ),
                 );
               }
               return GridView.builder(
                 padding: const EdgeInsets.fromLTRB(28, 4, 28, 28),
-                gridDelegate:
-                    const SliverGridDelegateWithMaxCrossAxisExtent(
+                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
                   maxCrossAxisExtent: 220,
                   mainAxisSpacing: 16,
                   crossAxisSpacing: 16,
@@ -162,8 +179,9 @@ class _MediaLibraryBodyState extends ConsumerState<_MediaLibraryBody> {
                   onPick: () => Navigator.of(context).pop(assets[i].url),
                   onCopy: () {
                     Clipboard.setData(ClipboardData(text: assets[i].url));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('URL copied')));
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(const SnackBar(content: Text('URL copied')));
                   },
                   onDelete: () => _confirmDelete(assets[i]),
                 ),
@@ -181,12 +199,14 @@ class _MediaLibraryBodyState extends ConsumerState<_MediaLibraryBody> {
       builder: (ctx) => AlertDialog(
         title: const Text('Delete media?'),
         content: Text(
-            'Delete "${a.name}"? Resources/banners still using this URL will '
-            'show a broken image.'),
+          'Delete "${a.name}"? Resources/banners still using this URL will '
+          'show a broken image.',
+        ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
             onPressed: () => Navigator.pop(ctx, true),
@@ -234,16 +254,20 @@ class _MediaTile extends StatelessWidget {
                   asset.url,
                   fit: BoxFit.cover,
                   errorBuilder: (_, __, ___) => const Center(
-                      child: Icon(Icons.broken_image_rounded,
-                          color: AppColors.danger)),
+                    child: Icon(
+                      Icons.broken_image_rounded,
+                      color: AppColors.danger,
+                    ),
+                  ),
                   loadingBuilder: (c, child, p) => p == null
                       ? child
                       : const Center(
                           child: SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                  strokeWidth: 2))),
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        ),
                 ),
               ),
             ),
@@ -255,13 +279,18 @@ class _MediaTile extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(asset.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.labelMedium),
-                        Text(prettyBytes(asset.size),
-                            style: theme.textTheme.labelSmall
-                                ?.copyWith(color: theme.hintColor)),
+                        Text(
+                          asset.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.labelMedium,
+                        ),
+                        Text(
+                          prettyBytes(asset.size),
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: theme.hintColor,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -269,8 +298,11 @@ class _MediaTile extends StatelessWidget {
                     IconButton(
                       tooltip: 'Use this',
                       visualDensity: VisualDensity.compact,
-                      icon: const Icon(Icons.check_circle_rounded,
-                          color: AppColors.primary, size: 20),
+                      icon: const Icon(
+                        Icons.check_circle_rounded,
+                        color: AppColors.primary,
+                        size: 20,
+                      ),
                       onPressed: onPick,
                     )
                   else ...[

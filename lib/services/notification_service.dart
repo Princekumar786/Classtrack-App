@@ -141,11 +141,24 @@ class NotificationService {
   /// v4: the per-entity hash switched from `String.hashCode` to an explicit
   /// FNV-1a hash for guaranteed cross-restart stability, which changes every
   /// numeric id once. Clear the v3 reminders so they can't linger un-cancelled.
-  static const int _idSchemeVersion = 4;
+  /// v5: the study reminder moved from band 8 to its own band 9; clear once so
+  /// the old copy doesn't keep firing alongside the new one.
+  static const int _idSchemeVersion = 5;
   static const String _idSchemeVersionKey = 'notif_id_scheme_version';
 
-  Future<void> init() async {
-    if (_ready) return;
+  /// In-flight initialisation, shared by concurrent callers so the plugin is
+  /// initialised (and the id migration run) once, not once per caller.
+  Future<void>? _initFuture;
+
+  Future<void> init() {
+    if (_ready) return Future.value();
+    return _initFuture ??= _doInit().catchError((Object e, StackTrace st) {
+      _initFuture = null; // allow a retry on the next call
+      Error.throwWithStackTrace(e, st);
+    });
+  }
+
+  Future<void> _doInit() async {
     tzdata.initializeTimeZones();
     // CRITICAL: without setting the local location, tz.local defaults to UTC,
     // so every zonedSchedule fires at the wrong wall-clock time (e.g. +5:30
@@ -165,15 +178,18 @@ class NotificationService {
     );
     await _plugin.initialize(
       settings: const InitializationSettings(android: androidInit, iOS: iosInit),
-      onDidReceiveNotificationResponse: _handleResponse,
+      onDidReceiveNotificationResponse: handleResponse,
     );
     // Cold start: if the app was launched by tapping a notification, surface
-    // its payload so the UI can deep-link once it's ready.
+    // its payload so the UI can deep-link once it's ready — ONCE. The plugin
+    // keeps reporting the same launch tap for as long as the process lives
+    // (and again if Android recreates the screen), which used to open the
+    // Attendance page several times on top of itself.
     try {
       final launch = await _plugin.getNotificationAppLaunchDetails();
       if (launch?.didNotificationLaunchApp ?? false) {
         final resp = launch!.notificationResponse;
-        if (resp != null) _handleResponse(resp);
+        if (resp != null && await _isNewLaunchTap(resp)) handleResponse(resp);
       }
     } catch (_) {/* launch details are best-effort */}
     await _refreshScheduleMode();
@@ -181,11 +197,60 @@ class NotificationService {
     _ready = true;
   }
 
+  static const String _launchSigKey = 'notif_launch_sig';
+  static const String _launchAtKey = 'notif_launch_at';
+
+  /// Re-delivered launch taps are ignored for this long. Every repeating
+  /// notification fires at most once a day, so a genuinely NEW tap of the
+  /// same notification can't land inside this window.
+  static const Duration launchDedupeWindow = Duration(hours: 6);
+
+  /// Pure rule behind [_isNewLaunchTap] — unit tested.
+  @visibleForTesting
+  static bool isNewLaunch({
+    required String signature,
+    required String? lastSignature,
+    required DateTime? lastAt,
+    required DateTime now,
+  }) {
+    if (lastSignature != signature || lastAt == null) return true;
+    return now.difference(lastAt) >= launchDedupeWindow;
+  }
+
+  /// True the first time a given launch tap is seen (persisted, so it also
+  /// survives the screen being recreated). Fails open: if storage is
+  /// unavailable we handle the tap rather than drop it.
+  Future<bool> _isNewLaunchTap(NotificationResponse resp) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final sig = '${resp.id}|${resp.actionId}|${resp.payload}';
+      final atMs = prefs.getInt(_launchAtKey);
+      final isNew = isNewLaunch(
+        signature: sig,
+        lastSignature: prefs.getString(_launchSigKey),
+        lastAt: atMs == null ? null : DateTime.fromMillisecondsSinceEpoch(atMs),
+        now: DateTime.now(),
+      );
+      if (isNew) {
+        await prefs.setString(_launchSigKey, sig);
+        await prefs.setInt(_launchAtKey, DateTime.now().millisecondsSinceEpoch);
+      }
+      return isNew;
+    } catch (_) {
+      return true;
+    }
+  }
+
   /// Turns a tapped notification (body OR an action button) into a
   /// [selectedPayload] the UI can act on. A Present/Absent action on the
   /// attendance check-in is rewritten to an `attendance_mark|…` payload so the
   /// app marks that class when it opens; every other tap forwards its payload.
-  void _handleResponse(NotificationResponse resp) {
+  ///
+  /// Static and shared: the push-messaging service initialises the SAME
+  /// plugin, and whichever `initialize` ran last owned the tap callback. Its
+  /// own callback ignored the Present/Absent buttons, so an action tap opened
+  /// the page without marking. Both now route through this one handler.
+  static void handleResponse(NotificationResponse resp) {
     final p = resp.payload;
     if (p == null || p.isEmpty) return;
     final action = resp.actionId;
@@ -505,6 +570,11 @@ class NotificationService {
 
   /// Schedule a one-off reminder for each task that has a future due date.
   /// Fires [minutesBefore] before 9:00 AM on the due date.
+  ///
+  /// Also CANCELS the reminder of every task that no longer qualifies — done
+  /// (e.g. ticked via the AI chat), due date removed or moved into the past or
+  /// quiet hours, or deleted (on another device) — so a stale reminder can
+  /// never fire for a task the student already dealt with.
   Future<void> scheduleForTasks(
     List<TaskItem> tasks, {
     int minutesBefore = 10,
@@ -513,7 +583,11 @@ class NotificationService {
     await init();
     final now = tz.TZDateTime.now(tz.local);
     for (final t in tasks) {
-      if (t.done || t.dueDate == null) continue;
+      final id = _idForTask(t.id);
+      if (t.done || t.dueDate == null) {
+        await _plugin.cancel(id: id);
+        continue;
+      }
       final due = t.dueDate!;
       // Items with a specific time-of-day (events, timed deadlines) remind
       // [minutesBefore] their start. All-day items (stored at midnight) keep
@@ -524,9 +598,8 @@ class NotificationService {
               tz.local, due.year, due.month, due.day, due.hour, due.minute)
           : tz.TZDateTime(tz.local, due.year, due.month, due.day, 9, 0);
       var when = base.subtract(Duration(minutes: minutesBefore));
-      if (when.isBefore(now)) continue; // don't schedule in the past
-      final id = _idForTask(t.id);
-      if (prefs != null && prefs.isQuietHour(when.hour)) {
+      if (when.isBefore(now) ||
+          (prefs != null && prefs.isQuietHour(when.hour))) {
         await _plugin.cancel(id: id);
         continue;
       }
@@ -544,7 +617,19 @@ class NotificationService {
         androidScheduleMode: _scheduleMode,
       );
     }
+    // Tasks that existed at the last sync but are gone now (deleted on
+    // another device, cleared by the AI chat…): cancel their reminders.
+    final current = {for (final t in tasks) t.id};
+    for (final gone in _taskReminderIds.difference(current)) {
+      await _plugin.cancel(id: _idForTask(gone));
+    }
+    _taskReminderIds
+      ..clear()
+      ..addAll(current);
   }
+
+  /// Task ids seen at the last [scheduleForTasks] run.
+  final Set<String> _taskReminderIds = {};
 
   /// Exam id bands: day-of = 3, eve-before = 4.
   int _idForExamDay(String examId) => 3 * _idBand + _hash20(examId);
@@ -734,8 +819,10 @@ class NotificationService {
     await _plugin.cancel(id: _idDailySummary);
   }
 
-  /// Daily learning-planner study reminder id (band 8, its own slot).
-  static const int _idStudyReminder = 8 * _idBand;
+  /// Daily learning-planner study reminder id — its own band (9). It used to
+  /// sit at 8 * _idBand, inside the attendance check-in band, so a check-in
+  /// whose hash was 0 could overwrite or cancel it.
+  static const int _idStudyReminder = 9 * _idBand;
 
   /// Schedules (or reschedules) a once-daily study reminder at [hour]:[minute]
   /// for the learning planner. Repeats daily via [DateTimeComponents.time].

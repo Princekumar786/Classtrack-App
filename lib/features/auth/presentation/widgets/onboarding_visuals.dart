@@ -16,6 +16,12 @@ import '../../../../shared/widgets/sweep_shimmer.dart';
 
 bool motionOn(BuildContext context) => !MediaQuery.of(context).disableAnimations;
 
+/// Step-change duration in the onboarding (keep in sync with OnboardingScreen).
+const int kOnboardingSwitchMs = 300;
+
+/// Card entrances wait until the page slide is mostly done.
+const int _afterSwitchMs = 140;
+
 /// Time-of-day greeting used on the plan preview ("Good evening, Priya").
 String greetingFor(DateTime now) {
   final h = now.hour;
@@ -27,19 +33,29 @@ String greetingFor(DateTime now) {
 
 extension OnboardingMotion on Widget {
   /// Staggered entrance (fade + rise). No-op under reduce motion.
+  ///
+  /// The child is cached in a RepaintBoundary so the fade/slide only
+  /// re-composites a layer each frame instead of repainting its shadows and
+  /// text. Entrances start just after the step transition (+[_afterSwitchMs])
+  /// so the page slide and the card entrances don't fight for the same frames.
   Widget enter(BuildContext context, {int delayMs = 0, double dy = 0.12}) {
     if (!motionOn(context)) return this;
-    return animate()
-        .fadeIn(delay: delayMs.ms, duration: 420.ms)
-        .slideY(begin: dy, curve: Curves.easeOutCubic);
+    return RepaintBoundary(child: this)
+        .animate()
+        .fadeIn(delay: (delayMs + _afterSwitchMs).ms, duration: 360.ms, curve: Curves.easeOut)
+        .slideY(begin: dy * 0.6, curve: Curves.easeOutCubic, duration: 420.ms);
   }
 
-  /// Springy pop-in for "objects" (cards, stickers). No-op under reduce motion.
+  /// Soft pop-in for "objects" (cards, stickers). No-op under reduce motion.
+  /// A small, non-bouncy scale (0.9 → 1) on a cached layer: the old 0.6 →
+  /// overshoot spring re-rasterised blurred shadows every frame and read as
+  /// jittery on mid-range phones.
   Widget pop(BuildContext context, {int delayMs = 0}) {
     if (!motionOn(context)) return this;
-    return animate()
-        .fadeIn(delay: delayMs.ms, duration: 260.ms)
-        .scaleXY(begin: 0.6, delay: delayMs.ms, duration: 520.ms, curve: Curves.easeOutBack);
+    return RepaintBoundary(child: this)
+        .animate()
+        .fadeIn(delay: delayMs.ms, duration: 280.ms, curve: Curves.easeOut)
+        .scaleXY(begin: 0.9, delay: delayMs.ms, duration: 420.ms, curve: Curves.easeOutCubic);
   }
 
   /// Gentle idle bob. No-op under reduce motion. The child is isolated in a
@@ -411,7 +427,9 @@ class _AttendanceChip extends StatelessWidget {
     final t = Theme.of(context).textTheme;
     return _HeroCard(
       child: Row(mainAxisSize: MainAxisSize.min, children: [
-        const AnimatedProgressRing(percent: 92, size: 40, strokeWidth: 5, color: AppColors.success, centerLabel: ''),
+        // Static ring: an animated ring inside a floating card forced the
+        // card (and its blurred shadow) to repaint every frame on entry.
+        const ProgressRing(percent: 92, size: 40, strokeWidth: 5, color: AppColors.success, centerLabel: ''),
         const SizedBox(width: 10),
         Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
           Text('92%', style: t.titleMedium?.copyWith(color: AppColors.success)),
@@ -512,9 +530,6 @@ class StudentIdCard extends StatelessWidget {
           end: Alignment.bottomRight,
           colors: [AppColors.primaryLight, AppColors.primary, AppColors.primaryDark],
         ),
-        boxShadow: [
-          BoxShadow(color: AppColors.primary.withValues(alpha: 0.35), blurRadius: 28, offset: const Offset(0, 14)),
-        ],
       ),
       clipBehavior: Clip.antiAlias,
       child: Stack(
@@ -609,7 +624,8 @@ class StudentIdCard extends StatelessWidget {
 
     if (motion) {
       // An occasional glossy sweep sells the "card" material. SweepShimmer
-      // only applies its mask during the sweep itself (see its docs).
+      // only applies its mask during the sweep itself (see its docs). The
+      // card content is cached so the sweep doesn't repaint text/avatar.
       card = SweepShimmer(
         delay: const Duration(milliseconds: 1600),
         every: const Duration(seconds: 6),
@@ -618,6 +634,17 @@ class StudentIdCard extends StatelessWidget {
         child: card,
       );
     }
+    // The blurred shadow sits OUTSIDE the shimmer, so each sweep frame never
+    // re-rasterises it (a 28px blur was the card's main jank).
+    card = DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(26),
+        boxShadow: [
+          BoxShadow(color: AppColors.primary.withValues(alpha: 0.35), blurRadius: 28, offset: const Offset(0, 14)),
+        ],
+      ),
+      child: card,
+    );
     return Semantics(
       label: 'Your student card: ${hasName ? name.trim() : 'no name yet'}',
       child: ExcludeSemantics(child: RepaintBoundary(child: card)),

@@ -79,8 +79,8 @@ class _MomentTileState extends State<_MomentTile> {
   String _caption() {
     final code = widget.inviteCode;
     final invite = code != null
-        ? 'Join with my code $code — we both get '
-            '${AppConstants.referralRewardDays} days of Pro:\n'
+        ? 'Join with my code $code and get '
+            '${AppConstants.referralWelcomeDays} days of Pro free:\n'
         : '';
     return '${widget.moment.shareText}\n\n'
         'I track attendance, grades, habits & study time with ClassTrack 📚\n'

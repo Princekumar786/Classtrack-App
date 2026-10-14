@@ -43,6 +43,7 @@ class _SweepShimmerState extends State<SweepShimmer>
         });
   Timer? _timer;
   bool _started = false;
+  final GlobalKey _contentKey = GlobalKey();
 
   @override
   void didChangeDependencies() {
@@ -69,7 +70,11 @@ class _SweepShimmerState extends State<SweepShimmer>
 
   @override
   Widget build(BuildContext context) {
-    final content = RepaintBoundary(child: widget.child);
+    // The GlobalKey lets the child move in and out of the mask WITHOUT being
+    // rebuilt: before, mounting/unmounting the ShaderMask changed the widget
+    // above the child, so the whole card (text, avatar, images) was torn down
+    // and rebuilt at the start and end of every sweep — a visible hitch.
+    final content = RepaintBoundary(key: _contentKey, child: widget.child);
     if (!_c.isAnimating) return content;
     return AnimatedBuilder(
       animation: _c,

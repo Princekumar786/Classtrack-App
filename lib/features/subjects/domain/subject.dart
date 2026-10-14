@@ -49,6 +49,18 @@ class Subject {
   /// Key into [SubjectIcons.catalog] for this subject's icon (null = default).
   final String? iconKey;
 
+  /// The archived semester this subject belongs to. `null` = the current
+  /// semester (everything created before semesters existed is current too).
+  /// Only written by [SemesterRepository]; [toMap] omits it when null so a
+  /// normal edit can never accidentally un-archive a subject.
+  final String? semesterId;
+
+  /// Official final result for an archived subject (optional, entered by the
+  /// student from their marksheet). Overrides the grade computed from
+  /// individual assessments when working out SGPA/CGPA.
+  final String? finalGrade; // e.g. "A+", "O", "B"
+  final double? finalGradePoints; // on the user's GPA scale
+
   final DateTime? createdAt;
 
   const Subject({
@@ -67,8 +79,14 @@ class Subject {
     this.startDate,
     this.endDate,
     this.iconKey,
+    this.semesterId,
+    this.finalGrade,
+    this.finalGradePoints,
     this.createdAt,
   });
+
+  /// True when this subject was archived by a semester wrap-up.
+  bool get isArchived => semesterId != null;
 
   /// Total classes counted toward the percentage (only present + absent).
   int get held => attended + absent;
@@ -152,6 +170,9 @@ class Subject {
       startDate: clearStartDate ? null : (startDate ?? this.startDate),
       endDate: clearEndDate ? null : (endDate ?? this.endDate),
       iconKey: iconKey ?? this.iconKey,
+      semesterId: semesterId,
+      finalGrade: finalGrade,
+      finalGradePoints: finalGradePoints,
       createdAt: createdAt,
     );
   }
@@ -175,6 +196,10 @@ class Subject {
             startDate != null ? Timestamp.fromDate(startDate!) : null,
         'endDate': endDate != null ? Timestamp.fromDate(endDate!) : null,
         'iconKey': iconKey,
+        // Archive fields are only written when set (see [semesterId]).
+        if (semesterId != null) 'semesterId': semesterId,
+        if (finalGrade != null) 'finalGrade': finalGrade,
+        if (finalGradePoints != null) 'finalGradePoints': finalGradePoints,
         'createdAt': createdAt != null
             ? Timestamp.fromDate(createdAt!)
             : FieldValue.serverTimestamp(),
@@ -209,6 +234,9 @@ class Subject {
       startDate: (map['startDate'] as Timestamp?)?.toDate(),
       endDate: (map['endDate'] as Timestamp?)?.toDate(),
       iconKey: map['iconKey'] as String?,
+      semesterId: map['semesterId'] as String?,
+      finalGrade: map['finalGrade'] as String?,
+      finalGradePoints: (map['finalGradePoints'] as num?)?.toDouble(),
       createdAt: (map['createdAt'] as Timestamp?)?.toDate(),
     );
   }

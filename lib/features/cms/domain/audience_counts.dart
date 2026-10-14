@@ -21,7 +21,8 @@ class AudienceCounts {
   }
 
   /// Estimated recipients for a broadcast target. [country] null = everyone.
-  /// Country estimates only count users who set that country in their profile.
+  /// Country estimates count users whose targeting country (profile choice,
+  /// else auto-detected from their phone) is that country.
   int estimate({String? country}) {
     if (country == null || country.isEmpty) return total;
     return byCountry[country] ?? 0;

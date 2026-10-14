@@ -67,6 +67,15 @@ void main() {
       expect(b.sponsored, isTrue);
       expect(b.published, isTrue);
       expect(b.startDate, DateTime(2026, 1, 1));
+      // Older banners without the field keep showing to Pro users.
+      expect(b.showToPro, isTrue);
+    });
+
+    test('showToPro round-trips', () {
+      final off = CmsBanner.fromMap('b2', {'title': 'Ad', 'showToPro': false});
+      expect(off.showToPro, isFalse);
+      expect(off.toMap()['showToPro'], isFalse);
+      expect(const CmsBanner(id: 'b', title: 'T').toMap()['showToPro'], isTrue);
     });
   });
 

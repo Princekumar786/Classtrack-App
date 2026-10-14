@@ -73,7 +73,7 @@ class _CreatePlanFlowState extends ConsumerState<CreatePlanFlow> {
     // Prefill the region from the student's profile country (used for regional
     // offers already), so law/tax/governance plans are jurisdiction-correct by
     // default. They can still change it on the Course & country step.
-    final country = ref.read(userProfileProvider).valueOrNull?.country;
+    final country = ref.read(effectiveCountryProvider);
     _d.region = StudyRegionX.fromCountryName(country);
   }
 

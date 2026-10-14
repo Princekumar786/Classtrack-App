@@ -10,8 +10,11 @@ import '../../../../shared/widgets/states.dart';
 import '../../../../shared/widgets/ui_kit.dart';
 import '../../../../shared/widgets/placement_slot.dart';
 import '../../../cms/domain/marketing.dart';
+import '../../../semesters/presentation/providers/semester_providers.dart';
+import '../../../semesters/presentation/screens/past_semesters_screen.dart';
 import '../../../subjects/domain/subject.dart';
 import '../../../subjects/presentation/providers/subject_providers.dart';
+import '../../../subscription/presentation/providers/subscription_providers.dart';
 import '../../domain/grade_item.dart';
 import '../providers/grade_providers.dart';
 
@@ -59,6 +62,8 @@ class GradesScreen extends ConsumerWidget {
                 begin: 0.08, curve: Curves.easeOut),
             const SizedBox(height: 12),
             _scaleToggle(context, ref),
+            const SizedBox(height: 12),
+            _pastSemestersTile(context, ref),
             const SizedBox(height: 16),
             const PlacementSlot(placement: Placements.grades),
             const SizedBox(height: 8),
@@ -128,7 +133,7 @@ class GradesScreen extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('GPA',
+              Text('GPA · this semester',
                   style: theme.textTheme.labelMedium
                       ?.copyWith(color: Colors.white70)),
               const SizedBox(height: 2),
@@ -235,6 +240,53 @@ class GradesScreen extends ConsumerWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// Entry to Past semesters / wrap-up (Pro).
+  Widget _pastSemestersTile(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final isPro = ref.watch(isProProvider);
+    final count = ref.watch(semestersStreamProvider).valueOrNull?.length ?? 0;
+    final cgpa = ref.watch(cgpaProvider);
+    final subtitle = count == 0
+        ? 'Semester over? Wrap it up and start fresh'
+        : isPro && cgpa != null
+            ? 'CGPA ${cgpa.toStringAsFixed(2)} · $count past semester${count == 1 ? '' : 's'}'
+            : '$count past semester${count == 1 ? '' : 's'}';
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(26),
+        onTap: () => openPastSemesters(context, ref),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: softCard(context),
+          child: Row(children: [
+            const Icon(Icons.history_edu_rounded,
+                size: 20, color: AppColors.primary),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Past semesters & CGPA',
+                      style: theme.textTheme.bodyMedium
+                          ?.copyWith(fontWeight: FontWeight.w600)),
+                  Text(subtitle, style: theme.textTheme.bodySmall),
+                ],
+              ),
+            ),
+            if (!isPro)
+              const Padding(
+                padding: EdgeInsets.only(right: 6),
+                child: Icon(Icons.workspace_premium_rounded,
+                    size: 18, color: AppColors.primary),
+              ),
+            const Icon(Icons.chevron_right_rounded),
+          ]),
+        ),
       ),
     );
   }
@@ -573,7 +625,21 @@ class _SubjectGradeCard extends ConsumerWidget {
 class GradeEditorSheet extends ConsumerStatefulWidget {
   final GradeItem? initial;
   final String? initialSubjectId;
-  const GradeEditorSheet({super.key, this.initial, this.initialSubjectId});
+
+  /// Subjects offered in the picker. Defaults to the current semester's; the
+  /// Past semesters screens pass that semester's (archived) subjects.
+  final List<Subject>? subjects;
+
+  /// Archived semester a NEW grade belongs to (null = current semester).
+  final String? semesterId;
+
+  const GradeEditorSheet({
+    super.key,
+    this.initial,
+    this.initialSubjectId,
+    this.subjects,
+    this.semesterId,
+  });
 
   @override
   ConsumerState<GradeEditorSheet> createState() => _GradeEditorSheetState();
@@ -630,6 +696,7 @@ class _GradeEditorSheetState extends ConsumerState<GradeEditorSheet> {
         maxScore: max,
         weight: weight,
         date: DateTime.now(),
+        semesterId: widget.semesterId,
       ));
     } else {
       ctrl.update(existing.copyWith(
@@ -648,7 +715,13 @@ class _GradeEditorSheetState extends ConsumerState<GradeEditorSheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final subjects = ref.watch(subjectsStreamProvider).valueOrNull ?? const [];
+    final subjects = widget.subjects ??
+        ref.watch(subjectsStreamProvider).valueOrNull ??
+        const <Subject>[];
+    // A grade can point at a subject that's gone (deleted earlier) — show it
+    // as "No subject" instead of crashing the picker with an unknown value.
+    final pickerValue =
+        subjects.any((s) => s.id == _subjectId) ? _subjectId : null;
     final bottom = MediaQuery.of(context).viewInsets.bottom;
     return Padding(
       padding: EdgeInsets.fromLTRB(20, 12, 20, 20 + bottom),
@@ -721,7 +794,7 @@ class _GradeEditorSheetState extends ConsumerState<GradeEditorSheet> {
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String?>(
-              initialValue: _subjectId,
+              initialValue: pickerValue,
               isExpanded: true,
               decoration: const InputDecoration(labelText: 'Subject'),
               items: [

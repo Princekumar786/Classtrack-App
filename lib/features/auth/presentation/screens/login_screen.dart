@@ -73,7 +73,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         ..showSnackBar(
           SnackBar(
             content: Text(ok
-                ? 'Password reset email sent.'
+                ? 'Password reset email sent. Not in your inbox? Check Spam or Junk.'
                 : friendlyAuthError(ref.read(authControllerProvider).error!)),
           ),
         );

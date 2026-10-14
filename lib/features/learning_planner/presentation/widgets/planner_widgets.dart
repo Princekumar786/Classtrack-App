@@ -257,12 +257,16 @@ class PlannerBottomBar extends StatelessWidget {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Text(label,
-                          style: const TextStyle(
-                              fontFamily: 'Poppins',
-                              fontSize: 15.5,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white)),
+                      Flexible(
+                        child: Text(label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontFamily: 'Poppins',
+                                fontSize: 15.5,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white)),
+                      ),
                       if (trailingIcon != null) ...[
                         const SizedBox(width: 8),
                         Icon(trailingIcon, size: 20, color: Colors.white),
@@ -334,14 +338,21 @@ class PlanStat extends StatelessWidget {
           child: Icon(icon, size: 19, color: AppColors.primary),
         ),
         const SizedBox(width: 10),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(value,
-                style: theme.textTheme.titleMedium?.copyWith(fontSize: 15)),
-            Text(label, style: theme.textTheme.bodySmall),
-          ],
+        Flexible(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleMedium?.copyWith(fontSize: 15)),
+              Text(label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall),
+            ],
+          ),
         ),
       ],
     );

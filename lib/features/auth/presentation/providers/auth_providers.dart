@@ -20,6 +20,14 @@ final userProfileProvider = StreamProvider<AppUser?>((ref) {
   return ref.watch(authRepositoryProvider).watchProfile(uid);
 });
 
+/// The ONE country used for targeting everywhere (opportunities, discounts,
+/// banners, campaigns, CMS pushes): profile choice, else auto-detected.
+/// Use this instead of reading `profile.country` for any targeting.
+final effectiveCountryProvider = Provider<String?>((ref) {
+  return ref.watch(
+      userProfileProvider.select((a) => a.valueOrNull?.effectiveCountry));
+});
+
 /// Handles auth mutations with a loading/error [AsyncValue] state.
 ///
 /// [readSeed]/[clearSeed] connect the pre-sign-up onboarding answers: they're

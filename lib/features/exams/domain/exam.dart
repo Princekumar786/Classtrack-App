@@ -13,6 +13,10 @@ class Exam {
   final List<ChecklistItem> topics; // revision checklist for prep readiness
   final DateTime? createdAt;
 
+  /// Archived semester this exam belongs to (null = current semester).
+  /// Omitted from [toMap] when null so edits never un-archive it.
+  final String? semesterId;
+
   const Exam({
     required this.id,
     required this.title,
@@ -22,6 +26,7 @@ class Exam {
     this.note,
     this.topics = const [],
     this.createdAt,
+    this.semesterId,
   });
 
   /// Whole days from today (date-only) until the exam. Negative if past.
@@ -69,6 +74,7 @@ class Exam {
       note: clearNote ? null : (note ?? this.note),
       topics: topics ?? this.topics,
       createdAt: createdAt,
+      semesterId: semesterId,
     );
   }
 
@@ -79,6 +85,7 @@ class Exam {
         'room': room,
         'note': note,
         'topics': ChecklistItem.listToMap(topics),
+        if (semesterId != null) 'semesterId': semesterId,
         'createdAt': createdAt != null
             ? Timestamp.fromDate(createdAt!)
             : FieldValue.serverTimestamp(),
@@ -94,6 +101,7 @@ class Exam {
       note: map['note'] as String?,
       topics: ChecklistItem.listFrom(map['topics']),
       createdAt: (map['createdAt'] as Timestamp?)?.toDate(),
+      semesterId: map['semesterId'] as String?,
     );
   }
 }

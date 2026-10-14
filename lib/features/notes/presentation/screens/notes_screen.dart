@@ -34,6 +34,7 @@ class NotesScreen extends ConsumerStatefulWidget {
     String? draftBody,
   }) {
     Navigator.of(context).push(MaterialPageRoute(
+      settings: const RouteSettings(name: 'Note Editor'),
       builder: (_) => NoteEditorScreen(
         initial: note,
         draftTitle: draftTitle,
@@ -440,6 +441,7 @@ class _NoteCard extends ConsumerWidget {
                             color: AppColors.primary,
                             onTap: () =>
                                 Navigator.of(context).push(MaterialPageRoute(
+                                    settings: const RouteSettings(name: 'Flashcard Study'),
                                     builder: (_) => FlashcardStudyScreen(
                                           cards: note.flashcards,
                                           title: note.title.trim().isEmpty
@@ -1154,6 +1156,7 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
   Widget _imageThumb(NoteAttachment a) {
     return GestureDetector(
       onTap: () => Navigator.of(context).push(MaterialPageRoute(
+          settings: const RouteSettings(name: 'Note Image'),
           builder: (_) => NoteImageViewer(url: a.url, name: a.name))),
       child: Stack(
         children: [
@@ -1275,6 +1278,7 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
     }
     final title = _title.text.trim().isEmpty ? 'Study' : _title.text.trim();
     Navigator.of(context).push(MaterialPageRoute(
+        settings: const RouteSettings(name: 'Flashcard Study'),
         builder: (_) => FlashcardStudyScreen(cards: cards, title: title)));
   }
 

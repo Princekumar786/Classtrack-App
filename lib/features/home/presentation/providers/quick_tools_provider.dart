@@ -13,7 +13,6 @@ const List<String> kDefaultQuickToolOrder = <String>[
   'exams',
   'grades',
   'notes',
-  'calendar',
   'habits',
   'expenses',
   'perks',

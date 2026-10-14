@@ -666,6 +666,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             width: double.infinity,
             child: FilledButton.icon(
               onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                settings: const RouteSettings(name: 'Review'),
                 builder: (_) => ReviewScreen(schedule: schedule),
               )),
               icon: const Icon(Icons.checklist_rounded, size: 18),

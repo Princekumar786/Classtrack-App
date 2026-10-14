@@ -57,16 +57,22 @@ class CmsDashboardScreen extends ConsumerWidget {
                 _KpiWrap(metrics: m),
                 const SizedBox(height: 24),
                 if (m.total > 0) ...[
-                  Text('Content by type',
-                      style: theme.textTheme.titleMedium
-                          ?.copyWith(fontWeight: FontWeight.w700)),
+                  Text(
+                    'Content by type',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                   const SizedBox(height: 12),
                   _TypeBreakdown(metrics: m),
                   const SizedBox(height: 24),
                 ],
-                Text('Your access',
-                    style: theme.textTheme.titleMedium
-                        ?.copyWith(fontWeight: FontWeight.w700)),
+                Text(
+                  'Your access',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
                 const SizedBox(height: 12),
                 _AccessGrid(role: role),
               ],
@@ -80,12 +86,11 @@ class CmsDashboardScreen extends ConsumerWidget {
   void _exportCsv(BuildContext context, List<Resource> resources) {
     final csv = buildResourcesCsv(resources);
     final stamp = DateTime.now().toIso8601String().split('T').first;
-    downloadTextFile(
-        'resources-$stamp.csv', 'text/csv;charset=utf-8', csv);
+    downloadTextFile('resources-$stamp.csv', 'text/csv;charset=utf-8', csv);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-          content:
-              Text('Exported ${resources.length} resources to CSV ✓')),
+        content: Text('Exported ${resources.length} resources to CSV ✓'),
+      ),
     );
   }
 }
@@ -99,42 +104,46 @@ class _KpiWrap extends StatelessWidget {
     final m = metrics;
     final cards = <Widget>[
       _KpiCard(
-          label: 'Total resources',
-          value: m.total,
-          icon: Icons.inventory_2_rounded,
-          color: AppColors.primary),
+        label: 'Total resources',
+        value: m.total,
+        icon: Icons.inventory_2_rounded,
+        color: AppColors.primary,
+      ),
       _KpiCard(
-          label: 'Published',
-          value: m.published,
-          icon: Icons.public_rounded,
-          color: AppColors.success),
+        label: 'Published',
+        value: m.published,
+        icon: Icons.public_rounded,
+        color: AppColors.success,
+      ),
       _KpiCard(
-          label: 'Drafts',
-          value: m.drafts,
-          icon: Icons.edit_note_rounded,
-          color: AppColors.info),
+        label: 'Drafts',
+        value: m.drafts,
+        icon: Icons.edit_note_rounded,
+        color: AppColors.info,
+      ),
       _KpiCard(
-          label: 'Expiring ≤ 7 days',
-          value: m.expiringSoon,
-          icon: Icons.schedule_rounded,
-          color: AppColors.warning,
-          highlight: m.expiringSoon > 0),
+        label: 'Expiring ≤ 7 days',
+        value: m.expiringSoon,
+        icon: Icons.schedule_rounded,
+        color: AppColors.warning,
+        highlight: m.expiringSoon > 0,
+      ),
       _KpiCard(
-          label: 'Archived',
-          value: m.archived,
-          icon: Icons.archive_rounded,
-          color: AppColors.cancelled),
+        label: 'Archived',
+        value: m.archived,
+        icon: Icons.archive_rounded,
+        color: AppColors.cancelled,
+      ),
       _KpiCard(
-          label: 'Sponsored',
-          value: m.sponsored,
-          icon: Icons.star_rounded,
-          color: AppColors.accent),
+        label: 'Sponsored',
+        value: m.sponsored,
+        icon: Icons.star_rounded,
+        color: AppColors.accent,
+      ),
     ];
     return LayoutBuilder(
       builder: (context, c) {
-        final cols = c.maxWidth > 1000
-            ? 3
-            : (c.maxWidth > 620 ? 2 : 1);
+        final cols = c.maxWidth > 1000 ? 3 : (c.maxWidth > 620 ? 2 : 1);
         final w = (c.maxWidth - (cols - 1) * 16) / cols;
         return Wrap(
           spacing: 16,
@@ -184,14 +193,20 @@ class _KpiCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('$value',
-                    style: theme.textTheme.headlineSmall
-                        ?.copyWith(fontWeight: FontWeight.w700)),
-                Text(label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: theme.hintColor)),
+                Text(
+                  '$value',
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.hintColor,
+                  ),
+                ),
               ],
             ),
           ),
@@ -209,8 +224,9 @@ class _TypeBreakdown extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final top = metrics.topTypes.take(6).toList();
-    final maxVal =
-        top.isEmpty ? 1 : top.map((e) => e.value).reduce((a, b) => a > b ? a : b);
+    final maxVal = top.isEmpty
+        ? 1
+        : top.map((e) => e.value).reduce((a, b) => a > b ? a : b);
     return Container(
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
       decoration: softCard(context),
@@ -225,10 +241,12 @@ class _TypeBreakdown extends StatelessWidget {
                   const SizedBox(width: 10),
                   SizedBox(
                     width: 150,
-                    child: Text(e.key.label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodyMedium),
+                    child: Text(
+                      e.key.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyMedium,
+                    ),
                   ),
                   Expanded(
                     child: ClipRRect(
@@ -242,9 +260,12 @@ class _TypeBreakdown extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 10),
-                  Text('${e.value}',
-                      style: theme.textTheme.labelLarge
-                          ?.copyWith(fontWeight: FontWeight.w700)),
+                  Text(
+                    '${e.value}',
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -322,11 +343,14 @@ class _CapabilityCard extends StatelessWidget {
             ),
             const SizedBox(width: 14),
             Expanded(
-              child: Text(label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w600)),
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
             Icon(
               enabled ? Icons.check_circle_rounded : Icons.lock_outline_rounded,
@@ -355,8 +379,10 @@ class _ErrorCard extends StatelessWidget {
           const Icon(Icons.error_outline_rounded, color: AppColors.danger),
           const SizedBox(width: 12),
           Expanded(
-            child: Text('Could not load content metrics.\n$message',
-                style: theme.textTheme.bodyMedium),
+            child: Text(
+              'Could not load content metrics.\n$message',
+              style: theme.textTheme.bodyMedium,
+            ),
           ),
         ],
       ),

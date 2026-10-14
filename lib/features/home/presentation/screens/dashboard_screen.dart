@@ -22,7 +22,6 @@ import '../../../attendance/presentation/providers/attendance_providers.dart';
 import '../../../attendance/presentation/screens/attendance_screen.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../../auth/presentation/screens/edit_profile_screen.dart';
-import '../../../calendar/presentation/screens/calendar_screen.dart';
 import '../../../chat/presentation/screens/chat_screen.dart';
 import '../../../exams/presentation/providers/exam_providers.dart';
 import '../../../exams/presentation/screens/exams_screen.dart';
@@ -31,6 +30,7 @@ import '../../../grades/presentation/providers/grade_providers.dart';
 import '../../../grades/presentation/screens/grades_screen.dart';
 import '../../../habits/presentation/screens/habits_screen.dart';
 import '../../../import/presentation/screens/import_screen.dart';
+import '../../../import/presentation/widgets/import_draft_banner.dart';
 import '../../../notes/presentation/screens/notes_screen.dart';
 import '../../../opportunities/domain/resource.dart';
 import '../../../opportunities/presentation/providers/opportunities_providers.dart';
@@ -64,7 +64,9 @@ class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
 
   void _push(BuildContext context, Widget screen) {
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
+    Navigator.of(context).push(MaterialPageRoute(
+        settings: RouteSettings(name: _homeScreenName(screen)),
+        builder: (_) => screen));
   }
 
   @override
@@ -88,6 +90,8 @@ class DashboardScreen extends ConsumerWidget {
             // First-run guidance: only shown while the student has no subjects
             // yet, so a brand-new (empty) Home immediately points to value.
             const _GetStartedCard(),
+            // Unsaved timetable import (app was closed mid-review).
+            const ImportDraftBanner(padding: EdgeInsets.only(bottom: 18)),
             // Home — top ad/campaign slot (below the headline).
             const PlacementSlot(
                 placement: Placements.homeTop,
@@ -152,7 +156,9 @@ class _GetStartedCard extends ConsumerWidget {
   const _GetStartedCard();
 
   void _push(BuildContext context, Widget screen) {
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
+    Navigator.of(context).push(MaterialPageRoute(
+        settings: RouteSettings(name: _homeScreenName(screen)),
+        builder: (_) => screen));
   }
 
   @override
@@ -246,7 +252,9 @@ class _Header extends ConsumerWidget {
   const _Header({required this.firstName});
 
   void _push(BuildContext context, Widget screen) =>
-      Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
+      Navigator.of(context).push(MaterialPageRoute(
+          settings: RouteSettings(name: _homeScreenName(screen)),
+          builder: (_) => screen));
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -472,7 +480,7 @@ final homeAlertsProvider = Provider<List<_HomeAlert>>((ref) {
   // published after the bell was last opened; matched = featured or a strong
   // personalized score (perks always qualify). Excludes hidden/saved items.
   final seen = ref.watch(notificationsSeenProvider);
-  final country = ref.watch(userProfileProvider).valueOrNull?.country;
+  final country = ref.watch(effectiveCountryProvider);
   final hidden = ref.watch(hiddenResourceIdsProvider).valueOrNull ?? const {};
   final saved = ref.watch(savedResourceIdsProvider).valueOrNull ?? const {};
   final resources =
@@ -553,19 +561,19 @@ class _NotificationsSheet extends ConsumerWidget {
       switch (a.target) {
         case _AlertTarget.tasks:
           Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const TasksScreen()));
+              MaterialPageRoute(settings: const RouteSettings(name: 'Tasks'), builder: (_) => const TasksScreen()));
         case _AlertTarget.exams:
           Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const ExamsScreen()));
+              MaterialPageRoute(settings: const RouteSettings(name: 'Exams'), builder: (_) => const ExamsScreen()));
         case _AlertTarget.attendance:
           Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const AttendanceScreen()));
+              MaterialPageRoute(settings: const RouteSettings(name: 'Attendance'), builder: (_) => const AttendanceScreen()));
         case _AlertTarget.opportunities:
           Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const OpportunitiesScreen()));
+              MaterialPageRoute(settings: const RouteSettings(name: 'Opportunities'), builder: (_) => const OpportunitiesScreen()));
         case _AlertTarget.perks:
           Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const DiscountsScreen()));
+              MaterialPageRoute(settings: const RouteSettings(name: 'Discounts'), builder: (_) => const DiscountsScreen()));
         case _AlertTarget.announcement:
           if (a.url != null && a.url!.isNotEmpty) openUrl(context, a.url);
       }
@@ -746,7 +754,9 @@ class _StatGrid extends ConsumerWidget {
   const _StatGrid();
 
   void _push(BuildContext context, Widget screen) =>
-      Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
+      Navigator.of(context).push(MaterialPageRoute(
+          settings: RouteSettings(name: _homeScreenName(screen)),
+          builder: (_) => screen));
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1342,13 +1352,13 @@ class _TasksSection extends ConsumerWidget {
           title: 'Tasks',
           actionLabel: pending.isEmpty ? null : 'View all',
           onAction: () => Navigator.of(context)
-              .push(MaterialPageRoute(builder: (_) => const TasksScreen())),
+              .push(MaterialPageRoute(settings: const RouteSettings(name: 'Tasks'), builder: (_) => const TasksScreen())),
         ),
         const SizedBox(height: 12),
         if (top.isEmpty)
           GestureDetector(
             onTap: () => Navigator.of(context)
-                .push(MaterialPageRoute(builder: (_) => const TasksScreen())),
+                .push(MaterialPageRoute(settings: const RouteSettings(name: 'Tasks'), builder: (_) => const TasksScreen())),
             child: const _EmptyTile(
               icon: Icons.task_alt_rounded,
               text: "No tasks — you're all caught up. Tap to add one.",
@@ -1383,18 +1393,21 @@ class _RecommendedForYou extends ConsumerWidget {
           title: 'Recommended for you',
           actionLabel: 'View all',
           onAction: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const OpportunitiesScreen())),
+              MaterialPageRoute(settings: const RouteSettings(name: 'Opportunities'), builder: (_) => const OpportunitiesScreen())),
         ),
         const SizedBox(height: 12),
         if (top != null)
           ResourceCard(
             resource: top,
             onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                settings: const RouteSettings(name: 'Resource Detail'),
                 builder: (_) => ResourceDetailScreen(resource: top))),
           )
         else
           GestureDetector(
             onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                settings: RouteSettings(
+                    name: hasDetails ? 'Opportunities' : 'Edit Profile'),
                 builder: (_) => hasDetails
                     ? const OpportunitiesScreen()
                     : const EditProfileScreen())),
@@ -1472,8 +1485,6 @@ Map<String, _QuickTool> _quickToolRegistry() => {
           () => const ExamsScreen()),
       'notes': _QuickTool('Notes', Icons.sticky_note_2_rounded, AppColors.info,
           () => const NotesScreen()),
-      'calendar': _QuickTool('Calendar', Icons.calendar_month_rounded,
-          AppColors.accent, () => const CalendarScreen()),
       'habits': _QuickTool('Habits', Icons.local_fire_department_rounded,
           AppColors.coral, () => const HabitsScreen()),
       'expenses': _QuickTool('Expenses', Icons.account_balance_wallet_rounded,
@@ -1527,6 +1538,7 @@ class _QuickTools extends ConsumerWidget {
                   onTap: () {
                     ref.read(analyticsProvider).openFeature(e.value.label);
                     Navigator.of(context).push(MaterialPageRoute(
+                        settings: RouteSettings(name: e.value.label),
                         builder: (_) => e.value.screen()));
                   },
                 );
@@ -1783,3 +1795,18 @@ class _EmptyTile extends StatelessWidget {
     );
   }
 }
+
+
+/// Readable PostHog/Firebase screen name for a screen pushed from Home
+/// (class names are obfuscated in release builds, so map them explicitly).
+String _homeScreenName(Widget screen) => switch (screen) {
+      AttendanceScreen() => 'Attendance',
+      ChatScreen() => 'AI Chat',
+      EditSubjectScreen() => 'Edit Subject',
+      ExamsScreen() => 'Exams',
+      GradesScreen() => 'Grades',
+      ImportScreen() => 'Import',
+      ScheduleScreen() => 'Schedule',
+      SettingsScreen() => 'Settings',
+      _ => 'Home Shortcut',
+    };

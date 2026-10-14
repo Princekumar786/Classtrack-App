@@ -115,4 +115,83 @@ class ParsedSchedule {
       );
 
   bool get isEmpty => subjects.isEmpty && tasks.isEmpty;
+
+  // ── Local draft format ────────────────────────────────────────────────────
+  // A full round-trip of everything the review screen can edit (include
+  // toggles, one-off session dates, term dates, tasks), used to keep an
+  // unsaved import across the app being killed. Separate from [fromJson],
+  // which reads the Cloud Function's reply and must stay as it is.
+
+  Map<String, dynamic> toDraftJson() => {
+        'confidence': confidence,
+        'subjects': [
+          for (final s in subjects)
+            {
+              'name': s.name,
+              'professor': s.professor,
+              'classLink': s.classLink,
+              'startDate': s.startDate?.toIso8601String(),
+              'endDate': s.endDate?.toIso8601String(),
+              'include': s.include,
+              'sessions': [
+                for (final x in s.sessions)
+                  {
+                    'day': x.day,
+                    'start': x.start,
+                    'end': x.end,
+                    'room': x.room,
+                    'date': x.date?.toIso8601String(),
+                  },
+              ],
+            },
+        ],
+        'tasks': [
+          for (final t in tasks)
+            {
+              'title': t.title,
+              'due': t.due?.toIso8601String(),
+              'link': t.link,
+              'include': t.include,
+            },
+        ],
+      };
+
+  factory ParsedSchedule.fromDraftJson(Map<String, dynamic> json) {
+    DateTime? date(dynamic v) => v is String ? DateTime.tryParse(v) : null;
+    List<Map<String, dynamic>> maps(dynamic v) =>
+        ((v as List<dynamic>?) ?? const []).whereType<Map<String, dynamic>>().toList();
+    return ParsedSchedule(
+      confidence: (json['confidence'] as String?) ?? 'low',
+      subjects: [
+        for (final s in maps(json['subjects']))
+          ParsedSubject(
+            name: (s['name'] as String?) ?? 'Untitled',
+            professor: s['professor'] as String?,
+            classLink: s['classLink'] as String?,
+            startDate: date(s['startDate']),
+            endDate: date(s['endDate']),
+            include: (s['include'] as bool?) ?? true,
+            sessions: [
+              for (final x in maps(s['sessions']))
+                ParsedSession(
+                  day: (x['day'] as String?) ?? 'Monday',
+                  start: (x['start'] as String?) ?? '09:00',
+                  end: (x['end'] as String?) ?? '10:00',
+                  room: x['room'] as String?,
+                  date: date(x['date']),
+                ),
+            ],
+          ),
+      ],
+      tasks: [
+        for (final t in maps(json['tasks']))
+          ParsedTask(
+            title: (t['title'] as String?) ?? '',
+            due: date(t['due']),
+            link: t['link'] as String?,
+            include: (t['include'] as bool?) ?? true,
+          ),
+      ],
+    );
+  }
 }

@@ -200,21 +200,41 @@ service cloud.firestore {
 
     // Analytics pipeline. Students append their own engagement events (create
     // only, never read/modify); a Cloud Function folds them into counters.
+    // An event targets EITHER a resource (resourceId) OR a banner (bannerId).
     match /events/{id} {
       allow create: if isSignedIn()
         && request.resource.data.uid == request.auth.uid
-        && request.resource.data.resourceId is string
-        && request.resource.data.resourceId.size() > 0
-        && request.resource.data.resourceId.size() <= 200
+        && (
+          (request.resource.data.get('resourceId', null) is string
+            && request.resource.data.resourceId.size() > 0
+            && request.resource.data.resourceId.size() <= 200)
+          ||
+          (request.resource.data.get('bannerId', null) is string
+            && request.resource.data.bannerId.size() > 0
+            && request.resource.data.bannerId.size() <= 200)
+        )
         && request.resource.data.event is string
         && request.resource.data.event.size() <= 100;
       allow read, update, delete: if false;
     }
     // Aggregated counters — written ONLY by the backend (Admin SDK), readable
-    // by any CMS role (all roles may view analytics).
+    // by any CMS role (all roles may view analytics). Per-day buckets are
+    // readable for sponsor reports; per-user unique markers never are.
     match /resourceMetrics/{id} {
       allow read: if role() != 'none';
       allow write: if false;
+      match /daily/{day} {
+        allow read: if role() != 'none';
+        allow write: if false;
+      }
+    }
+    match /bannerMetrics/{id} {
+      allow read: if role() != 'none';
+      allow write: if false;
+      match /daily/{day} {
+        allow read: if role() != 'none';
+        allow write: if false;
+      }
     }
     match /metricsDaily/{id} {
       allow read: if role() != 'none';

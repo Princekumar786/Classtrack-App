@@ -12,8 +12,8 @@ String auditHeadline(AuditLogEntry e) {
   final target = (title != null && title.isNotEmpty)
       ? '"$title"'
       : (e.targetId.isNotEmpty
-          ? '${e.targetType} ${e.targetId}'
-          : e.targetType);
+            ? '${e.targetType} ${e.targetId}'
+            : e.targetType);
 
   if (action == 'set_user_role') {
     final to = e.details['to']?.toString();
@@ -65,8 +65,9 @@ String auditActor(AuditLogEntry e) {
   if (e.actorEmail != null && e.actorEmail!.isNotEmpty) return e.actorEmail!;
   if (e.actorUid == 'system') return 'System';
   if (e.actorUid == 'unknown') return _prettyRole(e.actorRole);
-  final shortUid =
-      e.actorUid.length > 6 ? e.actorUid.substring(0, 6) : e.actorUid;
+  final shortUid = e.actorUid.length > 6
+      ? e.actorUid.substring(0, 6)
+      : e.actorUid;
   return '${_prettyRole(e.actorRole)} · $shortUid';
 }
 

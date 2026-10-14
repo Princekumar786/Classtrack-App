@@ -29,7 +29,6 @@ import 'package:classtrack/features/notes/presentation/screens/notes_screen.dart
 import 'package:classtrack/features/opportunities/presentation/screens/discounts_screen.dart';
 import 'package:classtrack/features/opportunities/presentation/screens/opportunities_screen.dart';
 import 'package:classtrack/features/opportunities/presentation/screens/saved_opportunities_screen.dart';
-import 'package:classtrack/features/planner/presentation/screens/weekly_planner_screen.dart';
 import 'package:classtrack/features/referral/presentation/screens/referral_screen.dart';
 import 'package:classtrack/features/schedule/presentation/screens/schedule_screen.dart';
 import 'package:classtrack/features/settings/presentation/screens/privacy_policy_screen.dart';
@@ -67,7 +66,6 @@ final Map<String, Widget Function()> screens = {
   'Chat': () => const ChatScreen(),
   'Insights': () => const InsightsScreen(),
   'Daily agenda': () => const DailyAgendaScreen(),
-  'Weekly planner': () => const WeeklyPlannerScreen(),
   'Discounts': () => const DiscountsScreen(),
   'Saved opportunities': () => const SavedOpportunitiesScreen(),
   'Moments': () => const MomentsScreen(),

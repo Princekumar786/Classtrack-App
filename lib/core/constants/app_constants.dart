@@ -7,7 +7,7 @@ class AppConstants {
 
   /// User-facing app version shown in Settings. Keep this in sync with the
   /// `version:` field in pubspec.yaml (the part before the `+` build number).
-  static const String appVersion = '1.0.52';
+  static const String appVersion = '1.0.58';
 
   // Google Sign-In: the OAuth 2.0 *Web* client ID (client_type 3 in
   // google-services.json). Passing this explicitly to GoogleSignIn makes the
@@ -97,9 +97,13 @@ class AppConstants {
   /// RevenueCat's source of truth (repairs a missed/denied webhook).
   static const String reconcileEntitlementFunction = 'reconcileEntitlement';
 
-  // Referrals — each successful referral grants BOTH users this many free
-  // days of ClassTrack Pro (written server-side to _entitlements/{uid}).
-  static const int referralRewardDays = 3;
+  // Referrals (server-enforced in functions/referral.js — keep in sync):
+  //  • the inviter earns [referralMilestoneDays] of Pro for every
+  //    [referralMilestoneSize] friends who join with their code;
+  //  • a friend who joins with a code gets [referralWelcomeDays] once.
+  static const int referralMilestoneSize = 5;
+  static const int referralMilestoneDays = 7;
+  static const int referralWelcomeDays = 3;
   // Number of successful invites that unlock the "ambassador" milestone.
   static const int referralAmbassadorGoal = 5;
 

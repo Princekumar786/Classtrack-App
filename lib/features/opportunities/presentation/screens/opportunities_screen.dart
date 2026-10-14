@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../services/metrics_service.dart';
 import '../../../../core/utils/date_utils.dart';
 import '../../../../shared/widgets/placement_banner.dart';
 import '../../../../shared/widgets/placement_campaign.dart';
@@ -57,10 +58,12 @@ class _OpportunitiesScreenState extends ConsumerState<OpportunitiesScreen> {
 
   void _open(Resource r) => Navigator.of(
     context,
-  ).push(MaterialPageRoute(builder: (_) => ResourceDetailScreen(resource: r)));
+  ).push(MaterialPageRoute(settings: const RouteSettings(name: 'Resource Detail'), builder: (_) => ResourceDetailScreen(resource: r)));
 
   void _openFeatured(List<Resource> items) => Navigator.of(context).push(
-    MaterialPageRoute(builder: (_) => _AllFeaturedOppsScreen(items: items)),
+    MaterialPageRoute(
+          settings: const RouteSettings(name: 'All Featured Opportunities'),
+          builder: (_) => _AllFeaturedOppsScreen(items: items)),
   );
 
   void _clearAll() {
@@ -169,7 +172,7 @@ class _OpportunitiesScreenState extends ConsumerState<OpportunitiesScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final async = ref.watch(visibleResourcesProvider);
-    final country = ref.watch(userProfileProvider).valueOrNull?.country;
+    final country = ref.watch(effectiveCountryProvider);
     final hidden = ref.watch(hiddenResourceIdsProvider).valueOrNull ?? const {};
     // Clearance so the last card is never hidden behind the floating bottom
     // nav bar + FAB (larger on devices with a 3-button system nav).
@@ -220,13 +223,14 @@ class _OpportunitiesScreenState extends ConsumerState<OpportunitiesScreen> {
             tooltip: 'Perks',
             onPressed: () => Navigator.of(
               context,
-            ).push(MaterialPageRoute(builder: (_) => const DiscountsScreen())),
+            ).push(MaterialPageRoute(settings: const RouteSettings(name: 'Discounts'), builder: (_) => const DiscountsScreen())),
           ),
           IconButton(
             icon: const Icon(Icons.bookmark_border_rounded),
             tooltip: 'Saved',
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute(
+                settings: const RouteSettings(name: 'Saved Opportunities'),
                 builder: (_) => const SavedOpportunitiesScreen(),
               ),
             ),
@@ -560,6 +564,7 @@ class _OpportunitiesScreenState extends ConsumerState<OpportunitiesScreen> {
                   ),
                   onPressed: () => Navigator.of(context).push(
                     MaterialPageRoute(
+                      settings: const RouteSettings(name: 'Edit Profile'),
                       builder: (_) => const EditProfileScreen(),
                     ),
                   ),
@@ -720,6 +725,8 @@ class _FeaturedOppCard extends ConsumerWidget {
         : paletteBg;
     final match = ref.watch(resourceScoreProvider(resource));
     final showMatch = match.personalized && match.score >= 40;
+    // Feed impression for sponsor reporting (deduped per session).
+    ref.read(metricsServiceProvider).recordImpression(resource.id);
 
     return GestureDetector(
       onTap: onTap,
@@ -835,6 +842,7 @@ class _AllFeaturedOppsScreen extends StatelessWidget {
             resource: r,
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute(
+                settings: const RouteSettings(name: 'Resource Detail'),
                 builder: (_) => ResourceDetailScreen(resource: r),
               ),
             ),
@@ -863,6 +871,8 @@ class _OpportunityCard extends ConsumerWidget {
     final isNew =
         published != null && DateTime.now().difference(published).inDays <= 14;
     final showMatch = match.personalized && match.score >= 40;
+    // Feed impression for sponsor reporting (deduped per session).
+    ref.read(metricsServiceProvider).recordImpression(resource.id);
 
     // Compact, single inline meta line — only the bits that actually exist, so
     // the card never reserves empty space.

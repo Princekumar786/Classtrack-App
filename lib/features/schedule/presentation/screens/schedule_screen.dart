@@ -38,7 +38,7 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
 
   void _openEditor() {
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const EditSessionScreen()),
+      MaterialPageRoute(settings: const RouteSettings(name: 'Edit Session'), builder: (_) => const EditSessionScreen()),
     );
   }
 
@@ -862,6 +862,7 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
   /// Opens the class editor to modify this class (and its room).
   void _editClass(ScheduledClass c) {
     Navigator.of(context).push(MaterialPageRoute(
+      settings: const RouteSettings(name: 'Edit Session'),
       builder: (_) =>
           EditSessionScreen(subjectId: c.subject.id, session: c.session),
     ));

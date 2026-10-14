@@ -184,20 +184,29 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                 ),
                 Expanded(
                   child: AnimatedSwitcher(
-                    duration: motion ? const Duration(milliseconds: 360) : Duration.zero,
+                    duration: motion ? const Duration(milliseconds: kOnboardingSwitchMs) : Duration.zero,
                     switchInCurve: Curves.easeOutCubic,
                     switchOutCurve: Curves.easeInCubic,
                     transitionBuilder: (child, anim) {
-                      final dx = _forward ? 0.10 : -0.10;
+                      final dx = _forward ? 0.08 : -0.08;
                       final incoming = child.key == ValueKey(_step);
+                      // Each page is cached in its own layer, so the slide and
+                      // fade only move a texture instead of repainting every
+                      // card, shadow and image of both pages each frame.
                       return FadeTransition(
                         opacity: anim,
                         child: SlideTransition(
                           position: Tween(begin: Offset(incoming ? dx : -dx, 0), end: Offset.zero).animate(anim),
-                          child: child,
+                          child: RepaintBoundary(child: child),
                         ),
                       );
                     },
+                    // The old page is laid under the new one so the switch
+                    // never reflows the incoming page mid-slide.
+                    layoutBuilder: (current, previous) => Stack(
+                      alignment: Alignment.topCenter,
+                      children: [...previous, if (current != null) current],
+                    ),
                     child: KeyedSubtree(key: ValueKey(_step), child: body),
                   ),
                 ),

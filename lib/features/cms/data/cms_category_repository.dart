@@ -10,35 +10,42 @@ import '../domain/cms_category.dart';
 class CmsCategoryRepository {
   final FirebaseFirestore _db;
   final String editorUid;
-  CmsCategoryRepository({required FirebaseFirestore db, required this.editorUid})
-      : _db = db;
+  CmsCategoryRepository({
+    required FirebaseFirestore db,
+    required this.editorUid,
+  }) : _db = db;
 
   CollectionReference<Map<String, dynamic>> get _col =>
       _db.collection(AppConstants.categoriesCollection);
 
   Stream<List<CmsCategory>> watchAll() {
-    return _col.snapshots().map((snap) =>
-        parseDocsSafely(snap.docs, CmsCategory.fromMap, context: 'categories'));
+    return _col.snapshots().map(
+      (snap) => parseDocsSafely(
+        snap.docs,
+        CmsCategory.fromMap,
+        context: 'categories',
+      ),
+    );
   }
 
   Future<void> create(CmsCategory c) => _col.add({
-        ...c.toMap(),
-        'updatedBy': editorUid,
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+    ...c.toMap(),
+    'updatedBy': editorUid,
+    'createdAt': FieldValue.serverTimestamp(),
+    'updatedAt': FieldValue.serverTimestamp(),
+  });
 
   Future<void> update(CmsCategory c) => _col.doc(c.id).set({
-        ...c.toMap(),
-        'updatedBy': editorUid,
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+    ...c.toMap(),
+    'updatedBy': editorUid,
+    'updatedAt': FieldValue.serverTimestamp(),
+  }, SetOptions(merge: true));
 
   Future<void> setEnabled(String id, bool enabled) => _col.doc(id).set({
-        'enabled': enabled,
-        'updatedBy': editorUid,
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+    'enabled': enabled,
+    'updatedBy': editorUid,
+    'updatedAt': FieldValue.serverTimestamp(),
+  }, SetOptions(merge: true));
 
   Future<void> delete(String id) => _col.doc(id).delete();
 }

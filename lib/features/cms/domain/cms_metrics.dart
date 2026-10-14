@@ -45,9 +45,11 @@ class CmsContentMetrics {
   /// Types sorted by count descending (ties broken by enum order).
   List<MapEntry<ResourceType, int>> get topTypes {
     final entries = byType.entries.toList()
-      ..sort((a, b) => b.value != a.value
-          ? b.value.compareTo(a.value)
-          : a.key.index.compareTo(b.key.index));
+      ..sort(
+        (a, b) => b.value != a.value
+            ? b.value.compareTo(a.value)
+            : a.key.index.compareTo(b.key.index),
+      );
     return entries;
   }
 }
@@ -129,7 +131,8 @@ String slugify(String input) {
   var pendingDash = false;
   for (final rune in lower.runes) {
     final ch = String.fromCharCode(rune);
-    final isAlphaNum = (ch.codeUnitAt(0) >= 0x61 && ch.codeUnitAt(0) <= 0x7A) ||
+    final isAlphaNum =
+        (ch.codeUnitAt(0) >= 0x61 && ch.codeUnitAt(0) <= 0x7A) ||
         (ch.codeUnitAt(0) >= 0x30 && ch.codeUnitAt(0) <= 0x39);
     if (isAlphaNum) {
       if (pendingDash && buf.isNotEmpty) buf.write('-');
@@ -141,7 +144,6 @@ String slugify(String input) {
   }
   return buf.toString();
 }
-
 
 /// Whether [value] is a syntactically valid absolute http(s) URL — used to
 /// gate live image previews and to validate link fields as the user types.

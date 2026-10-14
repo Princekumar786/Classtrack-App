@@ -61,7 +61,7 @@ void showImportOptions(BuildContext context, WidgetRef ref) {
               onTap: () {
                 Navigator.pop(ctx);
                 Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const ImportScreen()),
+                  MaterialPageRoute(settings: const RouteSettings(name: 'Import'), builder: (_) => const ImportScreen()),
                 );
               },
             ),

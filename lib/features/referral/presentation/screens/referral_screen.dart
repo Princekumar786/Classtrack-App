@@ -53,11 +53,11 @@ class _ReferralBodyState extends ConsumerState<_ReferralBody> {
 
   ReferralInfo get info => widget.info;
 
-  String _inviteMessage(String code, int rewardDays) =>
+  String _inviteMessage(String code, int welcomeDays) =>
       '🎓 I\'m using ClassTrack to stay on top of my attendance, grades and '
       'study streaks — you should try it!\n\n'
-      'Use my invite code $code when you sign up and we\'ll BOTH get '
-      '$rewardDays days of ClassTrack Pro free. 💜\n\n'
+      'Use my invite code $code when you sign up and get '
+      '$welcomeDays days of ClassTrack Pro free. 💜\n\n'
       'Download: ${AppConstants.playStoreUrl}';
 
   Future<void> _copyCode(String code) async {
@@ -116,7 +116,7 @@ class _ReferralBodyState extends ConsumerState<_ReferralBody> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
       children: [
-        _RewardHero(rewardDays: rewardDays)
+        _RewardHero(info: info)
             .animate()
             .fadeIn(duration: 350.ms)
             .slideY(begin: 0.06, curve: Curves.easeOut),
@@ -137,11 +137,11 @@ class _ReferralBodyState extends ConsumerState<_ReferralBody> {
           ),
         ),
         const SizedBox(height: 24),
-        _ProgressCard(count: count, rewardDays: rewardDays, pro: pro),
+        _ProgressCard(info: info.copyWith(referralCount: count), pro: pro),
         const SizedBox(height: 24),
         Text('How it works', style: theme.textTheme.titleMedium),
         const SizedBox(height: 12),
-        _HowItWorks(rewardDays: rewardDays),
+        _HowItWorks(info: info),
         const SizedBox(height: 24),
         if (alreadyRedeemed)
           _RedeemedBanner(rewardDays: rewardDays)
@@ -158,8 +158,8 @@ class _ReferralBodyState extends ConsumerState<_ReferralBody> {
 
 /// Big gradient hero explaining the reward.
 class _RewardHero extends StatelessWidget {
-  final int rewardDays;
-  const _RewardHero({required this.rewardDays});
+  final ReferralInfo info;
+  const _RewardHero({required this.info});
 
   @override
   Widget build(BuildContext context) {
@@ -195,7 +195,7 @@ class _RewardHero extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           Text(
-            'Give $rewardDays days,\nget $rewardDays days',
+            'Invite ${info.milestoneSize} friends,\nget ${info.milestoneDays} days of Pro',
             textAlign: TextAlign.center,
             style: theme.textTheme.headlineSmall?.copyWith(
               color: Colors.white,
@@ -205,8 +205,9 @@ class _RewardHero extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           Text(
-            'When a friend joins with your code, you BOTH unlock '
-            '$rewardDays days of ClassTrack Pro — free.',
+            'Every ${info.milestoneSize} friends who join with your code unlock '
+            '${info.milestoneDays} days of ClassTrack Pro for you. Each friend '
+            'gets ${info.rewardDays} days free too.',
             textAlign: TextAlign.center,
             style: theme.textTheme.bodyMedium
                 ?.copyWith(color: Colors.white.withValues(alpha: 0.92)),
@@ -264,25 +265,21 @@ class _CodeCard extends StatelessWidget {
 }
 
 /// Shows invites so far, the user's real Pro status, and progress toward the
-/// ambassador goal.
+/// next "5 friends → 7 days" reward.
 class _ProgressCard extends StatelessWidget {
-  final int count;
-  final int rewardDays;
+  final ReferralInfo info;
   final ProEntitlement pro;
-  const _ProgressCard({
-    required this.count,
-    required this.rewardDays,
-    required this.pro,
-  });
+  const _ProgressCard({required this.info, required this.pro});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    const goal = AppConstants.referralAmbassadorGoal;
-    final progress = (count / goal).clamp(0.0, 1.0);
-    final reachedGoal = count >= goal;
+    final count = info.referralCount;
+    final size = info.milestoneSize;
+    final inCycle = info.inCurrentCycle;
+    final toNext = info.friendsToNextReward;
 
-    // Real, server-trusted Pro status (not the old cosmetic count × days).
+    // Real, server-trusted Pro status (not a cosmetic count × days).
     final String proValue;
     final String proLabel;
     if (pro.permanent) {
@@ -303,8 +300,8 @@ class _ProgressCard extends StatelessWidget {
       statusLine =
           'Pro active until ${DateFormat.yMMMd().format(pro.until!)}.';
     } else {
-      statusLine =
-          'Invite a friend to unlock $rewardDays days of ClassTrack Pro.';
+      statusLine = 'Invite $size friends to unlock ${info.milestoneDays} '
+          'days of ClassTrack Pro.';
     }
 
     return Container(
@@ -358,28 +355,57 @@ class _ProgressCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: LinearProgressIndicator(
-              value: progress,
-              minHeight: 10,
-              backgroundColor: AppColors.lavenderTint,
-              valueColor: const AlwaysStoppedAnimation(AppColors.primary),
+          const SizedBox(height: 18),
+          Text('Next reward', style: theme.textTheme.labelLarge),
+          const SizedBox(height: 10),
+          // One slot per friend in the current group of [size].
+          Semantics(
+            label: '$inCycle of $size friends towards '
+                '${info.milestoneDays} days of Pro',
+            child: ExcludeSemantics(
+              child: Row(
+                children: [
+                  for (var i = 0; i < size; i++) ...[
+                    Expanded(
+                      child: Container(
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: i < inCycle
+                              ? AppColors.primary
+                              : AppColors.lavenderTint,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Icon(
+                          i < inCycle
+                              ? Icons.person_rounded
+                              : Icons.person_outline_rounded,
+                          size: 18,
+                          color: i < inCycle
+                              ? Colors.white
+                              : AppColors.primary.withValues(alpha: 0.5),
+                        ),
+                      ),
+                    ),
+                    if (i < size - 1) const SizedBox(width: 6),
+                  ],
+                  const SizedBox(width: 8),
+                  const Icon(Icons.card_giftcard_rounded,
+                      color: AppColors.accent),
+                ],
+              ),
             ),
           ),
           const SizedBox(height: 10),
           Row(
             children: [
-              Icon(reachedGoal ? Icons.emoji_events_rounded : Icons.stars_rounded,
-                  size: 18,
-                  color: reachedGoal ? AppColors.accent : AppColors.primary),
+              const Icon(Icons.stars_rounded,
+                  size: 18, color: AppColors.primary),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  reachedGoal
-                      ? "You're a ClassTrack Ambassador! 🎉 Keep inviting to stack more Pro."
-                      : 'Invite ${goal - count} more to become a ClassTrack Ambassador.',
+                  'Invite $toNext more friend${toNext == 1 ? '' : 's'} to '
+                  'get ${info.milestoneDays} days of Pro.'
+                  '${info.earnedDays > 0 ? ' You\'ve earned ${info.earnedDays} days so far 🎉' : ''}',
                   style: theme.textTheme.bodySmall,
                 ),
               ),
@@ -423,8 +449,8 @@ class _StatBlock extends StatelessWidget {
 }
 
 class _HowItWorks extends StatelessWidget {
-  final int rewardDays;
-  const _HowItWorks({required this.rewardDays});
+  final ReferralInfo info;
+  const _HowItWorks({required this.info});
 
   @override
   Widget build(BuildContext context) {
@@ -437,12 +463,15 @@ class _HowItWorks extends StatelessWidget {
       (
         Icons.person_add_alt_1_rounded,
         'They join ClassTrack',
-        'Your friend signs up and enters your code in this screen.',
+        'Your friend signs up, enters your code and gets '
+            '${info.rewardDays} days of Pro free.',
       ),
       (
         Icons.workspace_premium_rounded,
-        'You both go Pro',
-        'You each unlock $rewardDays days of ClassTrack Pro instantly.',
+        'Every ${info.milestoneSize} friends = ${info.milestoneDays} days',
+        'When ${info.milestoneSize} friends have joined, you unlock '
+            '${info.milestoneDays} days of ClassTrack Pro. It keeps stacking: '
+            '${info.milestoneSize * 2} friends = ${info.milestoneDays * 2} days.',
       ),
     ];
     final theme = Theme.of(context);
@@ -606,8 +635,8 @@ class _RewardDialog extends StatelessWidget {
               style: theme.textTheme.titleLarge, textAlign: TextAlign.center),
           const SizedBox(height: 8),
           Text(
-            'You just unlocked $days days of ClassTrack Pro. Your friend gets '
-            'the same reward too.',
+            'You just unlocked $days days of ClassTrack Pro. Your friend is '
+            'one step closer to their own Pro reward too.',
             textAlign: TextAlign.center,
             style: theme.textTheme.bodyMedium,
           ),

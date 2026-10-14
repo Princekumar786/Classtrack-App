@@ -14,7 +14,7 @@ class ReportRepository {
   /// The signed-in user's uid (reporter on create, reviewer on update).
   final String uid;
   ReportRepository({required FirebaseFirestore db, required this.uid})
-      : _db = db;
+    : _db = db;
 
   CollectionReference<Map<String, dynamic>> get _col =>
       _db.collection(AppConstants.reportsCollection);
@@ -43,15 +43,16 @@ class ReportRepository {
         .orderBy('createdAt', descending: true)
         .limit(limit)
         .snapshots()
-        .map((snap) => snap.docs
-            .map((d) => ContentReport.fromMap(d.id, d.data()))
-            .toList());
+        .map(
+          (snap) => snap.docs
+              .map((d) => ContentReport.fromMap(d.id, d.data()))
+              .toList(),
+        );
   }
 
   /// Moderator action: change a report's status (+ optional resolution note),
   /// stamping the reviewer + time.
-  Future<void> setStatus(String id, ReportStatus status,
-      {String? resolution}) {
+  Future<void> setStatus(String id, ReportStatus status, {String? resolution}) {
     return _col.doc(id).set({
       'status': status.key,
       'reviewedBy': uid,

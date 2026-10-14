@@ -24,7 +24,12 @@ class SubjectRepository {
       .doc(uid)
       .collection(AppConstants.subjectsCollection);
 
-  Stream<List<Subject>> watchSubjects() {
+  /// Current-semester subjects only (archived ones are hidden).
+  Stream<List<Subject>> watchSubjects() => watchAllSubjects()
+      .map((list) => list.where((s) => s.semesterId == null).toList());
+
+  /// Every subject, including archived semesters.
+  Stream<List<Subject>> watchAllSubjects() {
     return _col.orderBy('name').snapshots().map(
           (snap) =>
               parseDocsSafely(snap.docs, Subject.fromMap, context: 'subjects'),
@@ -42,19 +47,33 @@ class SubjectRepository {
     return ref.id;
   }
 
-  /// One-shot read of all subjects (used by import to reuse existing subjects
-  /// instead of creating duplicates on re-import).
-  Future<List<Subject>> getAll() async {
+  /// One-shot read of the current semester's subjects (used by import to reuse
+  /// existing subjects instead of creating duplicates on re-import). Archived
+  /// subjects are skipped so a new semester's "Mathematics" becomes a fresh
+  /// subject instead of inheriting last semester's attendance.
+  Future<List<Subject>> getAll({bool includeArchived = false}) async {
     final snap = await _col.get();
-    return parseDocsSafely(snap.docs, Subject.fromMap, context: 'subjects');
+    final list =
+        parseDocsSafely(snap.docs, Subject.fromMap, context: 'subjects');
+    return includeArchived
+        ? list
+        : list.where((s) => s.semesterId == null).toList();
   }
 
   /// Create with a known id (used by AI import batch writes).
   Future<void> setWithId(String id, Subject subject) =>
       _col.doc(id).set(subject.toMap());
 
-  Future<void> update(Subject subject) =>
-      _col.doc(subject.id).set(subject.toMap(), SetOptions(merge: true));
+  /// Saves a subject's EDITABLE details (name, colour, links, term, target…).
+  ///
+  /// Never writes the attendance counters: those only change through
+  /// increments ([adjust], `AttendanceRepository.setStatus`) or the manual
+  /// counts editor ([setAttendance]). Writing the counters snapshotted when an
+  /// edit screen opened used to silently undo any mark made meanwhile (e.g.
+  /// from a notification or another device) — a lost update.
+  Future<void> update(Subject subject) => _col
+      .doc(subject.id)
+      .set(subjectDetailsMap(subject), SetOptions(merge: true));
 
   /// Adjust attendance counters safely (never below 0). Only present/absent
   /// count toward the percentage; cancelled is tracked separately.
@@ -161,6 +180,18 @@ class SubjectRepository {
   }
 
   Future<void> delete(String id) async {
+    // Keep the student's marks and exams: unlink them from the subject so they
+    // show under "Other grades" / "No subject" instead of silently vanishing
+    // (they used to stay in the database pointing at a deleted subject, which
+    // hid them from every screen and from the GPA).
+    final user = _db.collection(AppConstants.usersCollection).doc(uid);
+    for (final name in const ['grades', 'exams']) {
+      final linked =
+          await user.collection(name).where('subjectId', isEqualTo: id).get();
+      for (final d in linked.docs) {
+        await d.reference.update({'subjectId': null});
+      }
+    }
     // Delete nested sessions + attendance first.
     final sessions =
         await _col.doc(id).collection(AppConstants.sessionsCollection).get();
@@ -176,4 +207,13 @@ class SubjectRepository {
   }
 
   String newId() => _col.doc().id;
+}
+
+
+/// The subject fields a details edit may write: [Subject.toMap] minus the
+/// attendance counters and `createdAt`. Pure — unit tested.
+Map<String, dynamic> subjectDetailsMap(Subject subject) {
+  const counterKeys = {'attended', 'absent', 'held', 'cancelled', 'createdAt'};
+  return Map<String, dynamic>.from(subject.toMap())
+    ..removeWhere((k, _) => counterKeys.contains(k));
 }

@@ -11,7 +11,7 @@ import '../../../cms/domain/marketing.dart';
 /// reads published banners (allowed by Firestore rules).
 final homeBannersProvider = StreamProvider<List<CmsBanner>>((ref) {
   final db = ref.watch(firestoreProvider);
-  final country = ref.watch(userProfileProvider).valueOrNull?.country;
+  final country = ref.watch(effectiveCountryProvider);
   return db
       .collection(AppConstants.bannersCollection)
       .where('published', isEqualTo: true)

@@ -34,6 +34,7 @@ import '../../../opportunities/domain/resource.dart';
 import '../../../opportunities/presentation/providers/opportunities_providers.dart';
 import '../../../schedule/domain/class_session.dart';
 import '../../../schedule/presentation/providers/schedule_providers.dart';
+import '../../../semesters/presentation/providers/semester_providers.dart';
 import '../../../subjects/domain/subject.dart';
 import '../../../subjects/presentation/providers/subject_providers.dart';
 import '../../../subscription/domain/pro_constants.dart';
@@ -175,6 +176,47 @@ class ChatController extends StateNotifier<ChatState> {
       }
     }
     return gaps.isEmpty ? null : gaps.join(', ');
+  }
+
+  /// Past (wrapped-up) semesters with their real numbers, so the assistant
+  /// answers "what was my SGPA / CGPA / attendance last semester?" from data
+  /// instead of guessing. Only facts that exist are written.
+  void _writePastSemesters(StringBuffer sb) {
+    final semesters = _ref.read(semestersStreamProvider).valueOrNull ?? const [];
+    final isPro = _ref.read(isProProvider);
+    if (semesters.isEmpty) {
+      sb.writeln('Past semesters: none wrapped up yet.');
+      return;
+    }
+    final scale =
+        _ref.read(gpaScaleProvider) == GpaScaleType.ten ? '10' : '4.0';
+    sb.writeln(
+        'Past semesters (wrapped up; newest first)${isPro ? '' : ' — user is not Pro now, so they can view the list and restore but must upgrade to open one'}:');
+    for (final s in semesters.take(12)) {
+      final st = _ref.read(semesterStatsProvider(s.id));
+      final sgpa = st.sgpa;
+      final att = st.attendancePercent;
+      final parts = <String>[
+        if (sgpa != null)
+          'SGPA ${sgpa.toStringAsFixed(2)}/$scale (${st.officialSgpa != null ? 'official' : 'estimated from marks'})'
+        else
+          'no SGPA yet',
+        if (att != null) 'attendance ${att.round()}%',
+        '${st.subjects.length} subjects',
+        '${st.examCount} exams',
+      ];
+      sb.writeln('- ${s.name}: ${parts.join(', ')}.');
+      final subjects = st.subjects
+          .take(15)
+          .map((r) =>
+              '${r.subject.name}${r.letter != null ? ' ${r.letter}' : ''}${r.points != null ? ' (${r.points!.toStringAsFixed(1)} pts${r.hasOfficial ? '' : ' est.'})' : ''}')
+          .join('; ');
+      if (subjects.isNotEmpty) sb.writeln('  Subjects: $subjects.');
+    }
+    final cgpa = _ref.read(cgpaProvider);
+    sb.writeln(cgpa == null
+        ? 'CGPA: not available (no past semester has an SGPA yet).'
+        : 'CGPA across past semesters: ${cgpa.toStringAsFixed(2)}/$scale.');
   }
 
   String _buildContext() {
@@ -332,8 +374,9 @@ class ChatController extends StateNotifier<ChatState> {
     final gpa = _ref.read(gpaSummaryProvider);
     if (gpa.gradedSubjects > 0) {
       sb.writeln(
-          'GPA: ${gpa.gpa.toStringAsFixed(2)} of ${gpa.maxPoints >= 10 ? "10" : "4.0"} (avg ${gpa.averagePercent.toStringAsFixed(0)}%).');
+          'GPA (current semester only): ${gpa.gpa.toStringAsFixed(2)} of ${gpa.maxPoints >= 10 ? "10" : "4.0"} (avg ${gpa.averagePercent.toStringAsFixed(0)}%).');
     }
+    _writePastSemesters(sb);
     final tasks = _ref.read(pendingTasksProvider);
     if (tasks.isNotEmpty) {
       sb.writeln('Pending tasks:');
@@ -503,7 +546,7 @@ class ChatController extends StateNotifier<ChatState> {
     // deal?", "which perks save the most?" etc. from real, current data.
     final allResources =
         _ref.read(visibleResourcesProvider).valueOrNull ?? const <Resource>[];
-    final country = _ref.read(userProfileProvider).valueOrNull?.country;
+    final country = _ref.read(effectiveCountryProvider);
     final feed = allResources
         .where((r) => r.isInActiveFeed && r.targetsCountry(country))
         .toList();
@@ -576,6 +619,10 @@ class ChatController extends StateNotifier<ChatState> {
         first(_ref.read(examsStreamProvider.future)),
         first(_ref.read(studySessionsStreamProvider.future)),
         first(_ref.read(visibleResourcesProvider.future)),
+        first(_ref.read(semestersStreamProvider.future)),
+        first(_ref.read(allSubjectsStreamProvider.future)),
+        first(_ref.read(allGradesStreamProvider.future)),
+        first(_ref.read(allExamsStreamProvider.future)),
       ]).timeout(const Duration(seconds: 5));
     } catch (_) {
       // Ignore — fall back to whatever data is already available.
@@ -828,7 +875,7 @@ class ChatController extends StateNotifier<ChatState> {
           _append(const ChatMessage(
             role: ChatRole.assistant,
             text: 'Please verify your email address to use the AI assistant. '
-                'Check your inbox for the verification link. ✉️',
+                'Check your inbox (and Spam folder) for the verification link. ✉️',
           ));
         case ChatErrorKind.other:
           _append(const ChatMessage(
@@ -1427,7 +1474,7 @@ class ChatController extends StateNotifier<ChatState> {
     final subject = (a['subject'] as String?)?.trim();
     if (subject == null || subject.isEmpty) return false;
     if (!_ref.read(canCreatePlanProvider)) return false;
-    final country = _ref.read(userProfileProvider).valueOrNull?.country;
+    final country = _ref.read(effectiveCountryProvider);
     final region = StudyRegionX.fromCountryName(country);
     final gen = _ref.read(learningPlanGeneratorProvider);
     final plan = gen.generate(PlanRequest(

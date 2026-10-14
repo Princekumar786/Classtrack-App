@@ -14,7 +14,12 @@ class GradeRepository {
   CollectionReference<Map<String, dynamic>> get _col =>
       _db.collection('users').doc(uid).collection('grades');
 
-  Stream<List<GradeItem>> watchGrades() {
+  /// Current-semester grades only (archived ones are hidden).
+  Stream<List<GradeItem>> watchGrades() => watchAllGrades()
+      .map((list) => list.where((g) => g.semesterId == null).toList());
+
+  /// Every grade, including archived semesters.
+  Stream<List<GradeItem>> watchAllGrades() {
     return _col.snapshots().map((snap) {
       final list =
           parseDocsSafely(snap.docs, GradeItem.fromMap, context: 'grades');

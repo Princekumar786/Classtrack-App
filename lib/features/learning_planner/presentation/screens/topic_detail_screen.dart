@@ -4,11 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/utils/url_launcher_util.dart';
 import '../../../../services/analytics_service.dart';
 import '../../../../shared/widgets/ui_kit.dart';
 import '../../domain/learning_plan.dart';
 import '../providers/learning_planner_providers.dart';
 import '../widgets/planner_widgets.dart';
+import '../widgets/topic_checklist.dart';
 
 /// Topic Detail — a curriculum map for one topic. Shows WHAT to cover
 /// (sections → subtopics) and the completion criteria, never study material.
@@ -98,12 +100,45 @@ class TopicDetailScreen extends ConsumerWidget {
               ),
             ),
             const SizedBox(height: 24),
-            Text("What you'll cover", style: theme.textTheme.titleLarge),
+            _LinksCard(
+              links: topic.links,
+              onOpen: (url) => openUrl(context, url),
+              onAdd: () => _addLink(context, ref, topic),
+              onRemove: (url) => controller.setTopicLinks(planId, topicId,
+                  topic.links.where((l) => l != url).toList()),
+            ),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Expanded(
+                    child: Text("What you'll cover",
+                        style: theme.textTheme.titleLarge)),
+                if (topic.subtopicTotal > 0)
+                  Text('${topic.subtopicsDone}/${topic.subtopicTotal} done',
+                      style: theme.textTheme.labelLarge?.copyWith(
+                          color: topic.subtopicsDone == topic.subtopicTotal
+                              ? AppColors.success
+                              : AppColors.primary)),
+              ],
+            ),
             const SizedBox(height: 4),
-            Text('A map of what to study — not the study material itself.',
+            Text('Tick each subtopic as you finish it. Ticking the last one '
+                'completes the topic.',
                 style: theme.textTheme.bodySmall),
+            if (topic.subtopicTotal > 0) ...[
+              const SizedBox(height: 10),
+              ThinProgressBar(value: topic.progress, height: 6),
+            ],
             const SizedBox(height: 14),
-            _SectionsCard(sections: sections),
+            _SectionsCard(
+              sections: sections,
+              isDone: (s, p) =>
+                  topic.isDone ||
+                  topic.doneSubtopics
+                      .contains(LearningTopic.subtopicKey(s, p.trim())),
+              onToggle: (s, p, v) => controller.setSubtopicDone(
+                  planId, topicId, LearningTopic.subtopicKey(s, p.trim()), v),
+            ),
             if (topic.completionCriteria.isNotEmpty) ...[
               const SizedBox(height: 24),
               Text('Completion criteria', style: theme.textTheme.titleLarge),
@@ -144,6 +179,19 @@ class TopicDetailScreen extends ConsumerWidget {
         onNeedMoreTime: () => _needMoreTime(context, ref),
       ),
     );
+  }
+
+  Future<void> _addLink(
+      BuildContext context, WidgetRef ref, LearningTopic topic) async {
+    final url = await showDialog<String>(
+      context: context,
+      builder: (_) => const _AddLinkDialog(),
+    );
+    if (url == null) return;
+    if (topic.links.contains(url)) return;
+    await ref
+        .read(learningPlansProvider.notifier)
+        .setTopicLinks(planId, topicId, [...topic.links, url]);
   }
 
   Future<void> _needMoreTime(BuildContext context, WidgetRef ref) async {
@@ -465,7 +513,10 @@ class _MetaStrip extends StatelessWidget {
 
 class _SectionsCard extends StatelessWidget {
   final List<TopicSection> sections;
-  const _SectionsCard({required this.sections});
+  final bool Function(String section, String point) isDone;
+  final void Function(String section, String point, bool done) onToggle;
+  const _SectionsCard(
+      {required this.sections, required this.isDone, required this.onToggle});
 
   @override
   Widget build(BuildContext context) {
@@ -501,31 +552,14 @@ class _SectionsCard extends StatelessWidget {
                       const SizedBox(height: 4),
                       Text(sections[i].title,
                           style: theme.textTheme.titleMedium?.copyWith(fontSize: 15)),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 6),
                       for (final p in sections[i].points)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 7),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Container(
-                                margin: const EdgeInsets.only(top: 7),
-                                width: 5,
-                                height: 5,
-                                decoration: const BoxDecoration(
-                                  color: AppColors.primary,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Text(p,
-                                    style: theme.textTheme.bodyMedium
-                                        ?.copyWith(height: 1.35)),
-                              ),
-                            ],
+                        if (p.trim().isNotEmpty)
+                          SubtopicRow(
+                            text: p.trim(),
+                            done: isDone(sections[i].title, p),
+                            onChanged: (v) => onToggle(sections[i].title, p, v),
                           ),
-                        ),
                     ],
                   ),
                 ),
@@ -660,6 +694,148 @@ class _Actions extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+
+/// The student's own study links for this topic (videos, articles, notes).
+class _LinksCard extends StatelessWidget {
+  final List<String> links;
+  final ValueChanged<String> onOpen;
+  final VoidCallback onAdd;
+  final ValueChanged<String> onRemove;
+  const _LinksCard({
+    required this.links,
+    required this.onOpen,
+    required this.onAdd,
+    required this.onRemove,
+  });
+
+  static IconData _iconFor(String host) {
+    if (host.contains('youtube') || host.contains('youtu.be')) {
+      return Icons.smart_display_rounded;
+    }
+    if (host.contains('drive.google') || host.contains('docs.google')) {
+      return Icons.description_rounded;
+    }
+    return Icons.public_rounded;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 8, 8),
+      decoration: softCard(context, radius: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.link_rounded, color: AppColors.primary),
+              const SizedBox(width: 8),
+              Expanded(
+                  child: Text('Study links',
+                      style: theme.textTheme.titleMedium)),
+              TextButton.icon(
+                onPressed: links.length >= 20 ? null : onAdd,
+                icon: const Icon(Icons.add_rounded, size: 18),
+                label: const Text('Add'),
+              ),
+            ],
+          ),
+          if (links.isEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(0, 4, 8, 8),
+              child: Text(
+                  'Save the videos, articles or notes you use for this topic.',
+                  style: theme.textTheme.bodySmall),
+            )
+          else
+            for (final url in links)
+              Builder(builder: (_) {
+                final uri = Uri.tryParse(url);
+                final host = (uri?.host ?? url).replaceFirst('www.', '');
+                final path = uri == null
+                    ? ''
+                    : '${uri.path}${uri.hasQuery ? '?${uri.query}' : ''}';
+                return ListTile(
+                  contentPadding: const EdgeInsets.only(left: 0, right: 0),
+                  leading: Icon(_iconFor(host), color: AppColors.primary),
+                  title: Text(host,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleSmall),
+                  subtitle: path.length <= 1
+                      ? null
+                      : Text(path,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall),
+                  onTap: () => onOpen(url),
+                  trailing: IconButton(
+                    tooltip: 'Remove link',
+                    icon: const Icon(Icons.close_rounded, size: 18),
+                    onPressed: () => onRemove(url),
+                  ),
+                );
+              }),
+        ],
+      ),
+    );
+  }
+}
+
+class _AddLinkDialog extends StatefulWidget {
+  const _AddLinkDialog();
+
+  @override
+  State<_AddLinkDialog> createState() => _AddLinkDialogState();
+}
+
+class _AddLinkDialogState extends State<_AddLinkDialog> {
+  final _ctrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final normalized = normalizeStudyLink(_ctrl.text);
+    final showError = _ctrl.text.trim().isNotEmpty && normalized == null;
+    return AlertDialog(
+      title: const Text('Add a study link'),
+      content: TextField(
+        controller: _ctrl,
+        autofocus: true,
+        keyboardType: TextInputType.url,
+        autocorrect: false,
+        maxLength: 2000,
+        onChanged: (_) => setState(() {}),
+        onSubmitted: (_) {
+          if (normalized != null) Navigator.pop(context, normalized);
+        },
+        decoration: InputDecoration(
+          hintText: 'https://…',
+          counterText: '',
+          prefixIcon: const Icon(Icons.link_rounded),
+          errorText: showError ? 'Not a valid web link' : null,
+        ),
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel')),
+        FilledButton(
+          onPressed:
+              normalized == null ? null : () => Navigator.pop(context, normalized),
+          child: const Text('Add'),
+        ),
+      ],
     );
   }
 }

@@ -17,6 +17,7 @@ import 'features/subscription/data/subscription_service.dart';
 import 'features/subscription/presentation/providers/subscription_providers.dart';
 import 'features/tips/presentation/providers/tips_providers.dart';
 import 'firebase_options.dart';
+import 'services/error_reporter.dart';
 import 'services/notification_service.dart';
 import 'services/push_messaging_service.dart';
 
@@ -97,39 +98,25 @@ Future<void> main() async {
     if (!kIsWeb) {
       final crashlytics = FirebaseCrashlytics.instance;
       await crashlytics.setCrashlyticsCollectionEnabled(!kDebugMode);
-
-      FlutterError.onError = (FlutterErrorDetails details) {
-        FlutterError.presentError(details);
-        // Transient/environmental failures (a briefly-unavailable Firestore
-        // backend, a platform channel that isn't wired on this surface, a
-        // timeout) are not code defects and must NOT be reported as fatal
-        // crashes — otherwise flaky networks tank the crash-free rate and
-        // trigger "repetitive crash" alerts. Log them as non-fatal so they
-        // stay visible for diagnosis without counting as crashes.
-        if (_isNonFatalInfraError(details.exception)) {
-          crashlytics.recordError(
-            details.exception,
-            details.stack,
-            reason: details.context?.toDescription(),
-            fatal: false,
-          );
-        } else {
-          crashlytics.recordFlutterFatalError(details);
-        }
-        // Mirror real defects into PostHog error tracking too.
-        _capturePosthogException(details.exception, details.stack);
-      };
-      // Errors that escape the Flutter framework (e.g. in a platform callback).
-      PlatformDispatcher.instance.onError = (error, stack) {
-        crashlytics.recordError(
-          error,
-          stack,
-          fatal: !_isNonFatalInfraError(error),
-        );
-        _capturePosthogException(error, stack);
-        return true;
-      };
+      // Searchable on every Crashlytics issue.
+      unawaited(crashlytics.setCustomKey('app_version', AppConstants.appVersion));
     }
+
+    // Every error goes to BOTH Crashlytics and PostHog via ErrorReporter, tagged
+    // `error_kind` = defect | transient. Transient failures (offline, a
+    // briefly-unavailable Firestore, timeouts, a plugin not wired on this
+    // surface) are reported as NON-fatal so they stay visible for diagnosis
+    // without counting as crashes or tanking the crash-free rate.
+    FlutterError.onError = (FlutterErrorDetails details) {
+      FlutterError.presentError(details);
+      ErrorReporter.reportFlutterError(details);
+    };
+    // Errors that escape the Flutter framework (e.g. in a platform callback).
+    PlatformDispatcher.instance.onError = (error, stack) {
+      ErrorReporter.report(error, stack,
+          reason: 'platform_dispatcher', fatal: true);
+      return true;
+    };
 
     // Product analytics + error tracking (PostHog, EU cloud). Runs on all
     // platforms (web bridges to the posthog-js snippet in web/index.html).
@@ -138,30 +125,12 @@ Future<void> main() async {
     await _bootstrap();
   }, (error, stack) {
     // Any async error not caught elsewhere lands here.
-    if (!kIsWeb) {
-      FirebaseCrashlytics.instance
-          .recordError(error, stack, fatal: !_isNonFatalInfraError(error));
-    } else {
+    if (kIsWeb) {
       // ignore: avoid_print
       print('Uncaught zone error: $error\n$stack');
     }
-    _capturePosthogException(error, stack);
+    ErrorReporter.report(error, stack, reason: 'uncaught_async', fatal: true);
   });
-}
-
-/// Mirrors a fatal error into PostHog's error tracking, alongside Crashlytics.
-///
-/// Guarded and fire-and-forget so it can NEVER block or throw inside a crash
-/// handler. Environmental/transient infra errors (offline sockets, unavailable
-/// Firestore, timeouts) are skipped — the same ones Crashlytics reports as
-/// non-fatal — so PostHog's error dashboard only shows genuine defects.
-void _capturePosthogException(Object error, StackTrace? stack) {
-  if (_isNonFatalInfraError(error)) return;
-  try {
-    unawaited(Posthog().captureException(error: error, stackTrace: stack));
-  } catch (_) {
-    // Never let error reporting cause a secondary failure.
-  }
 }
 
 /// Initialises PostHog (EU cloud) for behaviour analytics, screen views, app
@@ -178,75 +147,38 @@ Future<void> _initPostHog() async {
       // No data is sent in debug builds; flip this to always-on if you want to
       // watch events land while developing.
       ..optOut = kDebugMode
+      // Flush each event as soon as it's captured (and, as a safety net, every
+      // 10s) instead of the SDK default of batching 20 events / 30s. The
+      // default batching meant a user who tapped a few things and then
+      // swipe-killed the app lost that un-flushed tail, so analytics appeared
+      // to "record some events, skip others". flushAt:1 trades a little extra
+      // network for near-real-time, no-loss capture at this app's volume.
+      ..flushAt = 1
+      ..flushInterval = const Duration(seconds: 5)
       // App Opened / Backgrounded / Installed / Updated, captured natively.
       ..captureApplicationLifecycleEvents = true
       ..personProfiles = PostHogPersonProfiles.identifiedOnly;
     await Posthog().setup(config);
+    // Push anything still queued (e.g. captured while offline) the moment
+    // the app is backgrounded, so the PostHog live view never waits on the
+    // next interval and a swipe-kill can't drop the tail of a session.
+    _posthogLifecycle ??= AppLifecycleListener(
+      onHide: _flushPosthog,
+      onPause: _flushPosthog,
+      onDetach: _flushPosthog,
+      onResume: _flushPosthog,
+    );
   } catch (_) {
     // Never let analytics setup break app launch.
   }
 }
 
-/// Whether [error] is an environmental/transient failure rather than a code
-/// defect, and therefore should be logged to Crashlytics as NON-fatal.
-///
-/// These surface as "crashes" only because the global handlers above forward
-/// every uncaught error, but the app keeps running — a flaky/absent network, a
-/// Firestore backend that's momentarily unreachable, a platform channel that
-/// isn't wired on the current surface/isolate, or a bounded operation that
-/// timed out. Reporting them as fatal wrecked the crash-free-users metric and
-/// produced the repetitive `[cloud_firestore/unavailable]`,
-/// `MissingPluginException` and timeout "crashes" on the dashboard.
-bool _isNonFatalInfraError(Object error) {
-  // Firestore/Firebase transient backend & connectivity conditions.
-  if (error is FirebaseException) {
-    const transientCodes = {
-      'unavailable', // backend unreachable / offline — the top crash
-      'deadline-exceeded', // request outlived its deadline
-      'cancelled', // client cancelled (e.g. widget disposed mid-read)
-      'aborted', // contention; safe to retry
-      'resource-exhausted', // transient quota/backoff
-      'internal', // transient server-side blip
-      'network-request-failed', // no connectivity
-      'unknown', // usually a wrapped socket/IO failure
-    };
-    return transientCodes.contains(error.code);
-  }
-  // A plugin method invoked where no platform implementation is registered
-  // (background isolate, unsupported surface, or a race during app update).
-  if (error is MissingPluginException) return true;
-  // Our own bounded operations (getToken/subscribeToTopic/etc.) that timed out.
-  if (error is TimeoutException) return true;
-  // Environmental network/IO failures — a dropped/blocked connection, a reset
-  // socket, a TLS handshake abort, a DNS miss, or an HTTP error on an image
-  // fetch. These bubble up most often from NetworkImage loads (feed logos,
-  // banners, favicons) when the device is offline or on a captive/flaky
-  // network. They are NOT code defects and were being reported as FATAL,
-  // wrecking the crash-free-users metric (the recurring
-  // "SocketException"/"HttpException" crashes on the dashboard). Treat them as
-  // non-fatal so they stay diagnosable without counting as crashes.
-  if (_isNetworkIoError(error)) return true;
-  return false;
-}
+AppLifecycleListener? _posthogLifecycle;
 
-/// Whether [error] is a transient network / socket / TLS / image-fetch failure.
-///
-/// Matched by runtime type NAME (not `is` against `dart:io` types) on purpose:
-/// `main.dart` is compiled for web too, where importing `dart:io` fails to
-/// compile. The names below are stable across the Dart SDK and Flutter's
-/// painting layer, and are safe to match on every platform.
-bool _isNetworkIoError(Object error) {
-  switch (error.runtimeType.toString()) {
-    case 'SocketException': // connection abort/refused/reset, DNS failure
-    case 'HttpException': // malformed/aborted HTTP response
-    case 'HandshakeException': // TLS negotiation failed
-    case 'TlsException': // other TLS-layer failure
-    case 'NetworkImageLoadException': // NetworkImage got a non-200 (also web)
-    case 'ClientException': // package:http transport failure
-      return true;
-    default:
-      return false;
-  }
+void _flushPosthog() {
+  try {
+    unawaited(Posthog().flush());
+  } catch (_) {}
 }
 
 /// Builds services and starts the app. Split out of [main] so it runs inside
@@ -275,6 +207,9 @@ Future<void> _bootstrap() async {
 
   runApp(
     ProviderScope(
+      // Reports every provider/stream failure (e.g. a Firestore listener that
+      // was denied or dropped) instead of it silently showing an empty screen.
+      observers: const [ErrorReportingProviderObserver()],
       overrides: [
         sharedPrefsProvider.overrideWithValue(prefs),
         notificationServiceProvider.overrideWithValue(notifications),
@@ -299,4 +234,25 @@ Future<void> _bootstrap() async {
 
   // Fonts are now BUNDLED (see pubspec.yaml `fonts:`), so there is no runtime
   // font fetch to warm up — the first frame already paints in Poppins/Inter.
+}
+
+/// Riverpod observer that forwards provider failures (stream errors such as a
+/// denied or dropped Firestore listener, a FutureProvider that threw) to
+/// [ErrorReporter] as non-fatal, tagged with the provider's name.
+class ErrorReportingProviderObserver extends ProviderObserver {
+  const ErrorReportingProviderObserver();
+
+  @override
+  void providerDidFail(
+    ProviderBase<Object?> provider,
+    Object error,
+    StackTrace stackTrace,
+    ProviderContainer container,
+  ) {
+    ErrorReporter.report(
+      error,
+      stackTrace,
+      reason: 'provider:${provider.name ?? provider.runtimeType}',
+    );
+  }
 }

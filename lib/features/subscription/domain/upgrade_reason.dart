@@ -14,12 +14,12 @@ enum UpgradeReason {
   opportunities,
   insights,
   dailySummary,
-  weeklyPlanner,
   smartNotes,
   export,
   avatars,
   accentColor,
   calendarSync,
+  semesters,
   general;
 
   UpgradeCopy get copy => _copy[this]!;
@@ -133,15 +133,6 @@ final Map<UpgradeReason, UpgradeCopy> _copy = {
     paywallHeadline: 'Start every day prepared',
     highlight: 'AI daily agenda summary',
   ),
-  UpgradeReason.weeklyPlanner: const UpgradeCopy(
-    icon: Icons.auto_awesome_motion_rounded,
-    color: _ai,
-    title: 'Weekly planner is a Pro feature',
-    message: 'Turn your exams, deadlines and free slots into a study plan you '
-        'can add to your tasks in one tap.',
-    paywallHeadline: 'Your week, planned for you',
-    highlight: 'AI weekly planner',
-  ),
   UpgradeReason.smartNotes: const UpgradeCopy(
     icon: Icons.sticky_note_2_rounded,
     color: AppColors.accent,
@@ -184,6 +175,16 @@ final Map<UpgradeReason, UpgradeCopy> _copy = {
     paywallHeadline: 'Your calendar, always in sync',
     highlight: 'Daily Google Calendar & Tasks auto-sync',
   ),
+  UpgradeReason.semesters: const UpgradeCopy(
+    icon: Icons.inventory_2_rounded,
+    color: AppColors.primary,
+    title: 'Semester wrap-up is a Pro feature',
+    message: 'Wrap up a semester to save its subjects, marks, exams and '
+        'attendance, start the next one fresh, and track your SGPA and CGPA '
+        'over time.',
+    paywallHeadline: 'Every semester, saved and counted',
+    highlight: 'Semester wrap-up, past semesters & CGPA',
+  ),
   UpgradeReason.general: const UpgradeCopy(
     icon: Icons.workspace_premium_rounded,
     color: AppColors.primary,
@@ -205,36 +206,95 @@ String? resetLabel(UpgradeCopy copy, DateTime now) {
   return 'Resets on 1 ${months[next.month - 1]}';
 }
 
-/// One row of the Free-vs-Pro comparison on the pricing page.
+/// One row of the Free-vs-Pro comparison ("WHY PRO?") on the pricing page.
+///
+/// Cell values: `null` = not included (✗), [included] = included (✓), any
+/// other text is shown as-is (e.g. "10 / month", "Unlimited").
 class PlanComparisonRow {
-  const PlanComparisonRow(this.feature, this.free, this.pro, {this.reason});
+  const PlanComparisonRow(
+    this.feature,
+    this.free,
+    this.pro, {
+    required this.icon,
+    required this.color,
+    this.reason,
+  });
+
+  static const String included = 'Included';
+
   final String feature;
 
   /// Free-tier value; null renders as "not included".
   final String? free;
   final String pro;
+  final IconData icon;
+  final Color color;
 
   /// The reason this row answers (so it can be highlighted in context).
   final UpgradeReason? reason;
 }
 
+const _green = Color(0xFF84CC16);
+const _pink = Color(0xFFEC4899);
+const _sky = Color(0xFF38BDF8);
+const _amber = Color(0xFFF59E0B);
+
+/// Every row of the pricing table. Keep in sync with the real gates
+/// (each [UpgradeReason]) — tested in test/paywall_pricing_test.dart.
 final List<PlanComparisonRow> planComparison = [
-  const PlanComparisonRow('AI assistant', '${ProConstants.freeMonthlyChatLimit} / month', 'Unlimited',
-      reason: UpgradeReason.aiChat),
-  const PlanComparisonRow('Timetable scans', '2 total', 'Unlimited',
+  const PlanComparisonRow('Attendance, timetable & reminders',
+      PlanComparisonRow.included, PlanComparisonRow.included,
+      icon: Icons.fact_check_rounded, color: _ai),
+  const PlanComparisonRow('Grades, exams & GPA', PlanComparisonRow.included,
+      PlanComparisonRow.included,
+      icon: Icons.school_rounded, color: _green),
+  const PlanComparisonRow(
+      'AI assistant', '${ProConstants.freeMonthlyChatLimit}/mo', 'Unlimited',
+      icon: Icons.auto_awesome_rounded, color: _ai, reason: UpgradeReason.aiChat),
+  const PlanComparisonRow('Timetable scans', '2', 'Unlimited',
+      icon: Icons.document_scanner_rounded,
+      color: _sky,
       reason: UpgradeReason.timetableScans),
-  const PlanComparisonRow('Learning plans', '2 total', 'Unlimited',
+  const PlanComparisonRow('AI learning plans', '2', 'Unlimited',
+      icon: Icons.route_rounded,
+      color: _green,
       reason: UpgradeReason.learningPlans),
-  const PlanComparisonRow('Opportunities & perks', 'Latest 5', 'Full library',
-      reason: UpgradeReason.opportunities),
-  const PlanComparisonRow('Insights & AI summaries', null, 'Included',
+  const PlanComparisonRow(
+      'Semester wrap-up & CGPA', null, PlanComparisonRow.included,
+      icon: Icons.history_edu_rounded,
+      color: _amber,
+      reason: UpgradeReason.semesters),
+  const PlanComparisonRow('Insights & predictions', null, PlanComparisonRow.included,
+      icon: Icons.insights_rounded,
+      color: _green,
       reason: UpgradeReason.insights),
-  const PlanComparisonRow('AI weekly planner', null, 'Included',
-      reason: UpgradeReason.weeklyPlanner),
-  const PlanComparisonRow('PDF, CSV & calendar export', null, 'Included',
+  const PlanComparisonRow('Daily AI summary', null, PlanComparisonRow.included,
+      icon: Icons.today_rounded,
+      color: AppColors.coral,
+      reason: UpgradeReason.dailySummary),
+  const PlanComparisonRow('Smart notes & flashcards', null, PlanComparisonRow.included,
+      icon: Icons.sticky_note_2_rounded,
+      color: _amber,
+      reason: UpgradeReason.smartNotes),
+  const PlanComparisonRow('Google Calendar auto-sync', null, PlanComparisonRow.included,
+      icon: Icons.sync_rounded,
+      color: _sky,
+      reason: UpgradeReason.calendarSync),
+  const PlanComparisonRow('Scholarships & perks', 'Latest 5', 'All',
+      icon: Icons.explore_rounded,
+      color: AppColors.accent,
+      reason: UpgradeReason.opportunities),
+  const PlanComparisonRow('PDF, CSV & calendar export', null, PlanComparisonRow.included,
+      icon: Icons.ios_share_rounded,
+      color: _sky,
       reason: UpgradeReason.export),
   PlanComparisonRow('Profile characters', '${ProfileAvatars.freeCount}',
       '${ProfileAvatars.all.length}',
+      icon: Icons.face_retouching_natural_rounded,
+      color: _pink,
       reason: UpgradeReason.avatars),
-  const PlanComparisonRow('Attendance tracking & reminders', 'Included', 'Included'),
+  const PlanComparisonRow('Custom accent colours', null, PlanComparisonRow.included,
+      icon: Icons.palette_rounded,
+      color: _pink,
+      reason: UpgradeReason.accentColor),
 ];

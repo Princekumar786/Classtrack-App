@@ -4,7 +4,20 @@ import {
   slugForCountry,
   topicForCountry,
   buildFcmMessage,
+  effectiveCountry,
 } from "./notifications.js";
+
+test("effectiveCountry: profile wins, else detected (matches the app)", () => {
+  assert.equal(effectiveCountry({ country: "Germany", detectedCountry: "India" }), "Germany");
+  assert.equal(effectiveCountry({ detectedCountry: "India" }), "India");
+  assert.equal(effectiveCountry({ country: "  ", detectedCountry: "India" }), "India");
+  assert.equal(effectiveCountry({ country: "Other", detectedCountry: "India" }), "India");
+  assert.equal(effectiveCountry({ country: "Other" }), "Other");
+  assert.equal(effectiveCountry({}), null);
+  assert.equal(effectiveCountry(null), null);
+  // A detected Indian user is reached by an India-targeted CMS push.
+  assert.equal(topicForCountry(effectiveCountry({ detectedCountry: "India" })), "country_india");
+});
 
 test("slugForCountry normalizes, global/null → null", () => {
   assert.equal(slugForCountry("India"), "india");

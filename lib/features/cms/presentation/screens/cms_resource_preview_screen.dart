@@ -28,11 +28,11 @@ class _CmsResourcePreviewScreenState
   final Set<String> _interests = {'Technology'};
 
   AppUser get _previewUser => AppUser(
-        uid: 'preview',
-        displayName: 'Preview student',
-        country: _country,
-        interests: _interests.toList(),
-      );
+    uid: 'preview',
+    displayName: 'Preview student',
+    country: _country,
+    interests: _interests.toList(),
+  );
 
   Resource get r => widget.resource;
 
@@ -40,8 +40,9 @@ class _CmsResourcePreviewScreenState
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final targeted = r.targetsCountry(_country);
-    final match =
-        r.type.isDiscount ? null : ref.watch(recommenderProvider).score(r, _previewUser);
+    final match = r.type.isDiscount
+        ? null
+        : ref.watch(recommenderProvider).score(r, _previewUser);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Preview as student')),
@@ -50,22 +51,39 @@ class _CmsResourcePreviewScreenState
         children: [
           _profileCard(theme),
           const SizedBox(height: 12),
-          _matchSummary(theme, targeted, match?.score, match?.personalized ?? false),
+          _matchSummary(
+            theme,
+            targeted,
+            match?.score,
+            match?.personalized ?? false,
+          ),
           const SizedBox(height: 20),
-          Text('IN THE FEED',
-              style: theme.textTheme.labelMedium
-                  ?.copyWith(letterSpacing: 1, color: theme.hintColor)),
+          Text(
+            'IN THE FEED',
+            style: theme.textTheme.labelMedium?.copyWith(
+              letterSpacing: 1,
+              color: theme.hintColor,
+            ),
+          ),
           const SizedBox(height: 10),
           // The real feed card (non-interactive). Its own match badge reflects
           // the signed-in admin's profile; the profile-accurate match for the
           // previewed audience is shown in the summary above.
           AbsorbPointer(
-            child: ResourceCard(resource: r, onTap: () {}, previewCountry: _country),
+            child: ResourceCard(
+              resource: r,
+              onTap: () {},
+              previewCountry: _country,
+            ),
           ),
           const SizedBox(height: 20),
-          Text('DETAIL PAGE',
-              style: theme.textTheme.labelMedium
-                  ?.copyWith(letterSpacing: 1, color: theme.hintColor)),
+          Text(
+            'DETAIL PAGE',
+            style: theme.textTheme.labelMedium?.copyWith(
+              letterSpacing: 1,
+              color: theme.hintColor,
+            ),
+          ),
           const SizedBox(height: 10),
           _detailPreview(theme),
         ],
@@ -74,7 +92,11 @@ class _CmsResourcePreviewScreenState
   }
 
   Widget _matchSummary(
-      ThemeData theme, bool targeted, int? matchScore, bool personalized) {
+    ThemeData theme,
+    bool targeted,
+    int? matchScore,
+    bool personalized,
+  ) {
     final ok = targeted;
     final color = ok ? AppColors.success : AppColors.warning;
     return Container(
@@ -85,16 +107,20 @@ class _CmsResourcePreviewScreenState
         children: [
           Row(
             children: [
-              Icon(ok ? Icons.check_circle_rounded : Icons.public_off_rounded,
-                  color: color, size: 18),
+              Icon(
+                ok ? Icons.check_circle_rounded : Icons.public_off_rounded,
+                color: color,
+                size: 18,
+              ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   targeted
                       ? 'Visible to this student (country targeting matches).'
                       : 'Hidden from this student — does not target ${_country ?? "their country"}.',
-                  style: theme.textTheme.bodyMedium
-                      ?.copyWith(fontWeight: FontWeight.w600),
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ],
@@ -105,8 +131,9 @@ class _CmsResourcePreviewScreenState
               personalized
                   ? 'Recommendation match for this profile: $matchScore%'
                   : 'Recommendation match: $matchScore% (add interests/degree to personalise)',
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.hintColor),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.hintColor,
+              ),
             ),
           ],
         ],
@@ -125,9 +152,12 @@ class _CmsResourcePreviewScreenState
             children: [
               const Icon(Icons.person_pin_rounded, color: AppColors.primary),
               const SizedBox(width: 8),
-              Text('Preview profile',
-                  style: theme.textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w700)),
+              Text(
+                'Preview profile',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 12),
@@ -138,7 +168,8 @@ class _CmsResourcePreviewScreenState
             items: [
               const DropdownMenuItem(value: null, child: Text('Any')),
               ...ProfileOptions.countries.map(
-                  (c) => DropdownMenuItem(value: c, child: Text(c))),
+                (c) => DropdownMenuItem(value: c, child: Text(c)),
+              ),
             ],
             onChanged: (v) => setState(() => _country = v),
           ),
@@ -152,9 +183,13 @@ class _CmsResourcePreviewScreenState
               runSpacing: 8,
               children: [
                 for (final i in ProfileOptions.interests)
-                  _chip(i, _interests.contains(i), () => setState(() {
-                        if (!_interests.remove(i)) _interests.add(i);
-                      })),
+                  _chip(
+                    i,
+                    _interests.contains(i),
+                    () => setState(() {
+                      if (!_interests.remove(i)) _interests.add(i);
+                    }),
+                  ),
               ],
             ),
           ],
@@ -170,18 +205,24 @@ class _CmsResourcePreviewScreenState
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(24),
         side: BorderSide(
-            color: selected ? AppColors.primary : theme.dividerColor,
-            width: 1.2),
+          color: selected ? AppColors.primary : theme.dividerColor,
+          width: 1.2,
+        ),
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-          child: Text(label,
-              style: theme.textTheme.labelMedium?.copyWith(
-                  color: selected ? Colors.white : theme.textTheme.bodyMedium?.color,
-                  fontWeight: FontWeight.w600)),
+          child: Text(
+            label,
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: selected
+                  ? Colors.white
+                  : theme.textTheme.bodyMedium?.color,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
         ),
       ),
     );
@@ -205,24 +246,35 @@ class _CmsResourcePreviewScreenState
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(r.title.isEmpty ? 'Untitled' : r.title,
-                        style: theme.textTheme.titleLarge),
+                    Text(
+                      r.title.isEmpty ? 'Untitled' : r.title,
+                      style: theme.textTheme.titleLarge,
+                    ),
                     const SizedBox(height: 2),
-                    Text(r.brandName,
-                        style: theme.textTheme.bodyMedium
-                            ?.copyWith(color: theme.hintColor)),
+                    Text(
+                      r.brandName,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.hintColor,
+                      ),
+                    ),
                   ],
                 ),
               ),
             ],
           ),
           const SizedBox(height: 12),
-          Wrap(spacing: 6, runSpacing: 4, children: [
-            ResourcePill(
-                label: r.effectiveStatus.label, color: r.effectiveStatus.color),
-            if (r.sponsored)
-              const ResourcePill(label: 'Sponsored', color: AppColors.accent),
-          ]),
+          Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            children: [
+              ResourcePill(
+                label: r.effectiveStatus.label,
+                color: r.effectiveStatus.color,
+              ),
+              if (r.sponsored)
+                const ResourcePill(label: 'Sponsored', color: AppColors.accent),
+            ],
+          ),
           if (isDiscount) _regionalOfferPreview(theme),
           if (r.description.isNotEmpty) ...[
             const SizedBox(height: 12),
@@ -249,8 +301,7 @@ class _CmsResourcePreviewScreenState
   /// behaviour: change the Country dropdown to see US vs India vs UK).
   Widget _regionalOfferPreview(ThemeData theme) {
     final offer = r.effectiveOffer(_country);
-    final usesVariant =
-        r.regionalVariants.any((v) => v.matches(_country));
+    final usesVariant = r.regionalVariants.any((v) => v.matches(_country));
     final price = offer.discountText;
     final link = offer.url;
     return Padding(
@@ -268,27 +319,38 @@ class _CmsResourcePreviewScreenState
           children: [
             Row(
               children: [
-                const Icon(Icons.public_rounded,
-                    size: 16, color: AppColors.primary),
+                const Icon(
+                  Icons.public_rounded,
+                  size: 16,
+                  color: AppColors.primary,
+                ),
                 const SizedBox(width: 6),
                 Text(
                   'Offer for ${_country ?? "Any country"}'
                   '${usesVariant ? "" : " (default)"}',
                   style: theme.textTheme.labelMedium?.copyWith(
-                      color: AppColors.primary, fontWeight: FontWeight.w700),
+                    color: AppColors.primary,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ],
             ),
             const SizedBox(height: 8),
-            Text(price?.isNotEmpty == true ? price! : 'No price set',
-                style: theme.textTheme.titleMedium
-                    ?.copyWith(fontWeight: FontWeight.w800)),
+            Text(
+              price?.isNotEmpty == true ? price! : 'No price set',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+            ),
             const SizedBox(height: 4),
-            Text(link?.isNotEmpty == true ? link! : 'No link set',
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: theme.hintColor)),
+            Text(
+              link?.isNotEmpty == true ? link! : 'No link set',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.hintColor,
+              ),
+            ),
           ],
         ),
       ),
@@ -302,9 +364,12 @@ class _CmsResourcePreviewScreenState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title,
-              style: theme.textTheme.titleSmall
-                  ?.copyWith(fontWeight: FontWeight.w700)),
+          Text(
+            title,
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
           const SizedBox(height: 2),
           Text(body, style: theme.textTheme.bodyMedium),
         ],

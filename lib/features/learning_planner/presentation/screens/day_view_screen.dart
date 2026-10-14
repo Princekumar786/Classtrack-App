@@ -9,6 +9,7 @@ import '../../../../shared/widgets/ui_kit.dart';
 import '../../domain/learning_plan.dart';
 import '../providers/learning_planner_providers.dart';
 import '../widgets/planner_widgets.dart';
+import '../widgets/topic_checklist.dart';
 import 'topic_detail_screen.dart';
 
 /// Screen 9 — Day View. A focused daily execution view: the day's topics as a
@@ -80,9 +81,11 @@ class DayViewScreen extends ConsumerWidget {
                                 ?.copyWith(color: AppColors.primary)),
                         const SizedBox(height: 8),
                         ThinProgressBar(
+                          // Moves with every ticked subtopic, not just topics.
                           value: topics.isEmpty
                               ? 0
-                              : doneCount / topics.length,
+                              : topics.fold<double>(0, (s, t) => s + t.progress) /
+                                  topics.length,
                           height: 8,
                         ),
                       ],
@@ -130,15 +133,12 @@ class DayViewScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 12),
             for (var i = 0; i < topics.length; i++) ...[
-              _TaskRow(
+              TopicChecklistCard(
+                key: ValueKey('day_${topics[i].id}'),
+                planId: planId,
                 topic: topics[i],
-                onToggle: () {
-                  final t = topics[i];
-                  final next = t.isDone
-                      ? TopicStatus.notStarted
-                      : TopicStatus.completed;
-                  controller.setTopicStatus(planId, t.id, next);
-                },
+                // Open topics show their subtopics right away.
+                initiallyExpanded: !topics[i].isDone,
                 onOpen: () => Navigator.of(context).push(MaterialPageRoute(
                     settings: const RouteSettings(name: 'Planner: Topic'),
                     builder: (_) => TopicDetailScreen(
@@ -157,7 +157,39 @@ class DayViewScreen extends ConsumerWidget {
         trailingIcon: day.completed ? null : Icons.check_rounded,
         onTap: () async {
           final completing = !day!.completed;
-          await controller.markDayComplete(planId, dayNumber, completing);
+          var revertTopics = false;
+          if (!completing) {
+            // Marking a day complete also completed its topics. When undoing,
+            // let the student choose whether those topics go back to "to do".
+            final plan = ref.read(learningPlansProvider.notifier).byId(planId);
+            final doneHere = day.topicIds
+                .map((id) => plan?.topicById(id))
+                .where((t) => t != null && t.isDone)
+                .length;
+            if (doneHere > 0) {
+              final choice = await showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: const Text('Mark day as not complete?'),
+                  content: Text(
+                      '$doneHere topic${doneHere == 1 ? ' is' : 's are'} ticked on this day. '
+                      'Un-tick ${doneHere == 1 ? 'it' : 'them'} too?'),
+                  actions: [
+                    TextButton(
+                        onPressed: () => Navigator.pop(ctx, false),
+                        child: const Text('Keep ticked')),
+                    FilledButton(
+                        onPressed: () => Navigator.pop(ctx, true),
+                        child: const Text('Un-tick topics')),
+                  ],
+                ),
+              );
+              if (choice == null) return; // dismissed: change nothing
+              revertTopics = choice;
+            }
+          }
+          await controller.markDayComplete(planId, dayNumber, completing,
+              revertTopics: revertTopics);
           if (completing) ref.read(analyticsProvider).plannerDayCompleted();
         },
         secondary: OutlinedButton.icon(
@@ -168,16 +200,34 @@ class DayViewScreen extends ConsumerWidget {
                 borderRadius: BorderRadius.circular(14)),
           ),
           icon: const Icon(Icons.event_repeat_rounded, size: 18),
-          label: const Text('Reschedule this day'),
+          label: const Text('Reschedule remaining plan'),
         ),
       ),
     );
   }
 
   Future<void> _reschedule(BuildContext context, WidgetRef ref) async {
-    // Rescheduling a day recomputes the remaining plan so everything after it
-    // shifts consistently. We nudge the whole remaining schedule by one study
-    // slot by re-running the planner from today.
+    // Honest about what happens: the planner re-lays out ALL unfinished
+    // topics from today (it can't move a single day on its own), so ask first.
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Reschedule remaining plan?'),
+        content: const Text(
+            'All topics you haven\'t finished yet will be spread out again '
+            'from today, using your study days and daily time. '
+            'Finished topics stay as they are.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Reschedule')),
+        ],
+      ),
+    );
+    if (ok != true || !context.mounted) return;
     await ref.read(learningPlansProvider.notifier).replan(planId);
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -194,64 +244,3 @@ int _doneMinutes(List<LearningTopic> topics) =>
 int _remainingMinutes(List<LearningTopic> topics) =>
     topics.where((t) => !t.isDone).fold(0, (s, t) => s + t.estMinutes);
 
-class _TaskRow extends StatelessWidget {
-  final LearningTopic topic;
-  final VoidCallback onToggle;
-  final VoidCallback onOpen;
-  const _TaskRow(
-      {required this.topic, required this.onToggle, required this.onOpen});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      decoration: softCard(context, radius: 18),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(18),
-          onTap: onOpen,
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                TopicTick(status: topic.status, onTap: onToggle),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(topic.title,
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontSize: 15,
-                            decoration: topic.isDone
-                                ? TextDecoration.lineThrough
-                                : null,
-                            color: topic.isDone
-                                ? theme.textTheme.bodySmall?.color
-                                : null,
-                          )),
-                      const SizedBox(height: 5),
-                      Row(
-                        children: [
-                          Text('~${topic.estMinutes} min',
-                              style: theme.textTheme.bodySmall),
-                          const SizedBox(width: 8),
-                          DifficultyChip(
-                              difficulty: topic.difficulty,
-                              review: topic.isReview),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                Icon(Icons.chevron_right_rounded,
-                    size: 20, color: theme.textTheme.bodySmall?.color),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}

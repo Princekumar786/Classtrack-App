@@ -100,7 +100,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 600));
     expect(find.text('Import every timetable in seconds'), findsOneWidget);
-    expect(find.text('Compare plans'), findsOneWidget);
+    expect(find.text('WHY PRO?'), findsOneWidget);
     expect(a.events, containsAll(['upgrade_prompt_accepted:timetableScans', 'paywall_viewed:timetableScans']));
   });
 

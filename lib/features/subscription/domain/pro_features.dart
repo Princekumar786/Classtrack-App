@@ -31,11 +31,6 @@ class ProFeatures {
       'Import as many timetables as you like — snap a photo, upload a PDF or paste text and let AI build your schedule. (New students get one free scan during first-time setup, before adding any subjects.)',
     ),
     ProFeature(
-      Icons.auto_awesome_motion_rounded,
-      'AI weekly planner',
-      'A smart study & revision plan built from your exams, deadlines and free timetable slots — regenerate any time.',
-    ),
-    ProFeature(
       Icons.explore_rounded,
       'Unlimited opportunities & perks',
       'Browse the full library of scholarships, internships and exclusive student discounts — free members only see the latest few. Search and filter everything.',
@@ -44,6 +39,16 @@ class ProFeatures {
       Icons.insights_rounded,
       'Insights & predictions',
       'Attendance forecasts, safe-skip counts, spending projections and grade trends.',
+    ),
+    ProFeature(
+      Icons.history_edu_rounded,
+      'Semester wrap-up & CGPA',
+      'Wrap up a finished semester to save its subjects, marks, exams and attendance, start the next one fresh, track SGPA and CGPA, and share your Semester Wrapped card.',
+    ),
+    ProFeature(
+      Icons.route_rounded,
+      'Unlimited AI learning plans',
+      'A step-by-step study roadmap for every subject — free members get 2.',
     ),
     ProFeature(
       Icons.sync_rounded,

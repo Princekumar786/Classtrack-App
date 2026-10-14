@@ -11,11 +11,18 @@ final subjectRepositoryProvider = Provider<SubjectRepository?>((ref) {
   return SubjectRepository(db: ref.watch(firestoreProvider), uid: uid);
 });
 
-/// Live list of the user's subjects.
+/// Live list of the user's CURRENT-semester subjects (archived ones hidden).
 final subjectsStreamProvider = StreamProvider<List<Subject>>((ref) {
   final repo = ref.watch(subjectRepositoryProvider);
   if (repo == null) return Stream.value(const []);
   return repo.watchSubjects();
+});
+
+/// Every subject, including archived semesters (Past semesters screens).
+final allSubjectsStreamProvider = StreamProvider<List<Subject>>((ref) {
+  final repo = ref.watch(subjectRepositoryProvider);
+  if (repo == null) return Stream.value(const []);
+  return repo.watchAllSubjects();
 });
 
 /// Live single subject by id.
@@ -26,8 +33,14 @@ final subjectProvider =
   return repo.watchSubject(id);
 });
 
-/// Quick lookup map id -> Subject (derived from the list stream).
+/// Quick lookup map id -> Subject. Includes archived subjects too, so notes,
+/// tasks and focus sessions linked to a past semester's subject keep showing
+/// its name. (Lists of "current" subjects must use [subjectsStreamProvider].)
 final subjectsByIdProvider = Provider<Map<String, Subject>>((ref) {
-  final list = ref.watch(subjectsStreamProvider).valueOrNull ?? const [];
-  return {for (final s in list) s.id: s};
+  final current = ref.watch(subjectsStreamProvider).valueOrNull ?? const [];
+  final all = ref.watch(allSubjectsStreamProvider).valueOrNull ?? const [];
+  return {
+    for (final s in all) s.id: s,
+    for (final s in current) s.id: s,
+  };
 });

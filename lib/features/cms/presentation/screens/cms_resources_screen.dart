@@ -70,14 +70,17 @@ class _CmsResourcesScreenState extends ConsumerState<CmsResourcesScreen> {
                         _selectionMode = !_selectionMode;
                         if (!_selectionMode) _selected.clear();
                       }),
-                      icon: Icon(_selectionMode
-                          ? Icons.close_rounded
-                          : Icons.checklist_rounded),
+                      icon: Icon(
+                        _selectionMode
+                            ? Icons.close_rounded
+                            : Icons.checklist_rounded,
+                      ),
                       label: Text(_selectionMode ? 'Cancel' : 'Select'),
                     ),
                     FilledButton.icon(
                       style: FilledButton.styleFrom(
-                          backgroundColor: AppColors.primary),
+                        backgroundColor: AppColors.primary,
+                      ),
                       onPressed: () => _openEditor(context, null),
                       icon: const Icon(Icons.add_rounded),
                       label: const Text('New resource'),
@@ -124,8 +127,11 @@ class _CmsResourcesScreenState extends ConsumerState<CmsResourcesScreen> {
           child: async.when(
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (e, __) => Center(
-                child: Text('Failed to load resources.\n$e',
-                    textAlign: TextAlign.center)),
+              child: Text(
+                'Failed to load resources.\n$e',
+                textAlign: TextAlign.center,
+              ),
+            ),
             data: (all) {
               final rows = all.where(_matches).toList();
               if (rows.isEmpty) {
@@ -134,8 +140,9 @@ class _CmsResourcesScreenState extends ConsumerState<CmsResourcesScreen> {
                     all.isEmpty
                         ? 'No resources yet. Create your first one.'
                         : 'No resources match your filters.',
-                    style: theme.textTheme.bodyMedium
-                        ?.copyWith(color: theme.hintColor),
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.hintColor,
+                    ),
                   ),
                 );
               }
@@ -162,8 +169,8 @@ class _CmsResourcesScreenState extends ConsumerState<CmsResourcesScreen> {
   }
 
   void _toggleSelected(String id) => setState(() {
-        if (!_selected.remove(id)) _selected.add(id);
-      });
+    if (!_selected.remove(id)) _selected.add(id);
+  });
 
   Widget _bulkBar(BuildContext context) {
     final theme = Theme.of(context);
@@ -181,12 +188,16 @@ class _CmsResourcesScreenState extends ConsumerState<CmsResourcesScreen> {
             spacing: 12,
             runSpacing: 8,
             children: [
-              Text('${_selected.length} selected',
-                  style: theme.textTheme.titleSmall
-                      ?.copyWith(fontWeight: FontWeight.w700)),
+              Text(
+                '${_selected.length} selected',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
               FilledButton.icon(
-                style:
-                    FilledButton.styleFrom(backgroundColor: AppColors.success),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.success,
+                ),
                 onPressed: () => _runBulk(context, _BulkAction.publish),
                 icon: const Icon(Icons.publish_rounded, size: 18),
                 label: const Text('Publish'),
@@ -197,8 +208,9 @@ class _CmsResourcesScreenState extends ConsumerState<CmsResourcesScreen> {
                 label: const Text('Archive'),
               ),
               OutlinedButton.icon(
-                style:
-                    OutlinedButton.styleFrom(foregroundColor: AppColors.danger),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.danger,
+                ),
                 onPressed: () => _runBulk(context, _BulkAction.delete),
                 icon: const Icon(Icons.delete_outline_rounded, size: 18),
                 label: const Text('Delete'),
@@ -247,12 +259,16 @@ class _CmsResourcesScreenState extends ConsumerState<CmsResourcesScreen> {
       _selected.clear();
       _selectionMode = false;
     });
-    messenger.showSnackBar(SnackBar(
-      content: Text(failed.isEmpty
-          ? '$done updated ✓'
-          : '$done updated · ${failed.length} skipped '
-              '(e.g. "${failed.first}" needs a title, organization & link to publish)'),
-    ));
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          failed.isEmpty
+              ? '$done updated ✓'
+              : '$done updated · ${failed.length} skipped '
+                    '(e.g. "${failed.first}" needs a title, organization & link to publish)',
+        ),
+      ),
+    );
   }
 
   Future<bool> _confirmBulkDelete(BuildContext context, int count) async {
@@ -261,12 +277,14 @@ class _CmsResourcesScreenState extends ConsumerState<CmsResourcesScreen> {
       builder: (ctx) => AlertDialog(
         title: Text('Delete $count resource${count == 1 ? '' : 's'}?'),
         content: const Text(
-            'This permanently deletes the selected resources. Consider '
-            'archiving instead to preserve analytics and history.'),
+          'This permanently deletes the selected resources. Consider '
+          'archiving instead to preserve analytics and history.',
+        ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
             onPressed: () => Navigator.pop(ctx, true),
@@ -279,13 +297,19 @@ class _CmsResourcesScreenState extends ConsumerState<CmsResourcesScreen> {
   }
 
   void _openEditor(BuildContext context, Resource? resource) {
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => CmsResourceEditorScreen(existing: resource),
-    ));
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        settings: const RouteSettings(name: 'Cms Resource Editor'),
+        builder: (_) => CmsResourceEditorScreen(existing: resource),
+      ),
+    );
   }
 
   Future<void> _runAction(
-      BuildContext context, Resource r, _RowAction action) async {
+    BuildContext context,
+    Resource r,
+    _RowAction action,
+  ) async {
     final repo = ref.read(cmsResourceRepositoryProvider);
     if (repo == null) return;
     final messenger = ScaffoldMessenger.of(context);
@@ -297,8 +321,9 @@ class _CmsResourcesScreenState extends ConsumerState<CmsResourcesScreen> {
           break;
         case _RowAction.draft:
           await repo.setStatus(r, ResourceStatus.draft);
-          messenger
-              .showSnackBar(const SnackBar(content: Text('Moved to draft')));
+          messenger.showSnackBar(
+            const SnackBar(content: Text('Moved to draft')),
+          );
           break;
         case _RowAction.archive:
           await repo.setStatus(r, ResourceStatus.archived);
@@ -307,7 +332,8 @@ class _CmsResourcesScreenState extends ConsumerState<CmsResourcesScreen> {
         case _RowAction.duplicate:
           await repo.duplicate(r);
           messenger.showSnackBar(
-              const SnackBar(content: Text('Duplicated as draft')));
+            const SnackBar(content: Text('Duplicated as draft')),
+          );
           break;
         case _RowAction.delete:
           final ok = await _confirmDelete(context, r);
@@ -318,10 +344,14 @@ class _CmsResourcesScreenState extends ConsumerState<CmsResourcesScreen> {
           break;
       }
     } catch (e) {
-      messenger.showSnackBar(SnackBar(
-        content: Text(e is ArgumentError ? e.message.toString() : 'Action failed: $e'),
-        backgroundColor: AppColors.danger,
-      ));
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            e is ArgumentError ? e.message.toString() : 'Action failed: $e',
+          ),
+          backgroundColor: AppColors.danger,
+        ),
+      );
     }
   }
 
@@ -331,12 +361,14 @@ class _CmsResourcesScreenState extends ConsumerState<CmsResourcesScreen> {
       builder: (ctx) => AlertDialog(
         title: const Text('Delete resource?'),
         content: Text(
-            'Permanently delete "${r.title}"? Consider archiving instead to '
-            'preserve analytics and history.'),
+          'Permanently delete "${r.title}"? Consider archiving instead to '
+          'preserve analytics and history.',
+        ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
             onPressed: () => Navigator.pop(ctx, true),
@@ -389,10 +421,7 @@ class _ResourceRow extends StatelessWidget {
         child: Row(
           children: [
             if (selectionMode) ...[
-              Checkbox(
-                value: selected,
-                onChanged: (_) => onToggle(),
-              ),
+              Checkbox(value: selected, onChanged: (_) => onToggle()),
               const SizedBox(width: 4),
             ],
             Container(
@@ -409,16 +438,22 @@ class _ResourceRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(r.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleMedium
-                          ?.copyWith(fontWeight: FontWeight.w600)),
-                  Text('${r.type.label} · ${r.brandName}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall
-                          ?.copyWith(color: theme.hintColor)),
+                  Text(
+                    r.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  Text(
+                    '${r.type.label} · ${r.brandName}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.hintColor,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -426,7 +461,11 @@ class _ResourceRow extends StatelessWidget {
             if (r.sponsored)
               const Padding(
                 padding: EdgeInsets.only(right: 8),
-                child: Icon(Icons.star_rounded, size: 16, color: AppColors.accent),
+                child: Icon(
+                  Icons.star_rounded,
+                  size: 16,
+                  color: AppColors.accent,
+                ),
               ),
             _StatusChip(status: effective, stored: r.status),
             if (canEdit && !selectionMode)
@@ -434,14 +473,25 @@ class _ResourceRow extends StatelessWidget {
                 onSelected: onAction,
                 itemBuilder: (_) => const [
                   PopupMenuItem(
-                      value: _RowAction.publish, child: Text('Publish')),
+                    value: _RowAction.publish,
+                    child: Text('Publish'),
+                  ),
                   PopupMenuItem(
-                      value: _RowAction.draft, child: Text('Move to draft')),
+                    value: _RowAction.draft,
+                    child: Text('Move to draft'),
+                  ),
                   PopupMenuItem(
-                      value: _RowAction.archive, child: Text('Archive')),
+                    value: _RowAction.archive,
+                    child: Text('Archive'),
+                  ),
                   PopupMenuItem(
-                      value: _RowAction.duplicate, child: Text('Duplicate')),
-                  PopupMenuItem(value: _RowAction.delete, child: Text('Delete')),
+                    value: _RowAction.duplicate,
+                    child: Text('Duplicate'),
+                  ),
+                  PopupMenuItem(
+                    value: _RowAction.delete,
+                    child: Text('Delete'),
+                  ),
                 ],
               )
             else
@@ -475,11 +525,14 @@ class _StatusChip extends StatelessWidget {
             Icon(Icons.schedule_rounded, size: 11, color: status.color),
             const SizedBox(width: 4),
           ],
-          Text(status.label,
-              style: TextStyle(
-                  color: status.color,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700)),
+          Text(
+            status.label,
+            style: TextStyle(
+              color: status.color,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
         ],
       ),
     );

@@ -17,6 +17,13 @@ final examsStreamProvider = StreamProvider<List<Exam>>((ref) {
   return repo.watchExams();
 });
 
+/// Every exam, including archived semesters (Past semesters screens).
+final allExamsStreamProvider = StreamProvider<List<Exam>>((ref) {
+  final repo = ref.watch(examRepositoryProvider);
+  if (repo == null) return Stream.value(const []);
+  return repo.watchAllExams();
+});
+
 /// Upcoming (today or later) exams, soonest first.
 final upcomingExamsProvider = Provider<List<Exam>>((ref) {
   final all = ref.watch(examsStreamProvider).valueOrNull ?? const [];

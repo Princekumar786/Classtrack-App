@@ -67,6 +67,39 @@ Set<String>? freeAllowedIds(List<Resource> items, {required bool isPro}) {
       .toSet();
 }
 
+/// Splits the (category/search-filtered) perks into the Featured carousel and
+/// the "Top deals" list, applying the free-tier gate ([allowedIds], from
+/// [freeAllowedIds]; null = no limit).
+///
+/// Rules (so search/category can never reveal a locked perk):
+///  • While [searching], there is no carousel — every result goes through the
+///    gated deals list.
+///  • Otherwise the carousel shows CMS-flagged `featured` perks (a deliberate
+///    teaser, same as Opportunities). If none are flagged, it falls back to
+///    the first 3 ALLOWED perks — never to locked ones.
+///  • Deals = the rest, limited to allowed perks.
+({List<Resource> carousel, List<Resource> deals}) splitPerksForDisplay(
+  List<Resource> filtered, {
+  required Set<String>? allowedIds,
+  required bool searching,
+}) {
+  bool allowed(Resource r) => allowedIds == null || allowedIds.contains(r.id);
+
+  if (searching) {
+    return (carousel: const <Resource>[], deals: filtered.where(allowed).toList());
+  }
+  final featured = filtered.where((r) => r.featured).toList();
+  final carousel = featured.isNotEmpty
+      ? featured
+      : filtered.where(allowed).take(3).toList();
+  final carouselIds = carousel.map((r) => r.id).toSet();
+  final deals = filtered
+      .where((r) => !carouselIds.contains(r.id))
+      .where(allowed)
+      .toList();
+  return (carousel: carousel, deals: deals);
+}
+
 /// A single resource by id (for detail pages / deep links).
 final resourceByIdProvider =
     StreamProvider.family<Resource?, String>((ref, id) {
@@ -78,7 +111,7 @@ final resourceByIdProvider =
 final opportunitiesFeedProvider = Provider<List<Resource>>((ref) {
   final all = ref.watch(visibleResourcesProvider).valueOrNull ?? const [];
   final user = ref.watch(userProfileProvider).valueOrNull;
-  final list = ResourceQueries.feed(all, country: user?.country)
+  final list = ResourceQueries.feed(all, country: user?.effectiveCountry)
       .where((r) => !r.type.isDiscount)
       // Editorial control (P1 §12): admins can exclude a resource from
       // algorithmic recommendations without hiding it from browse.
@@ -104,7 +137,7 @@ final resourceScoreProvider =
 /// Active-feed discounts, country-filtered.
 final discountsFeedProvider = Provider<List<Resource>>((ref) {
   final all = ref.watch(visibleResourcesProvider).valueOrNull ?? const [];
-  final country = ref.watch(userProfileProvider).valueOrNull?.country;
+  final country = ref.watch(effectiveCountryProvider);
   return ResourceQueries.feed(all,
       type: ResourceType.discount, country: country);
 });
@@ -113,7 +146,7 @@ final discountsFeedProvider = Provider<List<Resource>>((ref) {
 final resourcesByTypeProvider =
     Provider.family<List<Resource>, ResourceType>((ref, type) {
   final all = ref.watch(visibleResourcesProvider).valueOrNull ?? const [];
-  final country = ref.watch(userProfileProvider).valueOrNull?.country;
+  final country = ref.watch(effectiveCountryProvider);
   return ResourceQueries.feed(all, type: type, country: country);
 });
 

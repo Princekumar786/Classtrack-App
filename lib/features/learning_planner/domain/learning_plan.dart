@@ -346,6 +346,13 @@ class LearningTopic {
   /// timer). Used to learn the student's true pace and recalibrate estimates.
   int actualMinutes;
 
+  /// Study links the student attached (videos, articles, notes). http(s) only.
+  final List<String> links;
+
+  /// Subtopics the student has ticked off, by [subtopicKey]. Lets a student
+  /// mark progress inside a topic before the whole topic is done.
+  final Set<String> doneSubtopics;
+
   TopicStatus status;
 
   LearningTopic({
@@ -359,10 +366,87 @@ class LearningTopic {
     this.difficulty = TopicDifficulty.medium,
     this.isReview = false,
     this.actualMinutes = 0,
+    this.links = const [],
+    Set<String>? doneSubtopics,
     this.status = TopicStatus.notStarted,
-  });
+  }) : doneSubtopics = doneSubtopics ?? <String>{};
 
   bool get isDone => status == TopicStatus.completed;
+
+  /// Stable id for one subtopic: its section and its text.
+  static String subtopicKey(String section, String point) => '$section::$point';
+
+  /// Every checkable subtopic, in display order: each section's points (or
+  /// the objectives when there is no breakdown). Duplicates are dropped.
+  List<({String key, String section, String text})> get subtopics {
+    final out = <({String key, String section, String text})>[];
+    final seen = <String>{};
+    void add(String section, String text) {
+      final t = text.trim();
+      if (t.isEmpty) return;
+      final key = subtopicKey(section, t);
+      if (seen.add(key)) out.add((key: key, section: section, text: t));
+    }
+
+    if (sections.isNotEmpty) {
+      for (final s in sections) {
+        for (final p in s.points) {
+          add(s.title, p);
+        }
+      }
+    } else {
+      for (final o in objectives) {
+        add("What you'll cover", o);
+      }
+    }
+    return out;
+  }
+
+  int get subtopicTotal => subtopics.length;
+
+  /// Ticked subtopics that still exist (a completed topic counts as all).
+  int get subtopicsDone {
+    if (isDone) return subtopicTotal;
+    final keys = {for (final s in subtopics) s.key};
+    return doneSubtopics.where(keys.contains).length;
+  }
+
+  /// 0..1 progress: 1 when complete, else the share of subtopics ticked.
+  double get progress {
+    if (isDone) return 1;
+    final total = subtopicTotal;
+    return total == 0 ? 0 : subtopicsDone / total;
+  }
+
+  LearningTopic copyWith({
+    String? title,
+    int? estMinutes,
+    List<String>? objectives,
+    String? unit,
+    List<TopicSection>? sections,
+    List<String>? completionCriteria,
+    TopicDifficulty? difficulty,
+    bool? isReview,
+    int? actualMinutes,
+    List<String>? links,
+    Set<String>? doneSubtopics,
+    TopicStatus? status,
+  }) =>
+      LearningTopic(
+        id: id,
+        title: title ?? this.title,
+        estMinutes: estMinutes ?? this.estMinutes,
+        objectives: objectives ?? this.objectives,
+        unit: unit ?? this.unit,
+        sections: sections ?? this.sections,
+        completionCriteria: completionCriteria ?? this.completionCriteria,
+        difficulty: difficulty ?? this.difficulty,
+        isReview: isReview ?? this.isReview,
+        actualMinutes: actualMinutes ?? this.actualMinutes,
+        links: links ?? this.links,
+        doneSubtopics: {...(doneSubtopics ?? this.doneSubtopics)},
+        status: status ?? this.status,
+      );
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -375,6 +459,8 @@ class LearningTopic {
         'difficulty': difficulty.index,
         'isReview': isReview,
         'actualMinutes': actualMinutes,
+        if (links.isNotEmpty) 'links': links,
+        if (doneSubtopics.isNotEmpty) 'doneSubtopics': doneSubtopics.toList(),
         'status': status.index,
       };
 
@@ -398,8 +484,34 @@ class LearningTopic {
             TopicDifficulty.values[(j['difficulty'] as num?)?.toInt() ?? 1],
         isReview: j['isReview'] == true,
         actualMinutes: (j['actualMinutes'] as num?)?.toInt() ?? 0,
+        links: (j['links'] as List?)
+                ?.map((e) => e.toString())
+                .where(isStudyLink)
+                .toList() ??
+            const [],
+        doneSubtopics:
+            (j['doneSubtopics'] as List?)?.map((e) => e.toString()).toSet(),
         status: TopicStatus.values[(j['status'] as num?)?.toInt() ?? 0],
       );
+}
+
+/// True for an absolute http(s) URL with a host — the only links we store or
+/// open (blocks `javascript:`, `file:`, intent URLs etc.).
+bool isStudyLink(String value) {
+  final uri = Uri.tryParse(value.trim());
+  return uri != null &&
+      (uri.scheme == 'http' || uri.scheme == 'https') &&
+      uri.host.isNotEmpty &&
+      value.length <= 2000;
+}
+
+/// Normalises what a student typed into a storable link, or null if invalid.
+/// Adds `https://` when they typed a bare domain ("youtube.com/watch?v=…").
+String? normalizeStudyLink(String raw) {
+  var v = raw.trim();
+  if (v.isEmpty) return null;
+  if (!v.contains('://')) v = 'https://$v';
+  return isStudyLink(v) && v.contains('.') ? v : null;
 }
 
 /// A single study day inside a week — an ordered set of topic ids to cover.
@@ -532,8 +644,11 @@ class LearningPlan {
   int get completedTopics => topics.where((t) => t.isDone).length;
   int get remainingTopics => totalTopics - completedTopics;
 
-  double get percent =>
-      totalTopics == 0 ? 0 : (completedTopics / totalTopics) * 100;
+  /// Overall progress 0..100. Counts ticked subtopics too, so the ring moves
+  /// as the student works through a topic, not only when it's fully done.
+  double get percent => totalTopics == 0
+      ? 0
+      : topics.fold<double>(0, (s, t) => s + t.progress) / totalTopics * 100;
 
   /// Total estimated minutes across every topic.
   int get totalMinutes => topics.fold(0, (s, t) => s + t.estMinutes);
@@ -629,6 +744,14 @@ class LearningPlan {
     }
     return firstOpen;
   }
+
+  /// Every study day in order, across the whole plan (no week grouping).
+  List<DayPlan> get allDays => [for (final w in weeks) ...w.days];
+
+  /// True for a plan the student built by hand ("Build your own plan"):
+  /// AI-only details (level, goal, "why this order") don't apply to it.
+  bool get isCustom =>
+      topics.isNotEmpty && topics.every((t) => t.unit == 'My topics');
 
   WeekPlan? weekOfDay(int dayNumber) {
     for (final w in weeks) {
@@ -727,4 +850,43 @@ String formatEstMinutes(int minutes) {
   if (h == 0) return '${m}m';
   if (m == 0) return '${h}h';
   return '${h}h ${m}m';
+}
+
+
+/// Sets a topic's status and keeps its subtopic ticks consistent:
+/// completed ticks every subtopic, "not started" clears them, "still
+/// learning" leaves them as they are.
+void applyTopicStatus(LearningTopic topic, TopicStatus status) {
+  topic.status = status;
+  if (status == TopicStatus.completed) {
+    topic.doneSubtopics
+      ..clear()
+      ..addAll(topic.subtopics.map((s) => s.key));
+  } else if (status == TopicStatus.notStarted) {
+    topic.doneSubtopics.clear();
+  }
+}
+
+/// Ticks / unticks one subtopic and derives the topic's status from it:
+/// every subtopic ticked → completed; some → still learning; none → not
+/// started (unless the student had set "still learning" themselves).
+void applySubtopic(LearningTopic topic, String key, bool done) {
+  final keys = {for (final s in topic.subtopics) s.key};
+  if (!keys.contains(key)) return;
+  // Unticking one subtopic of a completed topic keeps the others ticked.
+  if (topic.isDone && !done) {
+    topic.doneSubtopics
+      ..clear()
+      ..addAll(keys);
+  }
+  done ? topic.doneSubtopics.add(key) : topic.doneSubtopics.remove(key);
+  topic.doneSubtopics.removeWhere((k) => !keys.contains(k));
+  final ticked = topic.doneSubtopics.length;
+  if (ticked == keys.length) {
+    topic.status = TopicStatus.completed;
+  } else if (ticked > 0) {
+    topic.status = TopicStatus.learning;
+  } else if (topic.status == TopicStatus.completed) {
+    topic.status = TopicStatus.notStarted;
+  }
 }
