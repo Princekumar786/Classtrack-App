@@ -41,3 +41,32 @@ class SlashFormatting {
     return (text: text, cursor: (pos + block.length).clamp(0, text.length));
   }
 }
+
+
+/// Turns a note body (light Markdown: `# `, `- `, `1. `, `> `, `---`,
+/// `[text](url)`, `**bold**`) into clean one-paragraph text for list
+/// previews, so cards never show raw `#` or `[](…)` symbols.
+String notePlainPreview(String body, {int maxChars = 220}) {
+  final lines = <String>[];
+  for (var line in body.split('\n')) {
+    line = line.trim();
+    if (line.isEmpty || RegExp(r'^-{3,}$').hasMatch(line)) continue;
+    line = line
+        .replaceFirst(RegExp(r'^#{1,6}\s+'), '')
+        .replaceFirst(RegExp(r'^>\s?'), '')
+        .replaceFirst(RegExp(r'^[-*•]\s+'), '• ')
+        .replaceAllMapped(
+            RegExp(r'\[([^\]]*)\]\(([^)]*)\)'),
+            (m) => (m[1] ?? '').isEmpty ? (m[2] ?? '') : m[1]!)
+        .replaceAll(RegExp(r'\*\*|__|`'), '');
+    if (line.isNotEmpty) lines.add(line);
+  }
+  final text = lines.join(' · ');
+  return text.length > maxChars ? '${text.substring(0, maxChars - 1)}…' : text;
+}
+
+/// Approximate reading time in whole minutes (200 wpm, minimum 1).
+int noteReadMinutes(String body) {
+  final words = RegExp(r'\S+').allMatches(body).length;
+  return words == 0 ? 0 : (words / 200).ceil();
+}

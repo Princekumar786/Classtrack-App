@@ -7,17 +7,57 @@ import 'profile_avatars.dart';
 /// used to tailor the "Your plan" summary (and stored on the profile as
 /// `focusAreas` so the rest of the app can personalise later).
 enum FocusArea {
+  /// Legacy: no longer offered in onboarding, kept so old drafts/profiles parse.
   attendance,
   classes,
   deadlines,
   grades,
   budget,
-  habits;
+  habits,
+  exams;
+
+  /// The cards shown in onboarding, in display order.
+  static const onboardingChoices = [classes, deadlines, exams, grades, budget, habits];
 
   /// Parses a stored id, ignoring unknown values (forward-compatible).
   static FocusArea? tryParse(String? id) {
     for (final f in FocusArea.values) {
       if (f.name == id) return f;
+    }
+    return null;
+  }
+}
+
+/// When the student does their best work. Picked in onboarding, shown on the
+/// student card / plan preview and stored on the profile as `studyRhythm`.
+enum StudyRhythm {
+  earlyBird,
+  daytime,
+  nightOwl;
+
+  String get label => switch (this) {
+        earlyBird => 'Early bird',
+        daytime => 'Daytime doer',
+        nightOwl => 'Night owl',
+      };
+
+  /// Human-readable peak-focus window.
+  String get window => switch (this) {
+        earlyBird => '5 – 10 AM',
+        daytime => '10 AM – 5 PM',
+        nightOwl => '8 PM – 1 AM',
+      };
+
+  /// Peak window as [start, end) hours on a 0–24 clock (end may pass 24).
+  (int, int) get hours => switch (this) {
+        earlyBird => (5, 10),
+        daytime => (10, 17),
+        nightOwl => (20, 25),
+      };
+
+  static StudyRhythm? tryParse(String? id) {
+    for (final r in StudyRhythm.values) {
+      if (r.name == id) return r;
     }
     return null;
   }
@@ -37,17 +77,22 @@ class OnboardingProfile {
 
   final Set<FocusArea> focusAreas;
 
-  /// Attendance target in whole percent.
+  /// Attendance target in whole percent. No longer asked in onboarding (it
+  /// stays at the app default and is changed in Settings), kept for seeding.
   final int targetAttendance;
 
   /// Chosen character file name (see [ProfileAvatars]); null = not chosen.
   final String? avatarCharacter;
+
+  /// When the student studies best; null = skipped.
+  final StudyRhythm? studyRhythm;
 
   const OnboardingProfile({
     this.name = '',
     this.focusAreas = const {},
     this.targetAttendance = _defaultTarget,
     this.avatarCharacter,
+    this.studyRhythm,
   });
 
   /// Mirrors `AppConstants.defaultTargetAttendance` (kept as an int const so it
@@ -65,13 +110,15 @@ class OnboardingProfile {
       !hasName &&
       focusAreas.isEmpty &&
       targetAttendance == _defaultTarget &&
-      avatarCharacter == null;
+      avatarCharacter == null &&
+      studyRhythm == null;
 
   OnboardingProfile copyWith({
     String? name,
     Set<FocusArea>? focusAreas,
     int? targetAttendance,
     String? avatarCharacter,
+    StudyRhythm? studyRhythm,
   }) {
     return OnboardingProfile(
       name: name == null ? this.name : Validators.sanitizeName(name),
@@ -80,6 +127,7 @@ class OnboardingProfile {
           ? this.targetAttendance
           : targetAttendance.clamp(minTarget, maxTarget),
       avatarCharacter: avatarCharacter ?? this.avatarCharacter,
+      studyRhythm: studyRhythm ?? this.studyRhythm,
     );
   }
 
@@ -88,6 +136,7 @@ class OnboardingProfile {
         'focusAreas': focusAreas.map((f) => f.name).toList(),
         'targetAttendance': targetAttendance,
         if (avatarCharacter != null) 'avatarCharacter': avatarCharacter,
+        if (studyRhythm != null) 'studyRhythm': studyRhythm!.name,
       };
 
   /// Defensive parse: anything malformed falls back to defaults so a corrupt
@@ -111,6 +160,7 @@ class OnboardingProfile {
       // (free) account never starts on a locked avatar.
       avatarCharacter:
           avatar is String && ProfileAvatars.isFree(avatar) ? avatar : null,
+      studyRhythm: StudyRhythm.tryParse(json['studyRhythm']?.toString()),
     );
   }
 

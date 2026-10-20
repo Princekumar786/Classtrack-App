@@ -26,26 +26,41 @@ extension TaskPriorityX on TaskPriority {
       );
 }
 
-/// The kind of item: a plain task/assignment, a calendar event (e.g. a class,
-/// meeting or webinar imported from Google Calendar), or a video (e.g. a
-/// YouTube tutorial the student wants to watch on a given day).
-enum TaskType { task, event, video }
+/// The kind of item: a plain to-do, a college assignment (homework, lab
+/// record, project — usually tied to a subject), a calendar event (e.g. a
+/// class, meeting or webinar imported from Google Calendar), or a video (e.g.
+/// a YouTube tutorial the student wants to watch on a given day).
+///
+/// Stored by [Enum.name]. Older app versions that don't know `assignment`
+/// fall back to [TaskType.task] in [TaskTypeX.parse], so nothing breaks.
+enum TaskType { task, assignment, event, video }
 
 extension TaskTypeX on TaskType {
   String get label => switch (this) {
         TaskType.task => 'Task',
+        TaskType.assignment => 'Assignment',
         TaskType.event => 'Event',
         TaskType.video => 'Video',
       };
 
+  /// Plural label used for tabs and section titles.
+  String get pluralLabel => switch (this) {
+        TaskType.task => 'To-dos',
+        TaskType.assignment => 'Assignments',
+        TaskType.event => 'Events',
+        TaskType.video => 'Videos',
+      };
+
   IconData get icon => switch (this) {
         TaskType.task => Icons.check_circle_outline_rounded,
+        TaskType.assignment => Icons.assignment_rounded,
         TaskType.event => Icons.event_rounded,
         TaskType.video => Icons.play_circle_fill_rounded,
       };
 
   Color get color => switch (this) {
         TaskType.task => AppColors.primary,
+        TaskType.assignment => AppColors.accent,
         TaskType.event => AppColors.info,
         TaskType.video => AppColors.coral,
       };

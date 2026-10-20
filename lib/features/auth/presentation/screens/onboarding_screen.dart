@@ -23,7 +23,8 @@ import '../widgets/onboarding_visuals.dart';
 ///  • A guide character: the mascot changes expression and *reacts* to every
 ///    answer in a speech bubble, so it feels like a conversation, not a form.
 ///  • Tangible outcomes: a student ID card fills in live as you answer; the
-///    attendance target becomes a term of dots you can see shrink and grow.
+///    "when do you study best" answer becomes a sky that rises, shines or
+///    turns to night as you pick.
 ///  • Value before the ask: a short "building your plan" moment, then a
 ///    personalised home preview + confetti — only then do we ask for sign-up.
 ///  • One optional question per screen (Skip everywhere), progress bar, system
@@ -38,7 +39,7 @@ class OnboardingScreen extends ConsumerStatefulWidget {
   ConsumerState<OnboardingScreen> createState() => _OnboardingScreenState();
 }
 
-enum _Step { welcome, name, focus, target, avatar, building, plan }
+enum _Step { welcome, name, focus, rhythm, avatar, building, plan }
 
 class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   _Step _step = _Step.welcome;
@@ -46,13 +47,13 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   late final TextEditingController _name;
 
   /// Question steps shown in the progress indicator.
-  static const _questions = [_Step.name, _Step.focus, _Step.target, _Step.avatar];
+  static const _questions = [_Step.name, _Step.focus, _Step.rhythm, _Step.avatar];
 
   static const Map<_Step, Color> _accent = {
     _Step.welcome: AppColors.primary,
     _Step.name: AppColors.primary,
     _Step.focus: AppColors.coral,
-    _Step.target: AppColors.success,
+    _Step.rhythm: Color(0xFF6366F1),
     _Step.avatar: AppColors.accent,
     _Step.building: AppColors.info,
     _Step.plan: AppColors.primary,
@@ -126,7 +127,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       'has_account': hasAccount ? 1 : 0,
       'gave_name': draft.hasName ? 1 : 0,
       'focus_count': draft.focusAreas.length,
-      'target': draft.targetAttendance,
+      'rhythm': draft.studyRhythm?.name ?? 'none',
       'picked_avatar': draft.avatarCharacter != null ? 1 : 0,
     });
     await ref.read(onboardingDraftProvider.notifier).flush();
@@ -145,9 +146,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       _Step.welcome => _WelcomeStep(onStart: _next, onHaveAccount: () => _finish(hasAccount: true)),
       _Step.name => _NameStep(controller: _name, onContinue: _saveName),
       _Step.focus => _FocusStep(draft: draft, onToggle: notifier.toggleFocus, onContinue: _next),
-      _Step.target => _TargetStep(
+      _Step.rhythm => _RhythmStep(
           draft: draft,
-          onChanged: (v) => notifier.update((p) => p.copyWith(targetAttendance: v)),
+          onPick: (r) => notifier.update((p) => p.copyWith(studyRhythm: r)),
           onContinue: _next,
         ),
       _Step.avatar => _AvatarStep(
@@ -171,7 +172,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       },
       child: Scaffold(
         body: OnboardingBackdrop(
-          accent: _accent[_step]!,
+          // The rhythm step tints the whole screen with the picked sky colour.
+          accent: _step == _Step.rhythm && draft.studyRhythm != null ? draft.studyRhythm!.color : _accent[_step]!,
           child: SafeArea(
             child: Column(
               children: [
@@ -452,7 +454,7 @@ class _WelcomeStep extends StatelessWidget {
                 ).enter(context, delayMs: 200),
                 const SizedBox(height: 14),
                 Text(
-                  'Attendance, classes, deadlines and grades in one calm place — '
+                  'Classes, deadlines, exams and goals in one calm place — '
                   'set up around you in 4 quick taps.',
                   textAlign: TextAlign.center,
                   style: theme.textTheme.bodyLarge?.copyWith(color: theme.textTheme.bodySmall?.color, height: 1.45),
@@ -587,13 +589,19 @@ class _FocusMeta {
 }
 
 const Map<FocusArea, _FocusMeta> _focusMeta = {
-  FocusArea.attendance: _FocusMeta(Icons.fact_check_rounded, 'Attendance', 'Stay above the cut-off', AppColors.primary),
+  // Legacy (not offered any more) — kept so an old saved draft still renders.
+  FocusArea.attendance: _FocusMeta(Icons.fact_check_rounded, 'Attendance', 'Stay on top of classes', AppColors.primary),
   FocusArea.classes: _FocusMeta(Icons.calendar_month_rounded, 'Timetable', 'Know where to be', AppColors.info),
   FocusArea.deadlines: _FocusMeta(Icons.task_alt_rounded, 'Deadlines', 'Never miss a submission', AppColors.coral),
+  FocusArea.exams: _FocusMeta(Icons.edit_note_rounded, 'Exams', 'Walk in prepared', AppColors.primary),
   FocusArea.grades: _FocusMeta(Icons.insights_rounded, 'Grades & GPA', 'See where you stand', AppColors.success),
   FocusArea.budget: _FocusMeta(Icons.account_balance_wallet_rounded, 'Budget', 'Make money last the month', AppColors.accent),
   FocusArea.habits: _FocusMeta(Icons.local_fire_department_rounded, 'Habits & focus', 'Build study streaks', Color(0xFFEC4899)),
 };
+
+/// The student's picks in display order, never including legacy areas.
+List<FocusArea> _pickedAreas(OnboardingProfile d) =>
+    FocusArea.onboardingChoices.where(d.focusAreas.contains).toList();
 
 class _FocusStep extends StatelessWidget {
   const _FocusStep({required this.draft, required this.onToggle, required this.onContinue});
@@ -604,7 +612,7 @@ class _FocusStep extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final count = draft.focusAreas.length;
+    final count = _pickedAreas(draft).length;
     final name = draft.hasName ? ', ${draft.firstName}' : '';
     final reaction = switch (count) {
       0 => 'Hmm… what’s on your plate$name?',
@@ -628,7 +636,7 @@ class _FocusStep extends StatelessWidget {
           spacing: gap,
           runSpacing: gap,
           children: [
-            for (final (i, area) in FocusArea.values.indexed)
+            for (final (i, area) in FocusArea.onboardingChoices.indexed)
               SizedBox(
                 width: w,
                 child: _FocusCard(
@@ -728,135 +736,140 @@ class _FocusCard extends StatelessWidget {
   }
 }
 
-// ─── Step 3: attendance target ─────────────────────────────────────────────
+// ─── Step 3: study rhythm ──────────────────────────────────────────────────
 
-class _TargetStep extends StatelessWidget {
-  const _TargetStep({required this.draft, required this.onChanged, required this.onContinue});
+class _RhythmStep extends StatelessWidget {
+  const _RhythmStep({required this.draft, required this.onPick, required this.onContinue});
 
   final OnboardingProfile draft;
-  final ValueChanged<int> onChanged;
+  final ValueChanged<StudyRhythm> onPick;
   final VoidCallback onContinue;
 
-  /// A typical term, used only to make the percentage tangible.
-  static const _termClasses = 40;
+  static String _hint(StudyRhythm r) => switch (r) {
+        StudyRhythm.earlyBird => 'Sharpest before the day gets busy',
+        StudyRhythm.daytime => 'Steady focus between classes',
+        StudyRhythm.nightOwl => 'Ideas show up after dark',
+      };
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final t = draft.targetAttendance;
-    final skippable = AttendanceMath.maxSkippable(_termClasses, t);
-    final (pose, reaction) = switch (t) {
-      >= 85 => (MascotPose.think, 'High bar! I’ll watch it closely.'),
-      <= 65 => (MascotPose.excited, 'A little breathing room — nice.'),
-      _ => (MascotPose.talk, '$t% — the classic. Got it.'),
+    final r = draft.studyRhythm;
+    final (pose, reaction) = switch (r) {
+      null => (MascotPose.think, 'Quick one — when is your brain sharpest?'),
+      StudyRhythm.earlyBird => (MascotPose.wave, 'Up with the sun? Respect!'),
+      StudyRhythm.daytime => (MascotPose.talk, 'Steady and focused. Love it.'),
+      StudyRhythm.nightOwl => (MascotPose.excited, 'A fellow night owl! Same.'),
     };
     return _StepScaffold(
       pose: pose,
       reaction: reaction,
-      title: 'What attendance do you need?',
-      subtitle: 'Most colleges ask for 75%. We’ll warn you before you slip below it.',
-      cta: _Cta(label: 'Set $t% as my target', icon: Icons.flag_rounded, onPressed: onContinue),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(18, 22, 18, 14),
-        decoration: BoxDecoration(
-          color: theme.cardTheme.color,
-          borderRadius: BorderRadius.circular(28),
-          boxShadow: AppColors.softShadow(opacity: 0.07),
-        ),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                // Ring springs from the old value to the new one.
-                TweenAnimationBuilder<double>(
-                  tween: Tween(end: t.toDouble()),
-                  duration: const Duration(milliseconds: 500),
-                  curve: Curves.easeOutBack,
-                  builder: (_, v, __) => ProgressRing(
-                    percent: v,
-                    size: 110,
-                    strokeWidth: 12,
-                    color: AppColors.success,
-                    subLabel: 'target',
-                  ),
-                ),
-                const SizedBox(width: 18),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('You can miss up to', style: theme.textTheme.bodySmall),
-                      AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 220),
-                        transitionBuilder: (c, a) => ScaleTransition(scale: a, child: c),
-                        child: Text(
-                          '$skippable',
-                          key: ValueKey(skippable),
-                          style: theme.textTheme.displaySmall?.copyWith(color: AppColors.coral, fontSize: 44),
-                        ),
-                      ),
-                      Text('of $_termClasses classes this term', style: theme.textTheme.bodySmall),
-                    ],
-                  ),
-                ),
-              ],
+      title: 'When do you study best?',
+      subtitle: 'We’ll shape your day around your peak hours.',
+      cta: _Cta(
+        label: switch (r) {
+          null => 'Continue',
+          StudyRhythm.earlyBird => 'I’m an early bird',
+          StudyRhythm.daytime => 'I’m a daytime doer',
+          StudyRhythm.nightOwl => 'I’m a night owl',
+        },
+        icon: r?.icon ?? Icons.arrow_forward_rounded,
+        onPressed: onContinue,
+      ),
+      child: Column(
+        children: [
+          RhythmSky(rhythm: r).pop(context, delayMs: 120),
+          const SizedBox(height: 18),
+          for (final (i, option) in StudyRhythm.values.indexed)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: _RhythmOption(
+                rhythm: option,
+                hint: _hint(option),
+                selected: option == r,
+                onTap: () {
+                  HapticFeedback.lightImpact();
+                  onPick(option);
+                },
+              ).enter(context, delayMs: 200 + 70 * i, dy: 0.25),
             ),
-            const SizedBox(height: 18),
-            Semantics(
-              label: 'In a $_termClasses-class term you can miss up to $skippable ${skippable == 1 ? 'class' : 'classes'}.',
-              child: AttendanceDots(total: _termClasses, skippable: skippable),
-            ),
-            const SizedBox(height: 10),
-            Row(children: [
-              _Legend(color: theme.colorScheme.primary, label: 'Attend'),
-              const SizedBox(width: 14),
-              const _Legend(color: AppColors.coral, label: 'Safe to skip'),
-            ]),
-            const SizedBox(height: 8),
-            Slider(
-              value: t.toDouble(),
-              min: OnboardingProfile.minTarget.toDouble(),
-              max: OnboardingProfile.maxTarget.toDouble(),
-              divisions: (OnboardingProfile.maxTarget - OnboardingProfile.minTarget) ~/ 5,
-              label: '$t%',
-              semanticFormatterCallback: (v) => '${v.round()} percent target',
-              onChanged: (v) {
-                if (v.round() != t) HapticFeedback.selectionClick();
-                onChanged(v.round());
-              },
-            ),
-            Wrap(
-              spacing: 8,
-              children: [
-                for (final preset in const [65, 75, 85])
-                  ChoiceChip(
-                    label: Text('$preset%'),
-                    selected: t == preset,
-                    onSelected: (_) {
-                      HapticFeedback.selectionClick();
-                      onChanged(preset);
-                    },
-                  ),
-              ],
-            ),
-          ],
-        ),
-      ).pop(context, delayMs: 160),
+        ],
+      ),
     );
   }
 }
 
-class _Legend extends StatelessWidget {
-  const _Legend({required this.color, required this.label});
-  final Color color;
-  final String label;
+class _RhythmOption extends StatelessWidget {
+  const _RhythmOption({required this.rhythm, required this.hint, required this.selected, required this.onTap});
+
+  final StudyRhythm rhythm;
+  final String hint;
+  final bool selected;
+  final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => Row(mainAxisSize: MainAxisSize.min, children: [
-        Container(width: 10, height: 10, decoration: BoxDecoration(shape: BoxShape.circle, color: color)),
-        const SizedBox(width: 6),
-        Text(label, style: Theme.of(context).textTheme.labelMedium),
-      ]);
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final c = rhythm.color;
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: '${rhythm.label}. ${rhythm.window}. $hint',
+      excludeSemantics: true,
+      child: PressScale(
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          decoration: BoxDecoration(
+            color: selected ? Color.alphaBlend(c.withValues(alpha: 0.10), theme.cardTheme.color ?? Colors.white) : theme.cardTheme.color,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: selected ? c : theme.dividerColor.withValues(alpha: 0.25), width: selected ? 2 : 1),
+            boxShadow: selected
+                ? [BoxShadow(color: c.withValues(alpha: 0.25), blurRadius: 18, offset: const Offset(0, 8))]
+                : AppColors.softShadow(opacity: 0.05, blur: 14),
+          ),
+          child: Material(
+            type: MaterialType.transparency,
+            child: InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(20),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 72),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  child: Row(children: [
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 220),
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        gradient: selected ? LinearGradient(colors: [c.withValues(alpha: 0.8), c]) : null,
+                        color: selected ? null : c.withValues(alpha: 0.14),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Icon(rhythm.icon, color: selected ? Colors.white : c, size: 22),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(rhythm.label, style: theme.textTheme.titleMedium),
+                        const SizedBox(height: 2),
+                        Text('${rhythm.window} · $hint', style: theme.textTheme.bodySmall),
+                      ]),
+                    ),
+                    AnimatedScale(
+                      scale: selected ? 1 : 0,
+                      duration: const Duration(milliseconds: 260),
+                      curve: Curves.easeOutBack,
+                      child: Icon(Icons.check_circle_rounded, color: c, size: 24),
+                    ),
+                  ]),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 // ─── Step 4: avatar ────────────────────────────────────────────────────────
@@ -887,7 +900,7 @@ class _AvatarStep extends StatelessWidget {
             alignment: Alignment.center,
             clipBehavior: Clip.none,
             children: [
-              StudentIdCard(name: draft.name, avatarCharacter: chosen, targetAttendance: draft.targetAttendance),
+              StudentIdCard(name: draft.name, avatarCharacter: chosen, rhythm: draft.studyRhythm),
               Positioned(left: 20, bottom: -30, child: SparkleBurst(trigger: chosen, radius: 60)),
             ],
           ).pop(context, delayMs: 100),
@@ -1011,12 +1024,15 @@ class _BuildingStepState extends State<_BuildingStep> with SingleTickerProviderS
 
   List<(IconData, String)> get _items {
     final d = widget.draft;
-    final focus = d.focusAreas.isEmpty
+    final picked = _pickedAreas(d);
+    final focus = picked.isEmpty
         ? 'your classes and deadlines'
-        : FocusArea.values.where(d.focusAreas.contains).take(2).map((f) => _focusMeta[f]!.label.toLowerCase()).join(' & ');
+        : picked.take(2).map((f) => _focusMeta[f]!.label.toLowerCase()).join(' & ');
+    final r = d.studyRhythm;
     return [
-      (Icons.flag_rounded, 'Setting your ${d.targetAttendance}% attendance goal'),
+      (Icons.calendar_month_rounded, 'Laying out your week'),
       (Icons.notifications_active_rounded, 'Tuning reminders for $focus'),
+      if (r != null) (r.icon, 'Planning around your ${r.window} peak'),
       (Icons.dashboard_customize_rounded, d.hasName ? 'Arranging your home, ${d.firstName}' : 'Arranging your home screen'),
     ];
   }
@@ -1042,7 +1058,7 @@ class _BuildingStepState extends State<_BuildingStep> with SingleTickerProviderS
                   height: 200,
                   child: Stack(alignment: Alignment.center, children: [
                     ProgressRing(percent: v * 100, size: 200, strokeWidth: 10, color: theme.colorScheme.primary, centerLabel: ''),
-                    const Mascot(pose: MascotPose.talk, size: 130),
+                    Mascot(pose: v < 0.55 ? MascotPose.think : MascotPose.excited, size: 130),
                   ]),
                 ),
                 const SizedBox(height: 28),
@@ -1107,10 +1123,11 @@ class _PlanStep extends StatefulWidget {
   final VoidCallback onHaveAccount;
 
   /// What each focus area turns into inside the app.
-  static String promise(FocusArea a, int target) => switch (a) {
-        FocusArea.attendance => 'Attendance alerts before you dip below $target%',
+  static String promise(FocusArea a) => switch (a) {
+        FocusArea.attendance => 'Every class tracked in a tap',
         FocusArea.classes => 'Your timetable from a photo or Google Calendar in seconds',
-        FocusArea.deadlines => 'Reminders ahead of every task and exam',
+        FocusArea.deadlines => 'Reminders ahead of every task and submission',
+        FocusArea.exams => 'Countdowns to every exam, so nothing sneaks up',
         FocusArea.grades => 'A live GPA so you always know where you stand',
         FocusArea.budget => 'A monthly budget that keeps spending on track',
         FocusArea.habits => 'Study streaks and a built-in focus timer',
@@ -1146,9 +1163,8 @@ class _PlanStepState extends State<_PlanStep> {
     final draft = widget.draft;
     final theme = Theme.of(context);
     // Nothing picked → show the three things most students come for.
-    final areas = draft.focusAreas.isEmpty
-        ? const [FocusArea.attendance, FocusArea.classes, FocusArea.deadlines]
-        : FocusArea.values.where(draft.focusAreas.contains).toList();
+    final picked = _pickedAreas(draft);
+    final areas = picked.isEmpty ? const [FocusArea.classes, FocusArea.deadlines, FocusArea.exams] : picked;
 
     return Stack(
       alignment: Alignment.topCenter,
@@ -1162,12 +1178,12 @@ class _PlanStepState extends State<_PlanStep> {
           secondary: TextButton(onPressed: widget.onHaveAccount, child: const Text('I already have an account')),
           child: Column(
             children: [
-              _HomePreview(draft: draft).pop(context, delayMs: 120),
+              _HomePreview(draft: draft, areas: areas).pop(context, delayMs: 120),
               const SizedBox(height: 16),
               for (final (i, a) in areas.indexed)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 10),
-                  child: _PromiseRow(meta: _focusMeta[a]!, text: _PlanStep.promise(a, draft.targetAttendance))
+                  child: _PromiseRow(meta: _focusMeta[a]!, text: _PlanStep.promise(a))
                       .enter(context, delayMs: 260 + 90 * i, dy: 0.3),
                 ),
               const SizedBox(height: 4),
@@ -1200,8 +1216,9 @@ class _PlanStepState extends State<_PlanStep> {
 
 /// A mini mock of the student's future home screen, built from their answers.
 class _HomePreview extends StatelessWidget {
-  const _HomePreview({required this.draft});
+  const _HomePreview({required this.draft, required this.areas});
   final OnboardingProfile draft;
+  final List<FocusArea> areas;
 
   @override
   Widget build(BuildContext context) {
@@ -1243,32 +1260,44 @@ class _HomePreview extends StatelessWidget {
             ),
           ]),
           const SizedBox(height: 18),
-          Row(children: [
-            AnimatedProgressRing(
-              percent: draft.targetAttendance.toDouble(),
-              size: 84,
-              strokeWidth: 9,
-              color: AppColors.success,
-              subLabel: 'goal',
-              duration: const Duration(milliseconds: 1200),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Attendance goal', style: theme.textTheme.labelMedium?.copyWith(color: Colors.white60)),
-                const SizedBox(height: 2),
-                Text('Stay at ${draft.targetAttendance}%+',
-                    style: theme.textTheme.titleMedium?.copyWith(color: Colors.white)),
-                const SizedBox(height: 8),
+          if (draft.studyRhythm case final r?) ...[
+            Row(children: [
+              Icon(r.icon, size: 18, color: r.color),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text('${r.label} · peak focus ${r.window}',
+                    style: theme.textTheme.labelLarge?.copyWith(color: Colors.white)),
+              ),
+            ]),
+            const SizedBox(height: 10),
+            FocusWindowBar(rhythm: r),
+            const SizedBox(height: 16),
+          ],
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text('PINNED TO YOUR HOME',
+                style: theme.textTheme.labelSmall?.copyWith(color: Colors.white54, letterSpacing: 1.2)),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final a in areas)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                  decoration: BoxDecoration(color: AppColors.success.withValues(alpha: 0.18), borderRadius: BorderRadius.circular(20)),
-                  child: Text('We’ll nudge you early',
-                      style: theme.textTheme.labelMedium?.copyWith(color: const Color(0xFF86EFAC))),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: _focusMeta[a]!.color.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(_focusMeta[a]!.icon, size: 15, color: Colors.white),
+                    const SizedBox(width: 6),
+                    Text(_focusMeta[a]!.label, style: theme.textTheme.labelMedium?.copyWith(color: Colors.white)),
+                  ]),
                 ),
-              ]),
-            ),
-          ]),
+            ],
+          ),
         ],
       ),
     );

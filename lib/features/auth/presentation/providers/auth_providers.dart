@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/providers/firebase_providers.dart';
+import '../../../../services/analytics_service.dart';
+import '../../../../services/error_reporter.dart';
 import '../../data/auth_repository.dart';
 import '../../domain/app_user.dart';
 import '../../domain/onboarding_profile.dart';
@@ -19,6 +23,73 @@ final userProfileProvider = StreamProvider<AppUser?>((ref) {
   if (uid == null) return Stream.value(null);
   return ref.watch(authRepositoryProvider).watchProfile(uid);
 });
+
+/// Self-heal for accounts that exist in Firebase Auth but have no
+/// `users/{uid}` profile (seen in production: Google sign-in succeeded, then
+/// the profile write failed because Firestore was unreachable, and nothing
+/// ever created it later). Whenever a user is signed in, this makes sure the
+/// profile exists, retrying with growing pauses while the app is open. The
+/// next app start tries again if all of these fail.
+///
+/// Watch it once near the app root (see `ClassTrackApp`).
+final profileSelfHealProvider = Provider<void>((ref) {
+  final uid = ref.watch(
+      authStateProvider.select((a) => a.valueOrNull?.uid));
+  if (uid == null) return;
+  var disposed = false;
+  ref.onDispose(() => disposed = true);
+  unawaited(runProfileSelfHeal(
+    ensure: () {
+      final user = ref.read(firebaseAuthProvider).currentUser;
+      if (user == null || user.uid != uid) return Future.value(false);
+      final seed = ref.read(onboardingDraftProvider);
+      return ref.read(authRepositoryProvider).ensureProfileDoc(
+            uid: uid,
+            displayName: user.displayName,
+            email: user.email,
+            photoUrl: user.photoURL,
+            seed: seed.isEmpty ? null : seed,
+          );
+    },
+    isCancelled: () => disposed,
+    onCreated: () async {
+      ref.read(analyticsProvider).log('profile_self_healed');
+      try {
+        await ref.read(onboardingDraftProvider.notifier).clear();
+      } catch (_) {/* a stale draft must never matter here */}
+    },
+  ));
+});
+
+/// Retry loop behind [profileSelfHealProvider] (pure, unit-tested). Calls
+/// [ensure] until it succeeds, [isCancelled] turns true, or [delays] run out.
+/// Each failure is reported (network ones as `transient`). Never throws.
+Future<void> runProfileSelfHeal({
+  required Future<bool> Function() ensure,
+  required bool Function() isCancelled,
+  Future<void> Function()? onCreated,
+  List<Duration> delays = const [
+    Duration(seconds: 5),
+    Duration(seconds: 15),
+    Duration(seconds: 30),
+    Duration(seconds: 60),
+    Duration(seconds: 120),
+  ],
+}) async {
+  for (var attempt = 0;; attempt++) {
+    if (isCancelled()) return;
+    try {
+      final created = await ensure();
+      if (created) await onCreated?.call();
+      return;
+    } catch (e, st) {
+      ErrorReporter.report(e, st,
+          reason: 'profile_self_heal', extra: {'attempt': attempt + 1});
+      if (attempt >= delays.length) return;
+      await Future<void>.delayed(delays[attempt]);
+    }
+  }
+}
 
 /// The ONE country used for targeting everywhere (opportunities, discounts,
 /// banners, campaigns, CMS pushes): profile choice, else auto-detected.

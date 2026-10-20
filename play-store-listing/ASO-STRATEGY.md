@@ -25,10 +25,12 @@ Use these phrases in normal sentences only. Google Play does not provide a hidde
 ## Metadata to publish
 
 **App name (30/30 characters)**
-`ClassTrack: Attendance Tracker`
+`ClassTrack: Study & Attendance`
 
-**Short description (76/80 characters)**
-`Attendance tracker & bunk calculator with timetable, homework, exams and GPA`
+**Short description (78/80 characters)**
+`Study planner with attendance tracker, bunk calculator, timetable, exams & GPA`
+
+Positioning update (2026-10-15): lead with the broad "study planner" search that competitors win on, and keep attendance + bunk calculator as the unique reason to install.
 
 The full description in `full-description.txt` is the matching production copy. Do not put multiple alternatives into Play Console. Use only the version marked **PUBLISH NOW**.
 

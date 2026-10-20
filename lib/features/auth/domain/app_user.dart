@@ -96,6 +96,10 @@ class AppUser {
   /// `FocusArea`, e.g. ["attendance", "deadlines"]). Empty when skipped.
   final List<String> focusAreas;
 
+  /// When the student said they study best during onboarding (`StudyRhythm`
+  /// id: "earlyBird" | "daytime" | "nightOwl"). Null when skipped.
+  final String? studyRhythm;
+
   const AppUser({
     required this.uid,
     this.displayName,
@@ -123,6 +127,7 @@ class AppUser {
     this.careerGoal,
     this.interests = const [],
     this.focusAreas = const [],
+    this.studyRhythm,
   });
 
   /// True once the student has filled in at least one profiling field. Used to
@@ -165,6 +170,7 @@ class AppUser {
     String? careerGoal,
     List<String>? interests,
     List<String>? focusAreas,
+    String? studyRhythm,
   }) {
     return AppUser(
       uid: uid,
@@ -194,6 +200,7 @@ class AppUser {
       careerGoal: careerGoal ?? this.careerGoal,
       interests: interests ?? this.interests,
       focusAreas: focusAreas ?? this.focusAreas,
+      studyRhythm: studyRhythm ?? this.studyRhythm,
     );
   }
 
@@ -206,6 +213,7 @@ class AppUser {
         'monthlyBudget': monthlyBudget,
         'currency': currency,
         if (focusAreas.isNotEmpty) 'focusAreas': focusAreas,
+        if (studyRhythm != null) 'studyRhythm': studyRhythm,
         'createdAt': createdAt != null
             ? Timestamp.fromDate(createdAt!)
             : FieldValue.serverTimestamp(),
@@ -257,6 +265,7 @@ class AppUser {
               .where((e) => e.isNotEmpty)
               .toList() ??
           const [],
+      studyRhythm: map['studyRhythm'] as String?,
     );
   }
 }

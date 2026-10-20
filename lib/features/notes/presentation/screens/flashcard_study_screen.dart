@@ -1,9 +1,12 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../services/rating_prompt_service.dart';
 import '../../domain/flashcard.dart';
 
 /// A flip-card study session over a note's flashcards. Tap the card to flip
@@ -78,6 +81,12 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen>
       _showingAnswer = false;
       _flip.value = 0;
     });
+    // Knowing 80%+ of a real deck (5+ cards) is a win worth celebrating.
+    if (_finished && _deck.length >= 5 && _known.length * 5 >= _deck.length * 4) {
+      unawaited(ProviderScope.containerOf(context, listen: false)
+          .read(ratingPromptProvider)
+          .onHappyMoment(HappyMoment.flashcardsAced));
+    }
   }
 
   void _restart(List<Flashcard> deck) {

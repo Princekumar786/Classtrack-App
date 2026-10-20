@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/providers/app_settings_provider.dart';
 import '../../../../services/analytics_service.dart';
+import '../../../../services/rating_prompt_service.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../../moments/data/moment_share_service.dart';
 import '../../domain/semester_wrapped.dart';
@@ -39,6 +42,9 @@ class _SemesterWrappedScreenState extends ConsumerState<SemesterWrappedScreen> {
         subject: 'My ${data.semesterName} on ClassTrack',
       );
       ref.read(analyticsProvider).log('semester_wrapped_shared', {'ok': ok});
+      if (ok) {
+        unawaited(ref.read(ratingPromptProvider).onHappyMoment(HappyMoment.semesterShared));
+      }
       if (!ok && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
             content: Text('Could not create the image. Try again.')));

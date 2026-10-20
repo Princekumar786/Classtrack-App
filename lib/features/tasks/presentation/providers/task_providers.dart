@@ -4,6 +4,7 @@ import '../../../../core/providers/firebase_providers.dart';
 import '../../../../core/utils/date_utils.dart';
 import '../../../../services/notification_service.dart';
 import '../../data/task_repository.dart';
+import '../../domain/task_buckets.dart';
 import '../../domain/task_item.dart';
 
 final taskRepositoryProvider = Provider<TaskRepository?>((ref) {
@@ -22,6 +23,13 @@ final tasksStreamProvider = StreamProvider<List<TaskItem>>((ref) {
 final pendingTasksProvider = Provider<List<TaskItem>>((ref) {
   final all = ref.watch(tasksStreamProvider).valueOrNull ?? const [];
   return all.where((t) => !t.done).toList();
+});
+
+/// Headline task numbers (pending / overdue / due today / this week / done).
+/// Powers the Home "Tasks due" card.
+final taskSummaryProvider = Provider<TaskSummary>((ref) {
+  final all = ref.watch(tasksStreamProvider).valueOrNull ?? const [];
+  return TaskSummary.of(all, DateTime.now());
 });
 
 /// Tasks due on a specific day.

@@ -2,23 +2,25 @@ APP NAME (max 30 characters)
 ============================
 
 PUBLISH NOW:
-ClassTrack: Attendance Tracker
+ClassTrack: Study & Attendance
 
-This uses the strongest precise search term while keeping the ClassTrack name.
+Why: all three competitors put "Study Planner" in the title, which shows that is
+where the search volume is. "Study" + "Attendance" puts ClassTrack into those
+searches while keeping the attendance angle that competitors do not have.
+The exact phrase "study planner" goes first in the short description.
 
-OPTIONS FOR A STORE LISTING EXPERIMENT (test one at a time):
-ClassTrack: Student Planner
-ClassTrack: Timetable & Tasks
+BACKUP (if impressions don't grow after 28 days):
+Study Planner & Attendance
+
+Note: Play Console experiments cannot test the app name. Change it at most once
+a month and compare 28-day windows.
 
 
 SHORT DESCRIPTION (max 80 characters)
 =====================================
 
-PUBLISH NOW (A - 76 characters):
-Attendance tracker & bunk calculator with timetable, homework, exams and GPA
+PUBLISH NOW (A - 78 characters):
+Study planner with attendance tracker, bunk calculator, timetable, exams & GPA
 
-B (test after A):
-Stay above 75% attendance with timetable, homework, exams and GPA
-
-C (test after A):
-Track attendance, plan classes and manage homework, exams and GPA
+B (experiment after A, 75 characters):
+Plan study, count down to exams and track attendance with a bunk calculator

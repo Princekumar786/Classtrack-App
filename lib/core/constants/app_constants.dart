@@ -7,7 +7,7 @@ class AppConstants {
 
   /// User-facing app version shown in Settings. Keep this in sync with the
   /// `version:` field in pubspec.yaml (the part before the `+` build number).
-  static const String appVersion = '1.0.58';
+  static const String appVersion = '1.0.61';
 
   // Google Sign-In: the OAuth 2.0 *Web* client ID (client_type 3 in
   // google-services.json). Passing this explicitly to GoogleSignIn makes the
@@ -123,6 +123,15 @@ class AppConstants {
   //  • the set of flag-tracked features the user has tried (StringList);
   //  • whether the once-only "you're using X% of ClassTrack" prompt has shown.
   static const String prefsFirstLaunchAt = 'first_launch_at';
+  // In-app rating prompt (device-global): active-day counter, the last day
+  // counted, "happy moment" count, and when/how often we've asked.
+  static const String prefsRatingActiveDays = 'rating_active_days';
+  static const String prefsRatingLastActiveDay = 'rating_last_active_day';
+  static const String prefsRatingHappyMoments = 'rating_happy_moments';
+  static const String prefsRatingLastAskedAt = 'rating_last_asked_at';
+  static const String prefsRatingTimesAsked = 'rating_times_asked';
+  // In-app update: when we last asked Google Play for an update (millis).
+  static const String prefsUpdateLastCheckAt = 'update_last_check_at';
   static const String prefsFeaturesUsed = 'features_used';
   static const String prefsTipsPromptShown = 'tips_prompt_shown';
   static const String prefsThemeMode = 'theme_mode';

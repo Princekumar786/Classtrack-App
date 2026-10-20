@@ -43,6 +43,7 @@ import '../../../schedule/presentation/screens/schedule_screen.dart';
 import '../../../settings/presentation/screens/settings_screen.dart';
 import '../../../subjects/presentation/providers/subject_providers.dart';
 import '../../../subjects/presentation/screens/edit_subject_screen.dart';
+import '../../../tasks/domain/task_buckets.dart';
 import '../../../tasks/domain/task_item.dart';
 import '../../../tasks/presentation/providers/task_providers.dart';
 import '../../../tasks/presentation/screens/tasks_screen.dart';
@@ -55,7 +56,7 @@ import '../providers/notifications_seen_provider.dart';
 /// "what matters to me today?":
 ///   • a friendly greeting header (AI + settings),
 ///   • a bold motivational headline,
-///   • a 2×2 grid of the four headline metrics (today's classes, attendance,
+///   • a 2×2 grid of the four headline metrics (today's classes, tasks due,
 ///     next exam, GPA),
 ///   • a "This week" momentum strip (attendance / focus / streak / tasks),
 ///   • today's class timeline with inline attendance marking,
@@ -763,25 +764,31 @@ class _StatGrid extends ConsumerWidget {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final classes = ref.watch(classesForDayProvider(today));
-    final overall = ref.watch(overallStatsProvider);
-    final target = ref.watch(userProfileProvider).valueOrNull
-            ?.targetAttendancePercent ??
-        75.0;
+    final tasks = ref.watch(taskSummaryProvider);
     final nextExam = ref.watch(nextExamProvider);
     final gpa = ref.watch(gpaSummaryProvider);
 
-    // Attendance — colour reflects the OVERALL figure vs the target: green when
-    // at/above target, red only when actually below it (a single at-risk
-    // subject must never turn a healthy 90% overall red).
-    final attValue =
-        overall.held == 0 ? '—' : '${overall.percent.toStringAsFixed(0)}%';
-    final belowTarget = overall.held > 0 && overall.percent < target;
-    final attSub = overall.held == 0
-        ? 'No data yet'
-        : (belowTarget ? 'Below target' : 'On track');
-    final attColor = overall.held == 0
-        ? null
-        : (belowTarget ? AppColors.danger : AppColors.success);
+    // Tasks due — the number of pending (not done) tasks. The sub-line points
+    // at what matters most: overdue (red) → due today (amber) → this week.
+    final tasksValue = '${tasks.pending}';
+    final String tasksSub;
+    final Color? tasksColor;
+    if (tasks.overdue > 0) {
+      tasksSub = '${tasks.overdue} overdue';
+      tasksColor = AppColors.danger;
+    } else if (tasks.dueToday > 0) {
+      tasksSub = '${tasks.dueToday} due today';
+      tasksColor = null; // amber on peach is too low-contrast; keep ink
+    } else if (tasks.pending == 0) {
+      tasksSub = 'All caught up';
+      tasksColor = tasks.completed > 0 ? AppColors.success : null;
+    } else if (tasks.dueThisWeek > 0) {
+      tasksSub = '${tasks.dueThisWeek} this week';
+      tasksColor = null;
+    } else {
+      tasksSub = tasks.pending == 1 ? 'Pending task' : 'Pending tasks';
+      tasksColor = null;
+    }
 
     // Next exam
     final String examValue;
@@ -822,13 +829,13 @@ class _StatGrid extends ConsumerWidget {
               const SizedBox(width: 12),
               Expanded(
                 child: _StatCard(
-                  icon: Icons.pie_chart_rounded,
-                  label: 'Attendance',
-                  value: attValue,
-                  sub: attSub,
+                  icon: Icons.task_alt_rounded,
+                  label: 'Tasks due',
+                  value: tasksValue,
+                  sub: tasksSub,
                   background: AppColors.peachSoft,
-                  valueColor: attColor,
-                  onTap: () => _push(context, const AttendanceScreen()),
+                  valueColor: tasksColor,
+                  onTap: () => _push(context, const TasksScreen()),
                 ),
               ),
             ],
@@ -1323,20 +1330,7 @@ class _TasksSection extends ConsumerWidget {
 
     // Order by the soonest due date (overdue first, no-date last), breaking
     // ties by priority (High → Low) so the 3 most pressing tasks surface.
-    int byDueThenPriority(TaskItem a, TaskItem b) {
-      final ad = a.dueDate, bd = b.dueDate;
-      if (ad != null && bd != null) {
-        final c = ad.compareTo(bd);
-        if (c != 0) return c;
-      } else if (ad == null && bd != null) {
-        return 1;
-      } else if (ad != null && bd == null) {
-        return -1;
-      }
-      return b.priority.index.compareTo(a.priority.index);
-    }
-
-    final ordered = [...pending]..sort(byDueThenPriority);
+    final ordered = [...pending]..sort(compareByDueThenPriority);
     final top = ordered.take(3).toList();
 
     void openEditor(TaskItem t) => showModalBottomSheet(
@@ -1808,5 +1802,6 @@ String _homeScreenName(Widget screen) => switch (screen) {
       ImportScreen() => 'Import',
       ScheduleScreen() => 'Schedule',
       SettingsScreen() => 'Settings',
+      TasksScreen() => 'Tasks',
       _ => 'Home Shortcut',
     };

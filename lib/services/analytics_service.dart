@@ -117,8 +117,16 @@ class AnalyticsService {
 
   Future<void> plannerDeleted() => log('planner_deleted');
 
+  /// An AI chat message got a reply from the server (logged only on success,
+  /// so failed sends don't look like real chats).
   Future<void> aiMessage({bool hasImage = false}) =>
       log('ai_message', {'has_image': hasImage ? 1 : 0});
+
+  /// An AI chat send failed. [reason] is a coarse category, e.g.
+  /// 'free_limit' | 'pro_daily_cap' | 'email_unverified' | 'other'.
+  Future<void> aiMessageFailed(String reason, {bool hasImage = false}) =>
+      log('ai_message_failed',
+          {'reason': reason, 'has_image': hasImage ? 1 : 0});
 
   Future<void> scheduleImport(String source) =>
       log('schedule_import', {'source': source});

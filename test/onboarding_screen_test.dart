@@ -72,15 +72,18 @@ void main() {
     await settle();
     await tester.tap(find.text('That’s me, Priya'));
     await settle();
-    await tester.tap(find.text('Attendance'));
+    await tester.ensureVisible(find.text('Exams'));
+    await settle();
+    await tester.tap(find.text('Exams'));
     await settle();
     await tester.tap(find.text('Continue with 1'));
     await settle();
-    await tester.ensureVisible(find.text('65%'));
+    await tester.ensureVisible(find.text('Night owl'));
     await settle();
-    await tester.tap(find.text('65%'));
+    await tester.tap(find.text('Night owl'));
     await settle();
-    await tester.tap(find.text('Set 65% as my target'));
+    await tester.ensureVisible(find.text('I’m a night owl'));
+    await tester.tap(find.text('I’m a night owl'));
     await settle();
     final aang = find.byWidgetPredicate(
         (w) => w is Semantics && w.properties.label == 'Aang');
@@ -109,8 +112,11 @@ void main() {
   testWidgets('answers personalise each next step and seed the draft',
       (tester) async {
     final c = await _pump(tester);
+    // Onboarding no longer talks about attendance anywhere.
+    final noAttendance = find.textContaining(RegExp('attendance|%', caseSensitive: false));
 
     expect(find.text('Personalise my app'), findsOneWidget);
+    expect(noAttendance, findsNothing);
     await tester.tap(find.text('Personalise my app'));
     await tester.pumpAndSettle();
 
@@ -120,11 +126,12 @@ void main() {
     await tester.tap(find.text('That’s me, Priya'));
     await tester.pumpAndSettle();
     expect(find.text('What do you want help with?'), findsOneWidget);
+    expect(noAttendance, findsNothing);
     // The mascot reacts using the name (typewriter renders a sizing copy too).
     expect(find.text('Hmm… what’s on your plate, Priya?'), findsWidgets);
 
     // Focus areas → counted in the CTA.
-    await tester.tap(find.text('Attendance'));
+    await tester.tap(find.text('Exams'));
     await tester.ensureVisible(find.text('Budget'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Budget'));
@@ -133,41 +140,46 @@ void main() {
     await tester.tap(find.text('Continue with 2'));
     await tester.pumpAndSettle();
 
-    // Target → translated into "classes you can miss".
-    expect(find.text('10'), findsOneWidget);
-    expect(
-        find.bySemanticsLabel(
-            'In a 40-class term you can miss up to 10 classes.'),
-        findsOneWidget);
-    await tester.tap(find.text('85%'));
+    // Study rhythm → the sky and CTA follow the pick.
+    expect(find.text('When do you study best?'), findsOneWidget);
+    expect(noAttendance, findsNothing);
+    expect(find.text('Pick one below'), findsOneWidget);
+    await tester.tap(find.text('Early bird'));
     await tester.pumpAndSettle();
-    expect(find.text('6'), findsOneWidget);
-    await tester.tap(find.text('Set 85% as my target'));
+    expect(find.text('5 – 10 AM'), findsOneWidget);
+    await tester.ensureVisible(find.text('I’m an early bird'));
+    await tester.tap(find.text('I’m an early bird'));
     await tester.pumpAndSettle();
 
-    // Avatar → skippable.
+    // Avatar → skippable; the card shows the rhythm badge.
     expect(find.text('Pick your sidekick'), findsOneWidget);
+    expect(find.text('Early bird'), findsOneWidget);
     await tester.tap(find.text('Skip'));
     await tester.pump();
 
     // "Building your plan" auto-advances.
     expect(find.text('Building your plan…'), findsOneWidget);
-    expect(find.text('Setting your 85% attendance goal'), findsOneWidget);
+    expect(find.text('Planning around your 5 – 10 AM peak'), findsOneWidget);
+    expect(noAttendance, findsNothing);
     await tester.pump(const Duration(seconds: 1));
     await tester.pumpAndSettle();
 
     // Plan built from the answers.
     expect(find.text('You’re all set, Priya.'), findsOneWidget);
-    expect(find.text('Attendance alerts before you dip below 85%'),
+    expect(find.text('Countdowns to every exam, so nothing sneaks up'),
         findsOneWidget);
     expect(find.text('A monthly budget that keeps spending on track'),
         findsOneWidget);
-    expect(find.text('Reminders ahead of every task and exam'), findsNothing);
+    expect(find.text('Reminders ahead of every task and submission'),
+        findsNothing);
+    expect(noAttendance, findsNothing);
 
     final draft = c.read(onboardingDraftProvider);
     expect(draft.name, 'Priya');
-    expect(draft.focusAreas, {FocusArea.attendance, FocusArea.budget});
-    expect(draft.targetAttendance, 85);
+    expect(draft.focusAreas, {FocusArea.exams, FocusArea.budget});
+    expect(draft.studyRhythm, StudyRhythm.earlyBird);
+    // Not asked any more: stays at the app default (editable in Settings).
+    expect(draft.targetAttendance, OnboardingProfile.defaultTarget);
 
     await tester.tap(find.text('Create my free account'));
     await tester.pumpAndSettle();

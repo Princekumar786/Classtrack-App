@@ -98,9 +98,11 @@ void main() {
     await tester.pump();
     expect(find.text('PURCHASE PRO MONTHLY'), findsOneWidget);
 
-    // Google Play billing terms are shown under the button.
-    expect(find.textContaining('charged to your Google Play account'),
+    // Google Play billing terms are shown under the button (short version:
+    // who charges, that it auto-renews, and where to cancel).
+    expect(find.textContaining('Charged to your Google Play account'),
         findsOneWidget);
+    expect(find.textContaining('Auto-renews until you cancel'), findsOneWidget);
     expect(find.text('Terms of Use'), findsOneWidget);
   });
 
@@ -139,6 +141,27 @@ void main() {
   testWidgets('opened from a gate: shows that headline', (tester) async {
     await _pump(tester, reason: UpgradeReason.semesters);
     expect(find.text('Every semester, saved and counted'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('follows the app theme: light page in light mode, dark in dark',
+      (tester) async {
+    Future<Color?> bgFor(ThemeData theme) async {
+      await tester.pumpWidget(ProviderScope(
+        overrides: [
+          subscriptionServiceProvider.overrideWithValue(_FakeStore(_plans)),
+          analyticsProvider.overrideWithValue(_NoopAnalytics()),
+        ],
+        child: MaterialApp(theme: theme, home: const PaywallScreen()),
+      ));
+      await tester.pumpAndSettle();
+      return tester.widget<Scaffold>(find.byType(Scaffold)).backgroundColor;
+    }
+
+    final light = await bgFor(AppTheme.light());
+    expect(light!.computeLuminance(), greaterThan(0.8));
+    final dark = await bgFor(AppTheme.dark());
+    expect(dark!.computeLuminance(), lessThan(0.05));
     expect(tester.takeException(), isNull);
   });
 

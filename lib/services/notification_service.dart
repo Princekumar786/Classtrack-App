@@ -607,6 +607,7 @@ class NotificationService {
         TaskType.event => 'Event',
         TaskType.video => 'Video planned',
         TaskType.task => 'Task due',
+        TaskType.assignment => 'Assignment due',
       };
       await _plugin.zonedSchedule(
         id: id,

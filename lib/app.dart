@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/providers/app_settings_provider.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
+import 'features/auth/presentation/providers/auth_providers.dart';
+import 'services/app_update_service.dart';
 
 class ClassTrackApp extends ConsumerWidget {
   const ClassTrackApp({super.key});
@@ -11,6 +13,8 @@ class ClassTrackApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(routerProvider);
+    // Creates a missing users/{uid} profile for signed-in accounts.
+    ref.watch(profileSelfHealProvider);
     final themeMode = ref.watch(themeModeProvider);
     final accent = ref.watch(accentColorProvider);
     final use24 = ref.watch(timeFormatProvider).use24;
@@ -18,6 +22,7 @@ class ClassTrackApp extends ConsumerWidget {
     return MaterialApp.router(
       title: 'ClassTrack',
       debugShowCheckedModeBanner: false,
+      scaffoldMessengerKey: rootMessengerKey,
       theme: AppTheme.light(accent: accent),
       darkTheme: AppTheme.dark(accent: accent),
       themeMode: themeMode,
@@ -39,7 +44,8 @@ class ClassTrackApp extends ConsumerWidget {
             // the app is formatted via TimeOfDay.format, which reads this.
             alwaysUse24HourFormat: use24 ?? mq.alwaysUse24HourFormat,
           ),
-          child: child ?? const SizedBox.shrink(),
+          // Google Play in-app updates (Android release builds only).
+          child: AppUpdateChecker(child: child ?? const SizedBox.shrink()),
         );
       },
     );

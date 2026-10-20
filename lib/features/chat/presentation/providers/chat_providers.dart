@@ -10,6 +10,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/date_utils.dart';
 import '../../../../services/gemini_service.dart';
 import '../../../../services/analytics_service.dart';
+import '../../../../services/error_reporter.dart';
 import '../../domain/ai_errors.dart';
 import '../../domain/chat_actions_logic.dart';
 import '../../../../core/providers/app_settings_provider.dart';
@@ -640,10 +641,9 @@ class ChatController extends StateNotifier<ChatState> {
       pdfName: pdf != null ? (pdfName ?? 'timetable.pdf') : null,
     ));
 
-    // Feature-usage analytics (never blocks the chat).
-    _ref.read(analyticsProvider).aiMessage(hasImage: image != null || pdf != null);
     // Feature discovery: the AI assistant has now been tried.
     _ref.read(featureUsageProvider.notifier).markUsed(FeatureId.aiAssistant);
+    final hasAttachment = image != null || pdf != null;
 
     if (!_gemini.isConfigured) {
       _append(const ChatMessage(
@@ -656,11 +656,22 @@ class ChatController extends StateNotifier<ChatState> {
 
     // Enforce the free monthly AI limit (unlimited for Pro). The server also
     // enforces this; the client check gives instant feedback + a paywall.
+    // If the local counter can't be read (e.g. Firestore unreachable), carry
+    // on: the server is authoritative. Before, this read threw out of send()
+    // and the message silently got no reply at all.
     final isPro = _ref.read(isProProvider);
     final usageRepo = _ref.read(chatUsageRepositoryProvider);
     if (!isPro) {
-      final used = usageRepo == null ? 0 : await usageRepo.currentCount();
+      var used = 0;
+      try {
+        used = usageRepo == null ? 0 : await usageRepo.currentCount();
+      } catch (e, st) {
+        ErrorReporter.report(e, st, reason: 'chat_usage_read');
+      }
       if (used >= ProConstants.freeMonthlyChatLimit) {
+        _ref
+            .read(analyticsProvider)
+            .aiMessageFailed('free_limit', hasImage: hasAttachment);
         _append(const ChatMessage(role: ChatRole.assistant, text: freeChatLimitMessage));
         _needsPaywall = true;
         return;
@@ -695,6 +706,8 @@ class ChatController extends StateNotifier<ChatState> {
 
       final chatContext = _buildContext();
       var reply = await _gemini.chat(_history, context: chatContext);
+      // The server answered: only now does this count as a real AI message.
+      _ref.read(analyticsProvider).aiMessage(hasImage: hasAttachment);
       // Claim guard: models sometimes reply "Done — I've marked it complete"
       // WITHOUT emitting the actions block, so nothing changes in the app.
       // Ask once more for the actual action; if it still sends none, we tell
@@ -854,6 +867,15 @@ class ChatController extends StateNotifier<ChatState> {
       await _persistSession();
     } catch (e) {
       final outcome = classifyChatError(e, isPro: isPro);
+      _ref.read(analyticsProvider).aiMessageFailed(
+            switch (outcome) {
+              ChatErrorKind.freeLimit => 'free_limit',
+              ChatErrorKind.proDailyCap => 'pro_daily_cap',
+              ChatErrorKind.emailUnverified => 'email_unverified',
+              ChatErrorKind.other => 'other',
+            },
+            hasImage: hasAttachment,
+          );
       switch (outcome) {
         case ChatErrorKind.freeLimit:
           // The server is authoritative: e.g. an account re-created with the

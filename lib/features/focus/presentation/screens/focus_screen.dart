@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../services/rating_prompt_service.dart';
 import '../../../../shared/widgets/progress_ring.dart';
 import '../../../../shared/widgets/ui_kit.dart';
 import '../../../subjects/presentation/providers/subject_providers.dart';
@@ -62,6 +63,7 @@ class _FocusScreenState extends ConsumerState<FocusScreen> {
     if (_phase == _Phase.focus) {
       _log(_focusMin);
       _snack('Nice! Logged $_focusMin min. Time for a break ☕');
+      unawaited(ref.read(ratingPromptProvider).onHappyMoment(HappyMoment.focusSessionDone));
       setState(() {
         _phase = _Phase.breakTime;
         _remaining = _breakMin * 60;

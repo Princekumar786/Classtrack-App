@@ -3,7 +3,7 @@
 A short, plain-English guide to this project. No deep code knowledge needed.
 
 ## What the app is
-A student app (Android, iOS and web) for tracking attendance, class timetables, exams, grades, notes, habits and expenses, plus an AI assistant. Version: 1.0.56.
+A student app (Android, iOS and web) for tracking attendance, class timetables, exams, grades, notes, habits and expenses, plus an AI assistant. Version: 1.0.59.
 
 ## The 3 big pieces
 | Piece | What it is | Where |
@@ -41,6 +41,63 @@ A student app (Android, iOS and web) for tracking attendance, class timetables, 
 ---
 
 ## Change log (newest first)
+
+### 2026-10-20 - Pushed all pending work to GitHub
+- **What:** Committed all saved-but-not-sent changes (app, backend, store text, tests, new Notes/Tasks files) and pushed them to `origin` (github.com/killersbEE08/Classtrack-App) on the `main` branch.
+- **Why:** Keep GitHub up to date so the latest code is backed up and shareable.
+- **Action needed:** None.
+
+### 2026-10-17 - v1.0.61 release build; Assignments tile removed; shorter billing text
+- **What:** (1) Removed the separate "Assignments" quick tool. Assignments are still a tab on the Tasks page (Home → Quick tools → Tasks → Assignments). (2) The billing text under the pricing page's Purchase button is now short: "Charged to your Google Play account. Auto-renews until you cancel in Play Store › Subscriptions." Price, period and trial terms are already shown on each plan card, so this still covers what Google Play requires. iOS keeps Apple's "24 h before" wording. (3) Built `build/app/outputs/bundle/release/app-release.aab` (77 MB): version 1.0.61, build 63, with the RevenueCat key. Includes the Tasks, Assignments, Notes and Home changes from today. Crashlytics symbols were uploaded.
+- **Action needed:** Upload this .aab to Play Console. Deploy the backend (`cd functions; npm run deploy`) so Kiro knows about assignments.
+
+### 2026-10-17 - Redesigned Notes
+- **What:** The Notes list now has a 2-column card grid (or a single list, toggle saved on the phone). Cards are tinted with their note or subject colour, and previews show clean text with no raw `#` or `[link](…)` symbols. New: a "Study all flashcards" card, filter chips (All / Pinned / Flashcards / Files / each subject), sort options (recent, oldest, A–Z), search that also covers subjects and flashcards, a "New note" button, and long-press for Pin / Study / Delete. The editor got a formatting bar above the keyboard (heading, lists, checklist, quote, divider, link, image, PDF, flashcard) and a word count.
+- **Where:** `notes_screen.dart` (list). The editor moved to `note_editor_screen.dart`. The preview text cleaner is `notePlainPreview` in `notes/domain/note_formatting.dart`. Tests: `test/notes_redesign_test.dart`.
+- **Note:** In Chrome the console shows PostHog "capture" errors. These come from PostHog being turned off on web (see 2026-10-10), not from this change.
+
+### 2026-10-17 - Home shows "Tasks due", new Assignments tool, redesigned Tasks page
+- **What:** (1) On Home, the Attendance % card is now **Tasks due**: the number of pending tasks, with "N overdue" (red), "N due today" or "N this week" under it. Attendance % is still in Quick tools → Attendance. (2) New task kind **Assignment** and a new **Assignments** quick tool (opens the Tasks page on the Assignments tab, with a subject filter). (3) The Tasks page was redesigned: a progress card with Overdue / Today / Next 7 days counts (tap to filter), tabs (All / Assignments / To-dos / Events / Videos), a quick-add bar (type and press enter), a list grouped by date, and a fold-out Completed section. Sort, priority filter and "Clear completed" are under the tune icon.
+- **Where:** `tasks/domain/task_buckets.dart` (date groups + counts), `tasks_screen.dart` (new page), the editor moved to `tasks/widgets/task_editor_sheet.dart`. AI guide in `functions/index.js` knows about assignments. Tests: `test/tasks_assignments_test.dart`.
+- **Action needed:** Ship the app and deploy the backend (`cd functions; npm run deploy`). Older app versions show assignments as normal tasks (nothing breaks). Users with a saved Quick tools order get Assignments added at the end.
+
+### 2026-10-17 - v1.0.60 release build
+- **What:** Built `build/app/outputs/bundle/release/app-release.aab` (77 MB): version 1.0.60, build 62, with the RevenueCat key and the upload signing key. Includes the missing-profile fix and the PostHog chat-event fix below. Crashlytics symbols were uploaded.
+- **Note:** The first Gradle try failed with an R8 "file not found" error (left over from a cancelled build). Flutter retried by itself and the second try worked.
+- **Action needed:** Upload this .aab to Play Console instead of the 1.0.59 one. Deploy the backend too (`cd functions; npm run deploy`) if you haven't yet.
+
+### 2026-10-17 - Fixed: some users had no profile in Firestore
+- **What:** If a phone couldn't reach Firestore right after Google sign-in, the account was created in Auth but the `users/{uid}` profile never was. Now sign-in retries the profile write, and the app re-checks on every start (`profileSelfHealProvider`) and creates any missing profile. It never overwrites a real one.
+- **Also:** The PostHog `ai_message` event is now sent only after the AI replies. Failed sends are logged as `ai_message_failed` with a `reason`. If the chat counter can't be read, the chat still goes to the server instead of silently stopping. Tests: `test/profile_self_heal_test.dart`.
+- **Action needed:** Ship the app. 4 accounts from the last 4 days (including `BOfLsVOM…`) have no profile. They are fixed the next time those users open the new version. In PostHog, `ai_message` counts from before this release include failed sends.
+
+### 2026-10-17 - v1.0.59 release build
+- **What:** Built `build/app/outputs/bundle/release/app-release.aab` (77 MB): version 1.0.59, build 61, with the RevenueCat key, signed with the upload key ("Prince Kumar"). Includes today's changes: new onboarding, light pricing page, rating prompt and in-app updates. Crashlytics symbols were uploaded.
+- **Action needed:** Upload the .aab in Play Console. Deploy the backend too (`cd functions; npm run deploy`), so Kiro's new feature guide goes live.
+
+### 2026-10-17 - AI assistant (Kiro) can now explain every feature
+- **What:** Added a "Feature glossary" to the AI's instructions (`CHAT_SYSTEM` in `functions/index.js`). It covers each feature: what it is, where to find it, and free vs Pro. Kiro now answers "what is wrap-up?", "what is Pro?", "what can this app do?" and "who are you?" in plain words. I checked every fact against the app code.
+- **Why:** You wanted the AI to explain the app's features to students.
+- **Action needed:** Deploy the backend (`cd functions; npm run deploy`). Found while checking: the Focus timer, Export and Subjects-list screens exist in code but no button opens them. Export is still sold as a Pro perk. Until a button is added, Kiro tells students these screens don't exist.
+
+### 2026-10-17 - Rating prompt and in-app updates
+- **What:** (1) The Play Store rating sheet now pops up right after a win: a timetable import, a finished focus session, 80%+ on a flashcard deck, or sharing a Semester Wrapped card. Only if the app was installed 3+ days ago, opened on 3+ days, and this is the 2nd+ win. At most once every 120 days, 3 times ever. Code: `lib/services/rating_prompt_service.dart`. (2) On Android, the app checks Google Play for a new version (at most every 12 hours). Normal updates download in the background, then a "RESTART" bar appears. Updates you mark priority 4–5, or ones ignored for 14+ days, show a full-screen "must update" screen. Code: `lib/services/app_update_service.dart`.
+- **Why:** More ratings help the store listing, and users get fixes faster.
+- **Action needed:** To force an update for a release, set its "in-app update priority" to 4 or 5 when uploading (Play Developer API or Fastlane `in_app_update_priority`, since Play Console has no button for it). You can only test both features on a build installed from Play (internal testing track works). Debug builds skip them.
+
+### 2026-10-17 - Pricing page now has a light mode
+- **What:** The Pro pricing page used to be always dark. It now follows the app theme: soft lavender and white cards with a purple "Purchase" button in light mode, and the same dark look as before in dark mode. Colours live in one `_Palette` (light + dark) in `paywall_screen.dart`.
+- **Why:** You asked for the pricing page in light mode too.
+
+### 2026-10-17 - Onboarding no longer mentions attendance; new "When do you study best?" step
+- **What:** Removed the 75% attendance-target step, the "Attendance" focus card, the 92% card on the welcome screen and the attendance goal on the final preview. In its place: a "When do you study best?" step (Early bird / Daytime / Night owl) with a little animated sky (sun rises, clouds drift, moon and stars at night). The pick shows as a badge on the student card, a "peak hours" bar on the final preview, and is saved to the profile as `studyRhythm`. Added an "Exams" focus card.
+- **Why:** You wanted onboarding to feel fun and smooth, without attendance talk.
+- **Note:** The attendance target still starts at 75% and can be changed in Settings. Tests check no "attendance" or "%" text appears in onboarding.
+
+### 2026-10-15 - Play Store listing now sells ClassTrack as a full study app
+- **What:** New title `ClassTrack: Study & Attendance`, new short description starting with "Study planner", and a rewritten full description (3,500 of 4,000 characters) that leads with study planning, exam countdowns and homework, then attendance.
+- **Why:** Impressions fell 32% in 28 days. All top competitors use "Study Planner" in the title, so that is where searches are. Attendance and bunk calculator stay as our unique hook.
+- **Action needed:** Paste the files from `play-store-listing/` into Play Console. Wait 28 days before changing the title again.
 
 ### 2026-10-14 - All of today's work saved to GitHub
 - **What:** Committed everything as `d780b7d` ("v1.0.58: …") and pushed it to both `origin` (Classtrack-App) and `playstore` (classtrack-play-store). Before committing I checked that no secret files or keys were included. `.crashlytics/` (a downloaded tool) is now in `.gitignore`.

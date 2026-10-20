@@ -14,8 +14,8 @@ Paste the files in this folder into Play Console under **Grow > Store presence >
 
 ClassTrack should win on a clear student problem: **tracking attendance and knowing whether a class can be skipped**. The listing then proves it is also a complete class timetable, homework, exam and GPA app. This is more specific and more convincing than leading only with "student planner".
 
-- **App name:** targets the exact high-intent term `attendance tracker`.
-- **Short description:** adds `bunk calculator`, `timetable`, `homework`, `exams` and `GPA` once, naturally.
+- **App name:** `ClassTrack: Study & Attendance` targets the broad `study planner` searches plus the exact `attendance` term.
+- **Short description:** opens with `study planner`, then `attendance tracker`, `bunk calculator`, `timetable`, `exams` and `GPA`.
 - **First 250 characters:** explain attendance tracking and mention the core supporting terms. This is the most important part of the long description.
 - **Full description:** uses each important feature only where it helps a student understand the app. It is not a keyword list.
 

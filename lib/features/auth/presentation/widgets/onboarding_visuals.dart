@@ -5,8 +5,8 @@ import 'package:flutter_animate/flutter_animate.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../shared/widgets/character_avatar.dart';
-import '../../../../shared/widgets/progress_ring.dart';
 import '../../../../shared/widgets/sweep_shimmer.dart';
+import '../../domain/onboarding_profile.dart';
 
 /// Visual building blocks for the personalised onboarding.
 ///
@@ -368,7 +368,7 @@ class WelcomeHero extends StatelessWidget {
 
     return Semantics(
       image: true,
-      label: 'ClassTrack assistant surrounded by attendance, timetable, task and grade cards',
+      label: 'ClassTrack assistant surrounded by study streak, timetable, task and grade cards',
       child: ExcludeSemantics(
         // Isolate the hero's continuous motion from the rest of the page.
         child: RepaintBoundary(
@@ -383,7 +383,7 @@ class WelcomeHero extends StatelessWidget {
                 halo(250, 0.06, 0),
                 halo(190, 0.08, 400),
                 const Mascot(pose: MascotPose.wave, size: 170).pop(context),
-                Positioned(top: 18, left: 0, child: const _AttendanceChip().pop(context, delayMs: 250).float(context, dy: 5, ms: 3000)),
+                Positioned(top: 18, left: 0, child: const _StreakChip().pop(context, delayMs: 250).float(context, dy: 5, ms: 3000)),
                 Positioned(top: 4, right: 0, child: const _ClassChip().pop(context, delayMs: 380).float(context, dy: 6, ms: 3400, delayMs: 300)),
                 Positioned(bottom: 22, left: 6, child: const _TaskChip().pop(context, delayMs: 510).float(context, dy: 5, ms: 3200, delayMs: 600)),
                 Positioned(bottom: 6, right: 4, child: const _GpaChip().pop(context, delayMs: 640).float(context, dy: 6, ms: 2900, delayMs: 200)),
@@ -420,20 +420,26 @@ class _HeroCard extends StatelessWidget {
   }
 }
 
-class _AttendanceChip extends StatelessWidget {
-  const _AttendanceChip();
+class _StreakChip extends StatelessWidget {
+  const _StreakChip();
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
     return _HeroCard(
       child: Row(mainAxisSize: MainAxisSize.min, children: [
-        // Static ring: an animated ring inside a floating card forced the
-        // card (and its blurred shadow) to repaint every frame on entry.
-        const ProgressRing(percent: 92, size: 40, strokeWidth: 5, color: AppColors.success, centerLabel: ''),
+        Container(
+          width: 40,
+          height: 40,
+          decoration: const BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: LinearGradient(colors: [Color(0xFFFDBA74), Color(0xFFF97316)]),
+          ),
+          child: const Icon(Icons.local_fire_department_rounded, color: Colors.white, size: 22),
+        ),
         const SizedBox(width: 10),
         Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-          Text('92%', style: t.titleMedium?.copyWith(color: AppColors.success)),
-          Text('Safe to skip 2', style: t.bodySmall),
+          Text('5-day streak', style: t.titleMedium?.copyWith(color: const Color(0xFFF97316))),
+          Text('2h 10m focused', style: t.bodySmall),
         ]),
       ]),
     );
@@ -507,12 +513,14 @@ class StudentIdCard extends StatelessWidget {
     super.key,
     required this.name,
     this.avatarCharacter,
-    this.targetAttendance,
+    this.rhythm,
   });
 
   final String name;
   final String? avatarCharacter;
-  final int? targetAttendance;
+
+  /// Shown as a small badge on the card once picked (e.g. "Night owl").
+  final StudyRhythm? rhythm;
 
   @override
   Widget build(BuildContext context) {
@@ -552,7 +560,31 @@ class StudentIdCard extends StatelessWidget {
                         style: theme.textTheme.labelMedium?.copyWith(color: Colors.white70, letterSpacing: 1.4)),
                   ),
                   const SizedBox(width: 8),
-                  Text('$year', style: theme.textTheme.labelMedium?.copyWith(color: Colors.white70)),
+                  AnimatedSwitcher(
+                    duration: motion ? const Duration(milliseconds: 380) : Duration.zero,
+                    transitionBuilder: (c, a) => ScaleTransition(
+                      scale: CurvedAnimation(parent: a, curve: Curves.easeOutBack),
+                      child: c,
+                    ),
+                    child: rhythm == null
+                        ? Text('$year',
+                            key: const ValueKey('year'),
+                            style: theme.textTheme.labelMedium?.copyWith(color: Colors.white70))
+                        : Container(
+                            key: ValueKey(rhythm),
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.18),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Row(mainAxisSize: MainAxisSize.min, children: [
+                              Icon(rhythm!.icon, size: 14, color: Colors.white),
+                              const SizedBox(width: 4),
+                              Text(rhythm!.label,
+                                  style: theme.textTheme.labelMedium?.copyWith(color: Colors.white)),
+                            ]),
+                          ),
+                  ),
                 ]),
                 const Spacer(),
                 Row(
@@ -604,7 +636,7 @@ class StudentIdCard extends StatelessWidget {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            targetAttendance == null ? 'Member since $year' : 'Target $targetAttendance% · Member since $year',
+                            rhythm == null ? 'Member since $year' : '${rhythm!.label} · Member since $year',
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                             style: theme.textTheme.bodySmall?.copyWith(color: Colors.white70),
@@ -676,49 +708,271 @@ class _Barcode extends StatelessWidget {
   }
 }
 
-// ─── Attendance dots ───────────────────────────────────────────────────────
+// ─── Study rhythm ──────────────────────────────────────────────────────────
 
-/// A term drawn as dots: filled = classes to attend, outlined coral = classes
-/// the student can still skip. Dots recolour in a quick ripple as the target
-/// changes, making the percentage physical.
-class AttendanceDots extends StatelessWidget {
-  const AttendanceDots({super.key, required this.total, required this.skippable});
+/// Look & feel for each [StudyRhythm] (kept out of the domain layer).
+extension StudyRhythmLook on StudyRhythm {
+  IconData get icon => switch (this) {
+        StudyRhythm.earlyBird => Icons.wb_twilight_rounded,
+        StudyRhythm.daytime => Icons.wb_sunny_rounded,
+        StudyRhythm.nightOwl => Icons.bedtime_rounded,
+      };
 
-  final int total;
-  final int skippable;
+  Color get color => switch (this) {
+        StudyRhythm.earlyBird => const Color(0xFFF97316),
+        StudyRhythm.daytime => AppColors.info,
+        StudyRhythm.nightOwl => const Color(0xFF6366F1),
+      };
+
+  List<Color> get sky => switch (this) {
+        StudyRhythm.earlyBird => const [Color(0xFF8B7FEC), Color(0xFFFF9A8B), Color(0xFFFFD3A5)],
+        StudyRhythm.daytime => const [Color(0xFF38BDF8), Color(0xFF7DD3FC), Color(0xFFE0F2FE)],
+        StudyRhythm.nightOwl => const [Color(0xFF0B0C22), Color(0xFF1B1C34), Color(0xFF3B3A7A)],
+      };
+}
+
+/// A little sky that changes with the student's answer: the sun rises for
+/// early birds, sits high for daytime, and swaps for a moon and stars for
+/// night owls. Pure implicit animations, so it's cheap and settles instantly
+/// under reduce motion.
+class RhythmSky extends StatelessWidget {
+  const RhythmSky({super.key, required this.rhythm});
+
+  final StudyRhythm? rhythm;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final attend = total - skippable;
+    final theme = Theme.of(context);
     final motion = motionOn(context);
-    return ExcludeSemantics(
-      child: LayoutBuilder(builder: (context, c) {
-        const perRow = 10;
-        const gap = 8.0;
-        final d = ((c.maxWidth - gap * (perRow - 1)) / perRow).clamp(10.0, 22.0);
-        return Wrap(
-          spacing: gap,
-          runSpacing: gap,
-          children: [
-            for (var i = 0; i < total; i++)
-              AnimatedContainer(
-                duration: motion ? Duration(milliseconds: 160 + (i % perRow) * 18) : Duration.zero,
-                curve: Curves.easeOutCubic,
-                width: d,
-                height: d,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: i < attend ? scheme.primary : AppColors.coral.withValues(alpha: 0.12),
-                  border: Border.all(
-                    color: i < attend ? scheme.primary : AppColors.coral,
-                    width: 1.6,
-                  ),
+    final d = motion ? const Duration(milliseconds: 650) : Duration.zero;
+    const curve = Curves.easeInOutCubic;
+    final r = rhythm;
+    final night = r == StudyRhythm.nightOwl;
+
+    final sky = r?.sky ?? const [AppColors.primaryLight, Color(0xFFB9B0F3), AppColors.lavender];
+    final orbAlign = switch (r) {
+      StudyRhythm.earlyBird => const Alignment(-0.68, 0.35),
+      StudyRhythm.daytime => const Alignment(0.05, -0.62),
+      StudyRhythm.nightOwl => const Alignment(0.62, -0.5),
+      null => const Alignment(0, 1.6), // below the horizon
+    };
+    final hillBack = switch (r) {
+      StudyRhythm.earlyBird => const Color(0xFFE88B6E),
+      StudyRhythm.daytime => const Color(0xFF86EFAC),
+      StudyRhythm.nightOwl => const Color(0xFF2A2C4A),
+      null => Colors.white.withValues(alpha: 0.45),
+    };
+    final hillFront = switch (r) {
+      StudyRhythm.earlyBird => const Color(0xFFC2603F),
+      StudyRhythm.daytime => const Color(0xFF22C55E),
+      StudyRhythm.nightOwl => const Color(0xFF1B1C34),
+      null => Colors.white.withValues(alpha: 0.7),
+    };
+
+    Widget hill(Color c, double w, double h) => AnimatedContainer(
+          duration: d,
+          curve: curve,
+          width: w,
+          height: h,
+          decoration: BoxDecoration(color: c, borderRadius: BorderRadius.all(Radius.elliptical(w / 2, h / 2))),
+        );
+
+    // Fixed star field; only its opacity animates.
+    const stars = [
+      (0.08, 0.14, 3.0), (0.22, 0.30, 2.0), (0.34, 0.10, 2.5), (0.47, 0.26, 2.0),
+      (0.58, 0.08, 3.0), (0.86, 0.20, 2.0), (0.93, 0.40, 2.5), (0.15, 0.48, 2.0),
+      (0.40, 0.44, 1.8), (0.72, 0.36, 2.2),
+    ];
+
+    final orb = AnimatedSwitcher(
+      duration: d,
+      transitionBuilder: (c, a) => FadeTransition(opacity: a, child: ScaleTransition(scale: a, child: c)),
+      child: night
+          ? Container(
+              key: const ValueKey('moon'),
+              width: 54,
+              height: 54,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFFF8FAFC),
+                boxShadow: [BoxShadow(color: Colors.white.withValues(alpha: 0.45), blurRadius: 26)],
+              ),
+              // A sky-coloured disc offset over the moon carves the crescent.
+              child: Align(
+                alignment: const Alignment(0.9, -0.7),
+                child: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFF1B1C34)),
                 ),
               ),
+            )
+          : Container(
+              key: const ValueKey('sun'),
+              width: 58,
+              height: 58,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: const RadialGradient(colors: [Color(0xFFFFF7CC), Color(0xFFFDE047), Color(0xFFF59E0B)]),
+                boxShadow: [BoxShadow(color: const Color(0xFFFDE047).withValues(alpha: 0.6), blurRadius: 30)],
+              ),
+            ),
+    );
+
+    return Semantics(
+      label: r == null ? 'Sky scene. Pick when you study best.' : 'Sky scene: ${r.label}, peak focus ${r.window}',
+      child: ExcludeSemantics(
+        child: RepaintBoundary(
+          child: AnimatedContainer(
+            duration: d,
+            curve: curve,
+            height: 176,
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(28),
+              gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: sky),
+              boxShadow: [
+                BoxShadow(
+                  color: (r?.color ?? AppColors.primary).withValues(alpha: 0.28),
+                  blurRadius: 24,
+                  offset: const Offset(0, 12),
+                ),
+              ],
+            ),
+            child: LayoutBuilder(builder: (context, c) {
+              final w = c.maxWidth;
+              return Stack(
+                clipBehavior: Clip.hardEdge,
+                children: [
+                  for (final (i, (x, y, s)) in stars.indexed)
+                    Positioned(
+                      left: x * w,
+                      top: y * 176,
+                      child: AnimatedOpacity(
+                        duration: d,
+                        opacity: night ? 1 : 0,
+                        child: Container(
+                          width: s,
+                          height: s,
+                          decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                        ),
+                      ).twinkle(context, delayMs: i * 230, active: night),
+                    ),
+                  // Clouds drift in for daytime.
+                  AnimatedPositioned(
+                    duration: d,
+                    curve: curve,
+                    left: r == StudyRhythm.daytime ? w * 0.08 : -90,
+                    top: 34,
+                    child: Icon(Icons.cloud_rounded, size: 52, color: Colors.white.withValues(alpha: 0.9)),
+                  ),
+                  AnimatedPositioned(
+                    duration: d,
+                    curve: curve,
+                    right: r == StudyRhythm.daytime ? w * 0.12 : -90,
+                    top: 70,
+                    child: Icon(Icons.cloud_rounded, size: 36, color: Colors.white.withValues(alpha: 0.75)),
+                  ),
+                  Positioned.fill(
+                    child: AnimatedAlign(duration: d, curve: Curves.easeOutBack, alignment: orbAlign, child: orb),
+                  ),
+                  Positioned(left: -w * 0.2, bottom: -70, child: hill(hillBack, w * 0.9, 150)),
+                  Positioned(right: -w * 0.25, bottom: -80, child: hill(hillFront, w * 1.0, 150)),
+                  Positioned(
+                    left: 18,
+                    bottom: 14,
+                    right: 18,
+                    child: AnimatedSwitcher(
+                      duration: motion ? const Duration(milliseconds: 260) : Duration.zero,
+                      child: Column(
+                        key: ValueKey(r),
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            r == null ? 'YOUR PEAK HOURS' : 'PEAK FOCUS',
+                            style: theme.textTheme.labelSmall?.copyWith(color: Colors.white70, letterSpacing: 1.4),
+                          ),
+                          Text(
+                            r?.window ?? 'Pick one below',
+                            style: theme.textTheme.titleLarge?.copyWith(color: Colors.white, fontWeight: FontWeight.w700),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            }),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+extension _Twinkle on Widget {
+  /// Slow opacity pulse for stars; off under reduce motion or when hidden.
+  Widget twinkle(BuildContext context, {int delayMs = 0, required bool active}) {
+    if (!active || !motionOn(context)) return this;
+    return animate(onPlay: (c) => c.repeat(reverse: true))
+        .fade(begin: 1, end: 0.3, delay: delayMs.ms, duration: 1400.ms, curve: Curves.easeInOut);
+  }
+}
+
+/// A 24-hour strip with the student's peak window highlighted (wraps past
+/// midnight for night owls). Used on the plan preview.
+class FocusWindowBar extends StatelessWidget {
+  const FocusWindowBar({super.key, required this.rhythm});
+
+  final StudyRhythm rhythm;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final (start, end) = rhythm.hours;
+    // Split into ≤2 segments on a 0–24 track.
+    final segments = end <= 24 ? [(start, end)] : [(start, 24), (0, end - 24)];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          height: 12,
+          child: LayoutBuilder(builder: (context, c) {
+            final w = c.maxWidth;
+            return Stack(children: [
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+              ),
+              for (final (s, e) in segments)
+                Positioned(
+                  left: w * s / 24,
+                  width: w * (e - s) / 24,
+                  top: 0,
+                  bottom: 0,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(colors: [rhythm.color.withValues(alpha: 0.75), rhythm.color]),
+                      borderRadius: BorderRadius.circular(6),
+                      boxShadow: [BoxShadow(color: rhythm.color.withValues(alpha: 0.5), blurRadius: 10)],
+                    ),
+                  ),
+                ),
+            ]);
+          }),
+        ),
+        const SizedBox(height: 6),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            for (final l in const ['12a', '6a', '12p', '6p', '12a'])
+              Text(l, style: theme.textTheme.labelSmall?.copyWith(color: Colors.white38)),
           ],
-        );
-      }),
+        ),
+      ],
     );
   }
 }

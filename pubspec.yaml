@@ -1,7 +1,7 @@
 name: classtrack
 description: "ClassTrack — Attendance & class schedule tracker with Gemini AI import."
 publish_to: "none"
-version: 1.0.58+60
+version: 1.0.61+63
 
 environment:
   sdk: ">=3.8.0 <4.0.0"
@@ -88,6 +88,8 @@ dependencies:
   # lifecycle, user identify/reset and error tracking. Fans out alongside
   # Firebase Analytics via AnalyticsService; initialised manually in main.dart.
   posthog_flutter: ^5.26.0
+  in_app_review: 2.0.12
+  in_app_update: 5.0.0
 
 dev_dependencies:
   flutter_test:

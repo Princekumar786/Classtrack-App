@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/providers/firebase_providers.dart';
+import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../services/analytics_service.dart';
 import '../../data/subscription_service.dart';
@@ -36,16 +37,91 @@ Future<bool> showPaywall(BuildContext context,
   return result ?? false;
 }
 
-// Dark pricing-page palette (the page is always dark, whatever the app theme).
-const _bg = Color(0xFF111113);
-const _card = Color(0xFF1B1B1F);
-const _cardBorder = Color(0xFF3A3A42);
-const _lip = Color(0xFF4A4A52);
-const _purple = Color(0xFFA78BFA);
-const _proBand = Color(0xFF242230);
-const _muted = Color(0xFF9A9AA3);
-const _cross = Color(0xFF6E6E78);
-const _sparkle = Color(0xFF84CC16);
+/// Pricing-page palette. The page follows the app theme: a light lavender
+/// version in light mode and the original dark "store sheet" in dark mode.
+class _Palette {
+  const _Palette({
+    required this.bg,
+    required this.card,
+    required this.cardBorder,
+    required this.lip,
+    required this.purple,
+    required this.proBand,
+    required this.muted,
+    required this.cross,
+    required this.sparkle,
+    required this.text,
+    required this.textSoft,
+    required this.brand,
+    required this.tagline,
+    required this.pillBg,
+    required this.pillFg,
+    required this.onPurple,
+    required this.ctaBg,
+    required this.ctaFg,
+    required this.ctaLip,
+    required this.errorIcon,
+    required this.errorText,
+    required this.glow,
+  });
+
+  final Color bg, card, cardBorder, lip, purple, proBand, muted, cross, sparkle;
+  final Color text, textSoft, brand, tagline, pillBg, pillFg, onPurple;
+  final Color ctaBg, ctaFg, ctaLip, errorIcon, errorText;
+
+  /// Strength of the purple glow behind the WHY PRO? card.
+  final double glow;
+
+  static const dark = _Palette(
+    bg: Color(0xFF111113),
+    card: Color(0xFF1B1B1F),
+    cardBorder: Color(0xFF3A3A42),
+    lip: Color(0xFF4A4A52),
+    purple: Color(0xFFA78BFA),
+    proBand: Color(0xFF242230),
+    muted: Color(0xFF9A9AA3),
+    cross: Color(0xFF6E6E78),
+    sparkle: Color(0xFF84CC16),
+    text: Colors.white,
+    textSoft: Colors.white70,
+    brand: Color(0xFF8E8E96),
+    tagline: Color(0xFFB4B4BC),
+    pillBg: Colors.white,
+    pillFg: Color(0xFF1E1B4B),
+    onPurple: Color(0xFF1E1B4B),
+    ctaBg: Colors.white,
+    ctaFg: Color(0xFF111113),
+    ctaLip: Color(0xFFA78BFA),
+    errorIcon: Color(0xFFF87171),
+    errorText: Color(0xFFFCA5A5),
+    glow: 1,
+  );
+
+  static const light = _Palette(
+    bg: Color(0xFFF6F4FE),
+    card: Colors.white,
+    cardBorder: Color(0xFFE2DEF5),
+    lip: Color(0xFFD9D4F0),
+    purple: AppColors.primary,
+    proBand: Color(0xFFEFEBFD),
+    muted: AppColors.lightTextSecondary,
+    cross: Color(0xFFA3A2B5),
+    sparkle: Color(0xFF65A30D),
+    text: AppColors.ink,
+    textSoft: AppColors.lightTextSecondary,
+    brand: Color(0xFFC9C4E6),
+    tagline: AppColors.lightTextSecondary,
+    pillBg: AppColors.primary,
+    pillFg: Colors.white,
+    onPurple: Colors.white,
+    ctaBg: AppColors.primary,
+    ctaFg: Colors.white,
+    ctaLip: AppColors.primaryDark,
+    errorIcon: Color(0xFFDC2626),
+    errorText: Color(0xFFB91C1C),
+    glow: 0.45,
+  );
+}
 
 /// A paid, time-limited introductory discount surfaced by the store — e.g.
 /// "50% off your first year". Distinct from a free trial (price 0).
@@ -71,6 +147,9 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   bool _loading = true;
   bool _busy = false;
   String? _error;
+
+  /// Colours for the current theme (set at the top of [build]).
+  _Palette _p = _Palette.light;
 
   @override
   void initState() {
@@ -163,13 +242,15 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Always dark, like a store "Pro" sheet, regardless of the app theme.
+    // Follow the app theme: light page in light mode, dark page in dark mode.
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    _p = isDark ? _Palette.dark : _Palette.light;
     return Theme(
-      data: AppTheme.dark(),
+      data: isDark ? AppTheme.dark() : AppTheme.light(),
       child: Builder(builder: (context) {
         final theme = Theme.of(context);
         return Scaffold(
-          backgroundColor: _bg,
+          backgroundColor: _p.bg,
           body: SafeArea(
             child: Column(
               children: [
@@ -213,7 +294,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
           child: IconButton(
             tooltip: 'Close',
-            icon: const Icon(Icons.close_rounded, color: Colors.white70, size: 28),
+            icon: Icon(Icons.close_rounded, color: _p.textSoft, size: 28),
             onPressed: () => Navigator.of(context).pop(false),
           ),
         ),
@@ -236,10 +317,10 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                   alignment: Alignment.center,
                   clipBehavior: Clip.none,
                   children: [
-                    const Text(
+                    Text(
                       'CLASSTRACK',
                       style: TextStyle(
-                        color: Color(0xFF8E8E96),
+                        color: _p.brand,
                         fontSize: 54,
                         fontWeight: FontWeight.w900,
                         letterSpacing: -1.5,
@@ -249,14 +330,14 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: _p.pillBg,
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: _bg, width: 3),
+                        border: Border.all(color: _p.bg, width: 3),
                       ),
-                      child: const Text(
+                      child: Text(
                         'PRO',
                         style: TextStyle(
-                          color: Color(0xFF1E1B4B),
+                          color: _p.pillFg,
                           fontSize: 18,
                           fontWeight: FontWeight.w900,
                           letterSpacing: 1.5,
@@ -272,13 +353,13 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           FittedBox(
             fit: BoxFit.scaleDown,
             child: Text.rich(
-              const TextSpan(children: [
-                TextSpan(text: 'THE '),
-                TextSpan(text: 'BEST', style: TextStyle(color: _purple)),
-                TextSpan(text: ' CLASSTRACK EXPERIENCE'),
+              TextSpan(children: [
+                const TextSpan(text: 'THE '),
+                TextSpan(text: 'BEST', style: TextStyle(color: _p.purple)),
+                const TextSpan(text: ' CLASSTRACK EXPERIENCE'),
               ]),
               style: theme.textTheme.titleSmall?.copyWith(
-                color: const Color(0xFFB4B4BC),
+                color: _p.tagline,
                 letterSpacing: 3,
                 fontWeight: FontWeight.w600,
               ),
@@ -290,7 +371,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
               widget.reason.copy.paywallHeadline,
               textAlign: TextAlign.center,
               style: theme.textTheme.titleMedium
-                  ?.copyWith(color: Colors.white, fontWeight: FontWeight.w700),
+                  ?.copyWith(color: _p.text, fontWeight: FontWeight.w700),
             ),
           ],
         ],
@@ -302,9 +383,9 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
 
   Widget _planArea(ThemeData theme) {
     if (_loading) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 40),
-        child: Center(child: CircularProgressIndicator(color: _purple)),
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 40),
+        child: Center(child: CircularProgressIndicator(color: _p.purple)),
       );
     }
     if (!ProConstants.enabled) {
@@ -348,12 +429,12 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       duration: const Duration(milliseconds: 180),
       padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 22),
       decoration: BoxDecoration(
-        color: _card,
+        color: _p.card,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: selected ? _purple : _cardBorder, width: 1.6),
+        border: Border.all(color: selected ? _p.purple : _p.cardBorder, width: 1.6),
         // The solid "lip" under each card (no blur) from the reference design.
         boxShadow: [
-          BoxShadow(color: selected ? _purple : _lip, offset: const Offset(0, 5)),
+          BoxShadow(color: selected ? _p.purple : _p.lip, offset: const Offset(0, 5)),
         ],
       ),
       child: Row(
@@ -367,12 +448,12 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.titleLarge?.copyWith(
-                        color: Colors.white, fontWeight: FontWeight.w500)),
+                        color: _p.text, fontWeight: FontWeight.w500)),
                 if (sub != null) ...[
                   const SizedBox(height: 3),
                   Text(sub,
                       style: theme.textTheme.titleMedium?.copyWith(
-                          color: _muted, fontWeight: FontWeight.w400, fontSize: 13)),
+                          color: _p.muted, fontWeight: FontWeight.w400, fontSize: 13)),
                 ],
               ],
             ),
@@ -393,16 +474,16 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                     Text(compareAt,
                         // Same font family as the price so ₹ always renders.
                         style: theme.textTheme.titleMedium?.copyWith(
-                          color: _cross,
+                          color: _p.cross,
                           fontWeight: FontWeight.w400,
                           decoration: TextDecoration.lineThrough,
-                          decorationColor: _cross,
+                          decorationColor: _p.cross,
                         )),
                     const SizedBox(width: 10),
                   ],
                   Text(price,
                       style: theme.textTheme.titleLarge?.copyWith(
-                        color: selected ? _purple : Colors.white,
+                        color: selected ? _p.purple : _p.text,
                         fontWeight: FontWeight.w600,
                       )),
                 ],
@@ -434,13 +515,13 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                     right: 34,
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-                      decoration: const BoxDecoration(
-                        color: _purple,
-                        borderRadius: BorderRadius.vertical(top: Radius.circular(10)),
+                      decoration: BoxDecoration(
+                        color: _p.purple,
+                        borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
                       ),
-                      child: const Text('MOST POPULAR',
+                      child: Text('MOST POPULAR',
                           style: TextStyle(
-                              color: Color(0xFF1E1B4B),
+                              color: _p.onPurple,
                               fontSize: 13,
                               fontWeight: FontWeight.w700,
                               letterSpacing: 0.6)),
@@ -498,10 +579,10 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            _bg,
-            _purple.withValues(alpha: 0.45),
-            _purple.withValues(alpha: 0.30),
-            _bg,
+            _p.bg,
+            _p.purple.withValues(alpha: 0.45 * _p.glow),
+            _p.purple.withValues(alpha: 0.30 * _p.glow),
+            _p.bg,
           ],
           stops: const [0, 0.12, 0.9, 1],
         ),
@@ -509,7 +590,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
       padding: const EdgeInsets.fromLTRB(14, 24, 14, 24),
       child: Container(
         decoration: BoxDecoration(
-          color: _card,
+          color: _p.card,
           borderRadius: BorderRadius.circular(34),
         ),
         padding: const EdgeInsets.fromLTRB(18, 30, 14, 24),
@@ -517,12 +598,12 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           children: [
             Semantics(
               header: true,
-              child: const Stack(
+              child: Stack(
                 clipBehavior: Clip.none,
                 children: [
                   Text('WHY PRO?',
                       style: TextStyle(
-                        color: _purple,
+                        color: _p.purple,
                         fontSize: 54,
                         fontWeight: FontWeight.w900,
                         height: 1,
@@ -532,7 +613,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                     top: -10,
                     right: 70,
                     child: ExcludeSemantics(
-                      child: Icon(Icons.auto_awesome, color: _sparkle, size: 20),
+                      child: Icon(Icons.auto_awesome, color: _p.sparkle, size: 20),
                     ),
                   ),
                 ],
@@ -542,14 +623,15 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
             _comparisonTable(theme),
             const SizedBox(height: 24),
             _LipButton(
+              _p,
               label: 'RESTORE PURCHASES',
               onTap: _busy ? null : _restore,
             ),
             const SizedBox(height: 6),
             TextButton(
               onPressed: () => _showAllFeatures(theme),
-              child: const Text('See everything in Pro',
-                  style: TextStyle(color: _purple, fontWeight: FontWeight.w600)),
+              child: Text('See everything in Pro',
+                  style: TextStyle(color: _p.purple, fontWeight: FontWeight.w600)),
             ),
           ],
         ),
@@ -561,7 +643,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
 
   Widget _comparisonTable(ThemeData theme) {
     final highlight = widget.reason;
-    final label = theme.textTheme.titleMedium?.copyWith(color: Colors.white, fontWeight: FontWeight.w500);
+    final label = theme.textTheme.titleMedium?.copyWith(color: _p.text, fontWeight: FontWeight.w500);
     return Stack(
       children: [
         // Shaded "Pro" column behind the rows.
@@ -572,7 +654,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           width: _colW,
           child: DecoratedBox(
             decoration: BoxDecoration(
-              color: _proBand,
+              color: _p.proBand,
               borderRadius: BorderRadius.circular(18),
             ),
           ),
@@ -588,7 +670,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                   width: _colW,
                   child: Center(
                     child: Text('Pro',
-                        style: label?.copyWith(color: _purple, fontWeight: FontWeight.w800)),
+                        style: label?.copyWith(color: _p.purple, fontWeight: FontWeight.w800)),
                   ),
                 ),
               ]),
@@ -600,7 +682,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                   child: Container(
                     decoration: BoxDecoration(
                       color: row.reason == highlight && highlight != UpgradeReason.general
-                          ? _purple.withValues(alpha: 0.12)
+                          ? _p.purple.withValues(alpha: 0.12)
                           : null,
                       borderRadius: BorderRadius.circular(12),
                     ),
@@ -612,7 +694,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                       Expanded(
                         child: Text(row.feature,
                             style: theme.textTheme.bodyLarge?.copyWith(
-                              color: row.reason == highlight ? _purple : Colors.white,
+                              color: row.reason == highlight ? _p.purple : _p.text,
                               fontWeight:
                                   row.reason == highlight ? FontWeight.w700 : FontWeight.w500,
                             )),
@@ -636,16 +718,16 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           : v;
 
   Widget _cell(ThemeData theme, String? v, {required bool pro}) {
-    if (v == null) return const Icon(Icons.close_rounded, color: _cross, size: 26);
+    if (v == null) return Icon(Icons.close_rounded, color: _p.cross, size: 26);
     if (v == PlanComparisonRow.included) {
-      return const Icon(Icons.check_rounded, color: _purple, size: 26);
+      return Icon(Icons.check_rounded, color: _p.purple, size: 26);
     }
     return FittedBox(
       fit: BoxFit.scaleDown,
       child: Text(v,
           maxLines: 1,
           style: theme.textTheme.bodySmall?.copyWith(
-            color: pro ? _purple : _muted,
+            color: pro ? _p.purple : _p.muted,
             fontWeight: FontWeight.w800,
           )),
     );
@@ -655,7 +737,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: _card,
+      backgroundColor: _p.card,
       builder: (_) => DraggableScrollableSheet(
         expand: false,
         initialChildSize: 0.7,
@@ -665,15 +747,15 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           children: [
             Text('Everything in Pro',
                 style: theme.textTheme.titleLarge
-                    ?.copyWith(color: Colors.white, fontWeight: FontWeight.w800)),
+                    ?.copyWith(color: _p.text, fontWeight: FontWeight.w800)),
             const SizedBox(height: 12),
             for (final f in ProFeatures.all)
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                leading: Icon(f.icon, color: _purple),
+                leading: Icon(f.icon, color: _p.purple),
                 title: Text(f.title,
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
-                subtitle: Text(f.subtitle, style: const TextStyle(color: _muted)),
+                    style: TextStyle(color: _p.text, fontWeight: FontWeight.w700)),
+                subtitle: Text(f.subtitle, style: TextStyle(color: _p.muted)),
               ),
           ],
         ),
@@ -685,13 +767,14 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
 
   Widget _bottomBar(ThemeData theme) {
     return Container(
-      color: _bg,
+      color: _p.bg,
       padding: const EdgeInsets.fromLTRB(20, 14, 20, 8),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           if (_plansReady)
             _CtaButton(
+              _p,
               label: _ctaLabel(),
               busy: _busy,
               onTap: _canBuy ? _buy : null,
@@ -708,14 +791,20 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     final account = ios ? 'Apple ID' : 'Google Play account';
     final settings = ios ? 'App Store account settings' : 'Google Play subscription settings';
     final lifetime = _selected?.packageType == PackageType.lifetime;
+    // Kept short on purpose. Price, period and any trial terms are already on
+    // each plan card; this line covers what Google Play requires on top:
+    // who charges, that it renews, and how to cancel. Apple additionally
+    // requires the "24 hours before" wording, so iOS keeps it.
     final billing = lifetime
-        ? 'One-time payment, charged to your $account at confirmation of purchase. No subscription, no renewals.'
-        : 'Payment is charged to your $account at confirmation of purchase. '
-            'Renews automatically unless cancelled at least 24 hours before the period ends. '
-            'Manage or cancel anytime in $settings.';
-    final style = theme.textTheme.bodySmall?.copyWith(color: _muted, fontSize: 11.5, height: 1.35);
+        ? 'One-time payment charged to your $account. No renewals.'
+        : ios
+            ? 'Charged to your $account. Auto-renews unless cancelled 24 h before '
+                'the period ends, in $settings.'
+            : 'Charged to your $account. Auto-renews until you cancel in '
+                'Play Store › Subscriptions.';
+    final style = theme.textTheme.bodySmall?.copyWith(color: _p.muted, fontSize: 11, height: 1.3);
     final link = style?.copyWith(
-        color: Colors.white, decoration: TextDecoration.underline, decorationColor: Colors.white);
+        color: _p.text, decoration: TextDecoration.underline, decorationColor: _p.text);
     return Column(
       children: [
         Text(billing, textAlign: TextAlign.center, style: style),
@@ -839,11 +928,11 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   Widget _notice(ThemeData theme, String text) => Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: _card,
+          color: _p.card,
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: _cardBorder),
+          border: Border.all(color: _p.cardBorder),
         ),
-        child: Text(text, style: theme.textTheme.bodyMedium?.copyWith(color: _muted)),
+        child: Text(text, style: theme.textTheme.bodyMedium?.copyWith(color: _p.muted)),
       );
 
   Widget _errorBanner(ThemeData theme, String text) => Container(
@@ -854,22 +943,24 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           border: Border.all(color: const Color(0xFFEF4444).withValues(alpha: 0.4)),
         ),
         child: Row(children: [
-          const Icon(Icons.error_outline_rounded, color: Color(0xFFF87171), size: 18),
+          Icon(Icons.error_outline_rounded, color: _p.errorIcon, size: 18),
           const SizedBox(width: 8),
           Expanded(
             child: Text(text,
-                style: theme.textTheme.bodySmall?.copyWith(color: const Color(0xFFFCA5A5))),
+                style: theme.textTheme.bodySmall?.copyWith(color: _p.errorText)),
           ),
         ]),
       );
 }
 
-/// White "PURCHASE PRO …" button with a purple lip.
+/// Solid "PURCHASE PRO …" button with a coloured lip (white in dark mode,
+/// purple in light mode).
 class _CtaButton extends StatelessWidget {
+  final _Palette _p;
   final String label;
   final bool busy;
   final VoidCallback? onTap;
-  const _CtaButton({required this.label, required this.busy, required this.onTap});
+  const _CtaButton(this._p, {required this.label, required this.busy, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -887,22 +978,22 @@ class _CtaButton extends StatelessWidget {
               height: 58,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: _p.ctaBg,
                 borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: _purple, width: 1.6),
-                boxShadow: const [BoxShadow(color: _purple, offset: Offset(0, 6))],
+                border: Border.all(color: _p.ctaLip, width: 1.6),
+                boxShadow: [BoxShadow(color: _p.ctaLip, offset: const Offset(0, 6))],
               ),
               child: busy
-                  ? const SizedBox(
+                  ? SizedBox(
                       width: 24,
                       height: 24,
-                      child: CircularProgressIndicator(strokeWidth: 2.6, color: Color(0xFF1E1B4B)),
+                      child: CircularProgressIndicator(strokeWidth: 2.6, color: _p.ctaFg),
                     )
                   : FittedBox(
                       fit: BoxFit.scaleDown,
                       child: Text(label,
-                          style: const TextStyle(
-                            color: Color(0xFF111113),
+                          style: TextStyle(
+                            color: _p.ctaFg,
                             fontSize: 17,
                             fontWeight: FontWeight.w800,
                             letterSpacing: 1.4,
@@ -918,9 +1009,10 @@ class _CtaButton extends StatelessWidget {
 
 /// Outlined pill with a grey lip (e.g. "RESTORE PURCHASES").
 class _LipButton extends StatelessWidget {
+  final _Palette _p;
   final String label;
   final VoidCallback? onTap;
-  const _LipButton({required this.label, required this.onTap});
+  const _LipButton(this._p, {required this.label, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -934,14 +1026,14 @@ class _LipButton extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
             decoration: BoxDecoration(
-              color: _card,
+              color: _p.card,
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: _cardBorder, width: 1.4),
-              boxShadow: const [BoxShadow(color: _lip, offset: Offset(0, 4))],
+              border: Border.all(color: _p.cardBorder, width: 1.4),
+              boxShadow: [BoxShadow(color: _p.lip, offset: const Offset(0, 4))],
             ),
             child: Text(label,
                 style: TextStyle(
-                  color: onTap == null ? _muted : Colors.white,
+                  color: onTap == null ? _p.muted : _p.text,
                   fontSize: 15,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 1.2,

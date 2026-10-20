@@ -20,6 +20,7 @@ import 'firebase_options.dart';
 import 'services/error_reporter.dart';
 import 'services/notification_service.dart';
 import 'services/push_messaging_service.dart';
+import 'services/rating_prompt_service.dart';
 
 Future<void> main() async {
   // Run the whole app inside a guarded zone so ANY uncaught asynchronous error
@@ -194,6 +195,8 @@ Future<void> _bootstrap() async {
 
   // Anchor the Tips & Tricks 7-day gate on the very first launch (device-wide).
   await recordFirstLaunchIfNeeded(prefs);
+  // Counts distinct days the app is opened (one input to the rating prompt).
+  await RatingPromptService.recordActiveDay(prefs);
 
   // Build the service singletons synchronously (constructors do no I/O). Their
   // async initialisers touch the network — FCM getToken()/subscribeToTopic()

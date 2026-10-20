@@ -7,6 +7,7 @@ import '../../../../core/constants/app_constants.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/date_utils.dart';
 import '../../../../services/analytics_service.dart';
+import '../../../../services/rating_prompt_service.dart';
 import '../../../../shared/widgets/buttons.dart';
 import '../../../semesters/domain/semester.dart';
 import '../../../semesters/presentation/screens/wrap_up_semester_screen.dart';
@@ -239,6 +240,10 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen>
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(_summaryMessage(result))));
+      // A timetable that just appeared in the app is a big win.
+      if (result.total > 0) {
+        unawaited(ref.read(ratingPromptProvider).onHappyMoment(HappyMoment.timetableImported));
+      }
       Navigator.of(context).pop();
     } catch (e) {
       if (mounted) {

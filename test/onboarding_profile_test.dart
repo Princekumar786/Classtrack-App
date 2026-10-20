@@ -70,12 +70,28 @@ void main() {
         focusAreas: const {FocusArea.attendance, FocusArea.budget},
         targetAttendance: 80,
         avatarCharacter: ProfileAvatars.free.first,
+        studyRhythm: StudyRhythm.nightOwl,
       );
       final back = OnboardingProfile.decode(p.encode());
       expect(back.name, 'Priya');
       expect(back.focusAreas, {FocusArea.attendance, FocusArea.budget});
       expect(back.targetAttendance, 80);
       expect(back.avatarCharacter, ProfileAvatars.free.first);
+      expect(back.studyRhythm, StudyRhythm.nightOwl);
+    });
+
+    test('study rhythm: unknown ids are ignored; picking one is not empty', () {
+      expect(OnboardingProfile.decode('{"studyRhythm":"vampire"}').studyRhythm,
+          isNull);
+      expect(const OnboardingProfile(studyRhythm: StudyRhythm.daytime).isEmpty,
+          isFalse);
+      // Night owls' window wraps past midnight.
+      expect(StudyRhythm.nightOwl.hours, (20, 25));
+    });
+
+    test('onboarding no longer offers the attendance focus card', () {
+      expect(FocusArea.onboardingChoices, isNot(contains(FocusArea.attendance)));
+      expect(FocusArea.onboardingChoices, contains(FocusArea.exams));
     });
 
     test('decode tolerates corrupt / hostile drafts', () {
@@ -106,6 +122,7 @@ void main() {
         focusAreas: const {FocusArea.deadlines},
         targetAttendance: 85,
         avatarCharacter: ProfileAvatars.free[3],
+        studyRhythm: StudyRhythm.earlyBird,
       );
       final u = AuthRepository.buildNewProfile(
           uid: 'u1', displayName: 'Google Name', seed: seed);
@@ -114,6 +131,8 @@ void main() {
       expect(u.avatarCharacter, ProfileAvatars.free[3]);
       expect(u.focusAreas, ['deadlines']);
       expect(u.toMap()['focusAreas'], ['deadlines']);
+      expect(u.studyRhythm, 'earlyBird');
+      expect(u.toMap()['studyRhythm'], 'earlyBird');
     });
 
     test('falls back to the draft name when auth has none', () {

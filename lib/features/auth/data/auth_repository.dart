@@ -5,6 +5,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 
 import '../../../core/constants/app_constants.dart';
 import '../../../core/utils/validators.dart';
+import '../../../services/error_reporter.dart';
 import '../domain/app_user.dart';
 import '../domain/onboarding_profile.dart';
 import '../domain/profile_avatars.dart';
@@ -114,25 +115,70 @@ class AuthRepository {
     await _auth.signOut();
   }
 
-  /// Creates the profile document if it does not yet exist, seeding it with
-  /// the student's onboarding answers ([seed]) when this is a brand-new
-  /// account. Existing profiles are never overwritten.
+  /// Sign-in path: creates the profile if missing, retrying short network
+  /// blips. Still throws if it keeps failing (so the onboarding [seed] is NOT
+  /// cleared); the app-start self-heal ([ensureProfileDoc] via
+  /// `profileSelfHealProvider`) then creates it once Firestore is reachable.
   Future<void> _ensureProfile(
     User user, {
     String? displayName,
     OnboardingProfile? seed,
-  }) async {
-    final ref = _userDoc(user.uid);
-    final snap = await ref.get();
-    if (!snap.exists) {
+  }) =>
+      withProfileRetry(() => ensureProfileDoc(
+            uid: user.uid,
+            displayName: displayName ?? user.displayName,
+            email: user.email,
+            photoUrl: user.photoURL,
+            seed: seed,
+          ));
+
+  /// Creates `users/{uid}` if it does not exist yet. Returns true when it was
+  /// created now. Existing profiles are never overwritten.
+  ///
+  /// Runs in a transaction on purpose: transactions always read from the
+  /// SERVER and fail when offline. A plain `get()` could answer "doesn't
+  /// exist" from the offline cache, and the following `set()` would then wipe
+  /// a real profile once the phone came back online.
+  Future<bool> ensureProfileDoc({
+    required String uid,
+    String? displayName,
+    String? email,
+    String? photoUrl,
+    OnboardingProfile? seed,
+  }) {
+    final ref = _userDoc(uid);
+    return _db.runTransaction<bool>((tx) async {
+      final snap = await tx.get(ref);
+      if (snap.exists) return false;
       final profile = buildNewProfile(
-        uid: user.uid,
-        displayName: displayName ?? user.displayName,
-        email: user.email,
-        photoUrl: user.photoURL,
+        uid: uid,
+        displayName: displayName,
+        email: email,
+        photoUrl: photoUrl,
         seed: seed,
       );
-      await ref.set(profile.toMap());
+      tx.set(ref, profile.toMap());
+      return true;
+    });
+  }
+
+  /// Runs [action], retrying transient (network/offline) failures with a
+  /// growing pause. Non-transient errors (e.g. permission-denied) and the last
+  /// failure are rethrown.
+  static Future<T> withProfileRetry<T>(
+    Future<T> Function() action, {
+    List<Duration> delays = const [
+      Duration(seconds: 1),
+      Duration(seconds: 3),
+    ],
+  }) async {
+    for (var attempt = 0;; attempt++) {
+      try {
+        return await action();
+      } catch (e) {
+        if (attempt >= delays.length || !isTransientError(e)) rethrow;
+        await Future<void>.delayed(delays[attempt]);
+      }
     }
   }
 
@@ -159,6 +205,7 @@ class AuthRepository {
       targetAttendancePercent: seed?.targetAttendance.toDouble() ??
           AppConstants.defaultTargetAttendance,
       focusAreas: seed?.focusAreas.map((f) => f.name).toList() ?? const [],
+      studyRhythm: seed?.studyRhythm?.name,
     );
   }
 
