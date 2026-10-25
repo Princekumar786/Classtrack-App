@@ -1,6 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { deriveEntitlement, toMillisMaybe } from "./entitlement.js";
+import {
+  deriveEntitlement,
+  isRefundCancellation,
+  toMillisMaybe,
+} from "./entitlement.js";
 
 const now = Date.parse("2026-09-24T18:00:00Z");
 const inAMonth = "2026-10-24T18:00:00Z";
@@ -71,4 +75,36 @@ test("toMillisMaybe handles numbers, Timestamps, and junk", () => {
   assert.equal(toMillisMaybe(null), null);
   assert.equal(toMillisMaybe(undefined), null);
   assert.equal(toMillisMaybe("nope"), null);
+});
+
+
+test("refund (CANCELLATION + CUSTOMER_SUPPORT) is detected", () => {
+  assert.equal(
+    isRefundCancellation({
+      type: "CANCELLATION",
+      cancel_reason: "CUSTOMER_SUPPORT",
+      product_id: "classtrack_pro_lifetime",
+    }),
+    true
+  );
+});
+
+test("normal cancellations and other events are not refunds", () => {
+  // Auto-renew turned off: access continues until EXPIRATION.
+  assert.equal(
+    isRefundCancellation({ type: "CANCELLATION", cancel_reason: "UNSUBSCRIBE" }),
+    false
+  );
+  assert.equal(
+    isRefundCancellation({ type: "CANCELLATION", cancel_reason: "BILLING_ERROR" }),
+    false
+  );
+  assert.equal(isRefundCancellation({ type: "CANCELLATION" }), false);
+  assert.equal(
+    isRefundCancellation({ type: "EXPIRATION", cancel_reason: "CUSTOMER_SUPPORT" }),
+    false
+  );
+  assert.equal(isRefundCancellation({ type: "NON_RENEWING_PURCHASE" }), false);
+  assert.equal(isRefundCancellation(null), false);
+  assert.equal(isRefundCancellation(undefined), false);
 });

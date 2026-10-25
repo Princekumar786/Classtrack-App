@@ -115,9 +115,40 @@ void main() {
       );
       expect(calls, 3);
       expect(createdCalls, 1);
-      expect(reports, hasLength(2));
+      // Network failures that a later retry recovered from are not reported.
+      expect(reports, isEmpty);
+    });
+
+    test('reports a network failure only when every retry failed', () async {
+      final reports = <ErrorReport>[];
+      ErrorReporter.debugSink = reports.add;
+      await runProfileSelfHeal(
+        ensure: () async => throw _offline(),
+        isCancelled: () => false,
+        delays: const [Duration.zero, Duration.zero],
+      );
+      expect(reports, hasLength(1));
       expect(reports.first.reason, 'profile_self_heal');
       expect(reports.first.kind, 'transient');
+    });
+
+    test('reports a real defect straight away', () async {
+      final reports = <ErrorReport>[];
+      ErrorReporter.debugSink = reports.add;
+      var calls = 0;
+      await runProfileSelfHeal(
+        ensure: () async {
+          calls++;
+          if (calls == 1) {
+            throw FirebaseException(plugin: 'cloud_firestore', code: 'permission-denied');
+          }
+          return false;
+        },
+        isCancelled: () => false,
+        delays: const [Duration.zero],
+      );
+      expect(reports, hasLength(1));
+      expect(reports.first.kind, 'defect');
     });
 
     test('does not call onCreated when the profile already existed', () async {

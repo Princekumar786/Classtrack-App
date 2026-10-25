@@ -32,10 +32,12 @@ class _ScriptedGemini extends GeminiService {
   List<String> queue = [];
   int calls = 0;
   String? lastContext;
+  List<Map<String, dynamic>> lastHistory = const [];
   @override
   Future<String> chat(List<Map<String, dynamic>> history, {String? context}) async {
     calls++;
     lastContext = context;
+    lastHistory = List.of(history);
     return queue.isNotEmpty ? queue.removeAt(0) : reply;
   }
 }
@@ -221,6 +223,58 @@ void main() {
     final rows = await db.collection('users').doc(uid).collection('expenses').get();
     expect(rows.docs, isEmpty);
     expect(_lastReply(c), contains('deleted 1 item'));
+  });
+
+  test('typing "yes" on a delete card deletes without asking the AI again', () async {
+    final (c, db, gemini) = await _setup();
+    addTearDown(c.dispose);
+    gemini.reply = 'Deleting your AWS expense.\n```actions\n'
+        '{"actions":[{"type":"delete","entity":"expense","match":"the aws spend","amount":120,"category":"other"}]}\n```';
+    final ctrl = c.read(chatControllerProvider.notifier);
+
+    await ctrl.send('delete the aws spend');
+    expect(c.read(chatControllerProvider).messages.last.hasPendingActions, isTrue);
+    final callsBefore = gemini.calls;
+
+    await ctrl.send('yes');
+    expect(gemini.calls, callsBefore); // answered locally, no AI round-trip
+    final rows = await db.collection('users').doc(uid).collection('expenses').get();
+    expect(rows.docs, isEmpty);
+    expect(_lastReply(c), contains('deleted 1 item'));
+    expect(c.read(chatControllerProvider).messages.any((m) => m.hasPendingActions), isFalse);
+  });
+
+  test('after a confirmed delete the AI history says it is done', () async {
+    final (c, _, gemini) = await _setup();
+    addTearDown(c.dispose);
+    gemini.reply = 'Deleting your AWS expense.\n```actions\n'
+        '{"actions":[{"type":"delete","entity":"expense","match":"the aws spend","amount":120,"category":"other"}]}\n```';
+    final ctrl = c.read(chatControllerProvider.notifier);
+
+    await ctrl.send('delete the aws spend');
+    await ctrl.confirmPendingActions(c.read(chatControllerProvider).messages.last);
+
+    gemini.reply = 'You are welcome!';
+    await ctrl.send('thanks');
+    final texts = gemini.lastHistory
+        .map((t) => ((t['parts'] as List).first as Map)['text'] as String)
+        .toList();
+    expect(texts, contains('(I tapped Delete on the confirmation card.)'));
+    expect(texts.any((t) => t.startsWith('Done — deleted 1 item')), isTrue);
+  });
+
+  test('typing "no" on a delete card keeps the item', () async {
+    final (c, db, gemini) = await _setup();
+    addTearDown(c.dispose);
+    gemini.reply = 'Deleting your AWS expense.\n```actions\n'
+        '{"actions":[{"type":"delete","entity":"expense","match":"the aws spend","amount":120,"category":"other"}]}\n```';
+    final ctrl = c.read(chatControllerProvider.notifier);
+
+    await ctrl.send('delete the aws spend');
+    await ctrl.send('no');
+    final rows = await db.collection('users').doc(uid).collection('expenses').get();
+    expect(rows.docs, hasLength(1));
+    expect(_lastReply(c), contains('left everything'));
   });
 
   test('an update that changes nothing is reported honestly', () async {

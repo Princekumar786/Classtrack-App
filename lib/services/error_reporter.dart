@@ -47,6 +47,7 @@ class ErrorReporter {
     bool fatal = false,
     Map<String, Object>? extra,
   }) {
+    if (isKnownHarmlessError(error, reason)) return;
     final transient = isTransientError(error);
     final isFatal = fatal && !transient;
     final r = ErrorReport(
@@ -169,7 +170,29 @@ class ErrorReport {
     required this.screen,
   });
 
-  String get signature => '${error.runtimeType}|$reason|${'$error'.length > 200 ? '$error'.substring(0, 200) : error}';
+  // Ids inside a reason (e.g. a per-transaction channel name) are replaced so
+  // identical errors share one signature and the throttle actually applies.
+  String get signature {
+    final r = reason?.replaceAll(_uuid, '<id>');
+    final e = '$error'.replaceAll(_uuid, '<id>');
+    return '${error.runtimeType}|$r|${e.length > 200 ? e.substring(0, 200) : e}';
+  }
+}
+
+final RegExp _uuid = RegExp(
+    r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}');
+
+/// Errors that are known plugin noise with no effect on the user, so they are
+/// not reported at all:
+///  • FlutterFire Android calls `cancel` on a Firestore transaction's event
+///    channel after the native side already removed it. The transaction itself
+///    succeeded. (~900 PostHog events a week on 1.0.61.)
+bool isKnownHarmlessError(Object error, String? reason) {
+  if (error is MissingPluginException) {
+    final where = '${reason ?? ''} $error';
+    if (where.contains('firebase_firestore/transaction/')) return true;
+  }
+  return false;
 }
 
 /// Whether [error] is an environmental/transient failure (offline, backend

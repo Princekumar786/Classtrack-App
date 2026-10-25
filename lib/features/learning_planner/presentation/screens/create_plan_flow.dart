@@ -128,6 +128,11 @@ class _CreatePlanFlowState extends ConsumerState<CreatePlanFlow> {
 
   Future<void> _finishGeneration() async {
     final generator = ref.read(learningPlanGeneratorProvider);
+    // Read everything we need from `ref` BEFORE the slow AI call: the student
+    // may leave this screen while it runs, and `ref` is unusable after that.
+    final plans = ref.read(learningPlansProvider.notifier);
+    final analytics = ref.read(analyticsProvider);
+    final aiPlans = ref.read(aiPlanServiceProvider);
     final req = PlanRequest(
       subject: _d.subject,
       specificTopic: _d.specificTopic,
@@ -149,7 +154,7 @@ class _CreatePlanFlowState extends ConsumerState<CreatePlanFlow> {
     // the wizard always finishes with a usable plan.
     if (ref.read(isProProvider)) {
       try {
-        final core = await ref.read(aiPlanServiceProvider).generateTopics(req);
+        final core = await aiPlans.generateTopics(req);
         if (core != null && core.isNotEmpty) {
           plan = generator.assembleFromCore(req, core);
           source = 'ai';
@@ -160,8 +165,8 @@ class _CreatePlanFlowState extends ConsumerState<CreatePlanFlow> {
     }
     plan ??= generator.generate(req);
 
-    await ref.read(learningPlansProvider.notifier).addPlan(plan);
-    ref.read(analyticsProvider).plannerPlanCreated(
+    await plans.addPlan(plan);
+    analytics.plannerPlanCreated(
           source: source,
           subject: plan.subject,
           level: plan.level.name,

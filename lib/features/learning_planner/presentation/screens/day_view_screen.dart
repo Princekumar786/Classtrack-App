@@ -188,9 +188,10 @@ class DayViewScreen extends ConsumerWidget {
               revertTopics = choice;
             }
           }
+          final analytics = ref.read(analyticsProvider);
           await controller.markDayComplete(planId, dayNumber, completing,
               revertTopics: revertTopics);
-          if (completing) ref.read(analyticsProvider).plannerDayCompleted();
+          if (completing) analytics.plannerDayCompleted();
         },
         secondary: OutlinedButton.icon(
           onPressed: () => _reschedule(context, ref),

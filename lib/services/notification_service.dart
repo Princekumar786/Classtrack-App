@@ -301,24 +301,64 @@ class NotificationService {
     }
   }
 
-  /// Ask the OS for permission (Android 13+ and iOS).
+  /// Whether the OS currently lets this app show notifications. Never throws.
+  Future<bool> hasPermission() async {
+    try {
+      await init();
+      final android = _plugin.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+      if (android != null) return await android.areNotificationsEnabled() ?? false;
+      final ios = _plugin.resolvePlatformSpecificImplementation<
+          IOSFlutterLocalNotificationsPlugin>();
+      if (ios != null) return (await ios.checkPermissions())?.isEnabled ?? false;
+    } catch (_) {/* treat as not granted */}
+    return false;
+  }
+
+  /// Device-wide flag: the Android "Alarms & reminders" settings page has
+  /// already been offered once.
+  static const String _exactAlarmAskedKey = 'exact_alarm_asked';
+
+  /// Offers the exact-alarm settings page at most ONCE per device, and only if
+  /// exact alarms aren't already allowed. Opening it on every Enable tap made
+  /// the app look like it was asking for permission again.
+  Future<void> _askExactAlarmsOnce(
+      AndroidFlutterLocalNotificationsPlugin? android) async {
+    if (android == null) return;
+    try {
+      if (await android.canScheduleExactNotifications() ?? false) return;
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getBool(_exactAlarmAskedKey) ?? false) return;
+      await prefs.setBool(_exactAlarmAskedKey, true);
+      await android.requestExactAlarmsPermission();
+    } catch (_) {/* best-effort; unsupported on older OS versions */}
+  }
+
+  /// Ask the OS for permission (Android 13+ and iOS). If notifications are
+  /// already allowed (e.g. the user tapped Allow on the launch prompt), the OS
+  /// dialog is NOT shown again.
   Future<bool> requestPermissions() async {
     await init();
+    final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    if (await hasPermission()) {
+      await _askExactAlarmsOnce(androidPlugin);
+      await _refreshScheduleMode();
+      return true;
+    }
     final ios = await _plugin
         .resolvePlatformSpecificImplementation<
             IOSFlutterLocalNotificationsPlugin>()
         ?.requestPermissions(alert: true, badge: true, sound: true);
-    final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin>();
     final android = await androidPlugin?.requestNotificationsPermission();
-    // Also request exact-alarm capability so time-critical reminders fire on
-    // time. If the user declines (or the OS disallows it), we keep the inexact
-    // fallback — scheduling still succeeds, just less precise.
-    try {
-      await androidPlugin?.requestExactAlarmsPermission();
-    } catch (_) {/* best-effort; unsupported on older OS versions */}
+    // Only the current platform's answer counts (the old `(ios ?? true) ||
+    // (android ?? true)` was always true on Android, even after "Don't allow").
+    final granted = ios ?? android ?? true;
+    // Exact alarms make time-critical reminders fire on time. If declined we
+    // keep the inexact fallback: scheduling still works, just less precisely.
+    if (granted) await _askExactAlarmsOnce(androidPlugin);
     await _refreshScheduleMode();
-    return (ios ?? true) || (android ?? true);
+    return granted;
   }
 
   NotificationDetails get _details => const NotificationDetails(

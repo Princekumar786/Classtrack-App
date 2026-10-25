@@ -681,6 +681,8 @@ class _HomeShellState extends ConsumerState<HomeShell>
     // subscription stops showing Pro promptly instead of lingering.
     if (state == AppLifecycleState.resumed) {
       ref.read(subscriptionServiceProvider).refresh(invalidateCache: true);
+      // The student may have allowed notifications in system settings.
+      ref.invalidate(autoEnableRemindersProvider);
       // Returning to the app is a good moment to run the daily Google sync if
       // it's now due (e.g. the app was backgrounded before 7 PM).
       _maybeAutoSync();
@@ -699,6 +701,8 @@ class _HomeShellState extends ConsumerState<HomeShell>
     // Keep task + exam reminders in sync with the latest data (no-op unless
     // the user has enabled reminders from Settings).
     ref.watch(reminderSyncProvider);
+    // Tapping Allow on the notification prompt turns reminders on.
+    ref.watch(autoEnableRemindersProvider);
     // Schedule/cancel the daily learning-planner study reminder.
     ref.watch(plannerReminderSyncProvider);
     // Keep RevenueCat's identity tied to the signed-in Firebase user.

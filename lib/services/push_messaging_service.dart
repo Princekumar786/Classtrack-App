@@ -3,6 +3,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../firebase_options.dart';
 import '../features/auth/presentation/providers/auth_providers.dart';
@@ -61,6 +62,36 @@ class PushMessagingService {
   /// the subscription without leaving stale ones behind.
   String? _countryTopic;
 
+  /// True once the OS allows notifications (known after [init]). The app
+  /// listens to this to switch reminders on right after the user taps Allow.
+  final ValueNotifier<bool> permissionGranted = ValueNotifier<bool>(false);
+
+  /// Device-wide flag: the launch-time permission prompt has been shown.
+  static const String _askedKey = 'push_permission_asked';
+
+  /// Shows the OS permission prompt only if notifications aren't allowed yet
+  /// AND we've never asked on this device. Once the user taps Allow (or has
+  /// answered before), launches never prompt again; later opt-ins go through
+  /// the in-app Enable buttons. Never throws.
+  Future<void> _askPermissionOnce() async {
+    bool ok(AuthorizationStatus s) =>
+        s == AuthorizationStatus.authorized ||
+        s == AuthorizationStatus.provisional;
+    try {
+      final current = await _fcm.getNotificationSettings();
+      if (ok(current.authorizationStatus)) {
+        permissionGranted.value = true;
+        return;
+      }
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getBool(_askedKey) ?? false) return;
+      await prefs.setBool(_askedKey, true);
+      final answer =
+          await _fcm.requestPermission(alert: true, badge: true, sound: true);
+      permissionGranted.value = ok(answer.authorizationStatus);
+    } catch (_) {/* best-effort; never block init */}
+  }
+
   /// FCM topic for a profile country, matching the server's slug rules
   /// (functions/notifications.js). Null for empty/"Global".
   static String? countryTopicFor(String? country) {
@@ -102,8 +133,8 @@ class PushMessagingService {
   Future<void> init() async {
     if (_ready) return;
 
-    // 1. Ask the user for notification permission (Android 13+ / iOS).
-    await _fcm.requestPermission(alert: true, badge: true, sound: true);
+    // 1. Ask for notification permission (Android 13+ / iOS) — at most once.
+    await _askPermissionOnce();
 
     // 2. iOS: make sure a notification shows while the app is foregrounded.
     await _fcm.setForegroundNotificationPresentationOptions(

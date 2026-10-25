@@ -67,6 +67,17 @@ if (-not $key.StartsWith($expectedPrefix)) {
 }
 
 # --- Build ----------------------------------------------------------------
+$sw = [Diagnostics.Stopwatch]::StartNew()
+
+# Builds crawl when Windows runs out of RAM and starts paging (a 16 GB PC with
+# Chrome, `flutter run` and an emulator open took 35-45 min instead of ~10).
+try {
+    $freeGb = [math]::Round((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory / 1MB, 1)
+    if ($freeGb -lt 4) {
+        Write-Host "WARNING: only $freeGb GB RAM free. Close Chrome tabs, 'flutter run' sessions and emulators for a much faster build." -ForegroundColor Yellow
+    }
+} catch {}
+
 Write-Host "==> flutter pub get" -ForegroundColor Cyan
 flutter pub get
 if ($LASTEXITCODE -ne 0) { Fail "flutter pub get failed." }
@@ -99,6 +110,7 @@ else {
     flutter build appbundle --release @defines @obfuscate
 }
 if ($LASTEXITCODE -ne 0) { Fail "flutter build failed." }
+Write-Host ("Built in {0:mm\:ss} (min:sec)." -f $sw.Elapsed) -ForegroundColor Green
 
 # --- Upload Dart symbols to Crashlytics ------------------------------------
 # The build is obfuscated, so without these symbols every Dart crash in

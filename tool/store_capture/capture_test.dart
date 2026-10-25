@@ -1,5 +1,7 @@
 import 'package:classtrack/features/attendance/presentation/screens/attendance_screen.dart';
 import 'package:classtrack/features/chat/presentation/screens/chat_screen.dart';
+import 'package:classtrack/features/exams/presentation/screens/exams_screen.dart';
+import 'package:classtrack/features/import/presentation/screens/import_screen.dart';
 import 'package:classtrack/features/grades/presentation/screens/grades_screen.dart';
 import 'package:classtrack/features/home/presentation/screens/home_shell.dart';
 import 'package:classtrack/features/learning_planner/presentation/screens/plan_overview_screen.dart';
@@ -67,6 +69,10 @@ void main() {
 
   testWidgets('05 tasks', (t) => capture(t, '05_tasks', () => const TasksScreen(),
       mustShow: ['OS assignment', 'Networks lab record']));
+
+  testWidgets('09 import', (t) => capture(t, '09_import', () => const ImportScreen(freeAccess: true)));
+
+  testWidgets('10 exams', (t) => capture(t, '10_exams', () => const ExamsScreen()));
 
   testWidgets('06 grades', (t) => capture(t, '06_grades', () => const GradesScreen(),
       mustShow: ['Data Structures & Algorithms']));

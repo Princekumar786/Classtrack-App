@@ -135,31 +135,39 @@ class AuthRepository {
   /// Creates `users/{uid}` if it does not exist yet. Returns true when it was
   /// created now. Existing profiles are never overwritten.
   ///
-  /// Runs in a transaction on purpose: transactions always read from the
-  /// SERVER and fail when offline. A plain `get()` could answer "doesn't
-  /// exist" from the offline cache, and the following `set()` would then wipe
-  /// a real profile once the phone came back online.
+  /// "Doesn't exist" is only trusted from the SERVER: a plain `get()` could
+  /// answer "doesn't exist" from an empty offline cache, and the following
+  /// `set()` would then wipe a real profile once the phone came back online.
+  /// A server-only read fails when offline (and the self-heal retries later).
+  ///
+  /// Why not a transaction (as before)? This runs on every app start, and the
+  /// FlutterFire transaction channel throws a harmless but noisy
+  /// `MissingPluginException(cancel on .../firebase_firestore/transaction/…)`
+  /// after each one — ~900 PostHog exceptions a week on 1.0.61.
   Future<bool> ensureProfileDoc({
     required String uid,
     String? displayName,
     String? email,
     String? photoUrl,
     OnboardingProfile? seed,
-  }) {
+  }) async {
     final ref = _userDoc(uid);
-    return _db.runTransaction<bool>((tx) async {
-      final snap = await tx.get(ref);
-      if (snap.exists) return false;
-      final profile = buildNewProfile(
-        uid: uid,
-        displayName: displayName,
-        email: email,
-        photoUrl: photoUrl,
-        seed: seed,
-      );
-      tx.set(ref, profile.toMap());
-      return true;
-    });
+    // Fast path: the cached profile proves it exists (no network needed).
+    try {
+      final cached = await ref.get(const GetOptions(source: Source.cache));
+      if (cached.exists) return false;
+    } catch (_) {/* not in the cache: ask the server */}
+    final snap = await ref.get(const GetOptions(source: Source.server));
+    if (snap.exists) return false;
+    final profile = buildNewProfile(
+      uid: uid,
+      displayName: displayName,
+      email: email,
+      photoUrl: photoUrl,
+      seed: seed,
+    );
+    await ref.set(profile.toMap());
+    return true;
   }
 
   /// Runs [action], retrying transient (network/offline) failures with a

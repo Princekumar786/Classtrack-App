@@ -14,6 +14,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../services/analytics_service.dart';
 import '../../../../services/gemini_service.dart' show sniffMimeType;
 import '../../../chat/domain/ai_errors.dart';
+import '../../../subscription/presentation/providers/subscription_providers.dart';
 import '../../../subscription/presentation/widgets/upgrade_prompt.dart';
 import '../../../tips/domain/discoverable_feature.dart';
 import '../../../tips/presentation/providers/tips_providers.dart';
@@ -24,9 +25,9 @@ import '../widgets/import_draft_banner.dart';
 import 'review_screen.dart';
 
 class ImportScreen extends ConsumerStatefulWidget {
-  /// When true, the AI photo/PDF/text import is offered free of charge and the
-  /// Pro paywall is skipped. Used by the Attendance tab, where uploading a
-  /// timetable photo is a free onboarding path for new students.
+  /// Kept for the import funnel (`source` = attendance_onboarding vs
+  /// schedule). Every entry point gets the same 2 free scans, which the server
+  /// enforces; this flag no longer changes access.
   final bool freeAccess;
 
   const ImportScreen({super.key, this.freeAccess = false});
@@ -223,15 +224,12 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       );
       return;
     }
-    // AI photo/PDF/text import is normally a Pro feature. Free users can still
-    // build a timetable manually or via the chat assistant's monthly free
-    // messages. When [freeAccess] is set (e.g. launched from the Attendance
-    // tab) the paywall is skipped so photo upload is free.
-    if (!widget.freeAccess &&
-        (!await requirePro(context, ref, UpgradeReason.timetableScans) ||
-            !mounted)) {
-      return;
-    }
+    // Free users get 2 AI scans in total. The SERVER counts and enforces them
+    // (parseSchedule → enforceFreeAllowance) and answers `free_limit` once
+    // they're used, which [_handleError] turns into the upgrade prompt. Do
+    // NOT gate on Pro here: an app-side `requirePro` check used to show the
+    // upgrade prompt before the first scan, so most new students never got
+    // their 2 free scans (only the Attendance/Home entry points skipped it).
     setState(() {
       _loading = true;
       _hint = null; // clear any previous recovery hint on a fresh attempt
@@ -396,9 +394,10 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          widget.freeAccess
-                              ? 'Upload a timetable photo, a PDF, or paste text — '
-                                    'free. You’ll review everything before it’s saved.'
+                          widget.freeAccess || !ref.watch(isProProvider)
+                              ? 'Upload a timetable photo, a PDF, or paste text. '
+                                    'Your first 2 scans are free. You’ll review '
+                                    'everything before it’s saved.'
                               : 'Upload a timetable photo or PDF, or paste text. '
                                     'You’ll review everything before it’s saved.',
                           style: theme.textTheme.bodyMedium,

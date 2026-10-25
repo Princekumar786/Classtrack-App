@@ -34,6 +34,18 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'seed.dart';
 
 const uid = 'demo-student';
+const captureFallbackFont = 'CaptureFallback';
+const captureSymbolFont = 'CaptureSymbols';
+const _fallback = ['Inter', captureFallbackFont, captureSymbolFont];
+
+/// App theme with emoji/symbol fallback so captures have no missing glyphs.
+ThemeData captureTheme() {
+  final t = AppTheme.light();
+  return t.copyWith(
+    textTheme: t.textTheme.apply(fontFamilyFallback: _fallback),
+    primaryTextTheme: t.primaryTextTheme.apply(fontFamilyFallback: _fallback),
+  );
+}
 
 class _NoopAnalytics extends AnalyticsService {
   @override
@@ -80,6 +92,21 @@ Future<void> loadFonts() async {
     'assets/fonts/Inter-Medium.ttf',
     'assets/fonts/Inter-SemiBold.ttf',
   ]);
+  // Text without an explicit family (Material defaults) would otherwise use
+  // the square "Ahem" test font — map it to Inter so nothing renders as tofu.
+  await font('Roboto', [
+    'assets/fonts/Inter-Regular.ttf',
+    'assets/fonts/Inter-Medium.ttf',
+    'assets/fonts/Inter-SemiBold.ttf',
+  ]);
+  // Emoji / symbol fallback (👋 🌙 ≥ ★ …) from the Windows system fonts.
+  // Separate families: one family only resolves to one file per style.
+  if (File('C:/Windows/Fonts/seguiemj.ttf').existsSync()) {
+    await font(captureFallbackFont, ['C:/Windows/Fonts/seguiemj.ttf']);
+  }
+  if (File('C:/Windows/Fonts/seguisym.ttf').existsSync()) {
+    await font(captureSymbolFont, ['C:/Windows/Fonts/seguisym.ttf']);
+  }
   final flutterRoot = Platform.environment['FLUTTER_ROOT'] ?? 'C:/src/flutter';
   await font('MaterialIcons',
       ['$flutterRoot/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf']);
@@ -105,6 +132,9 @@ Future<ProviderContainer> bootApp(WidgetTester tester, Widget home,
   tester.view.padding = const FakeViewPadding(top: 72, bottom: 48);
   tester.view.viewPadding = const FakeViewPadding(top: 72, bottom: 48);
   addTearDown(tester.view.reset);
+  // Analytics SDK channel has no implementation under flutter_test.
+  tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      const MethodChannel('posthog_flutter'), (_) async => null);
 
   final db = FakeFirebaseFirestore();
   await tester.runAsync(() => seedDemoAccount(db, uid));
@@ -142,14 +172,17 @@ Future<ProviderContainer> bootApp(WidgetTester tester, Widget home,
     container: container,
     child: MaterialApp(
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.light(),
+      theme: captureTheme(),
       // Entrance animations off so every frame is final; real layout otherwise.
       builder: (c, child) => MediaQuery(
         data: MediaQuery.of(c).copyWith(
           disableAnimations: true,
           textScaler: TextScaler.linear(textScale),
         ),
-        child: child!,
+        child: DefaultTextStyle.merge(
+          style: const TextStyle(fontFamilyFallback: _fallback),
+          child: child!,
+        ),
       ),
       home: home,
     ),

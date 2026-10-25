@@ -72,6 +72,12 @@ android {
             )
         }
     }
+
+    // The release-only "lint vital" pass added ~6 minutes to every .aab build.
+    // Play doesn't need it; run `./gradlew lintRelease` by hand when wanted.
+    lint {
+        checkReleaseBuilds = false
+    }
 }
 
 kotlin {

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:confetti/confetti.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -25,8 +27,9 @@ import '../widgets/onboarding_visuals.dart';
 ///  • Tangible outcomes: a student ID card fills in live as you answer; the
 ///    "when do you study best" answer becomes a sky that rises, shines or
 ///    turns to night as you pick.
-///  • Value before the ask: a short "building your plan" moment, then a
-///    personalised home preview + confetti — only then do we ask for sign-up.
+///  • Value before the ask: a "student perks, unlocked" reveal, a short
+///    "building your plan" moment, then a personalised home preview +
+///    confetti — only then do we ask for sign-up.
 ///  • One optional question per screen (Skip everywhere), progress bar, system
 ///    back steps back. Answers are drafted on-device and seeded at sign-up.
 ///  • Accessible + performant: ≥48dp targets, semantic labels/selected states,
@@ -39,7 +42,7 @@ class OnboardingScreen extends ConsumerStatefulWidget {
   ConsumerState<OnboardingScreen> createState() => _OnboardingScreenState();
 }
 
-enum _Step { welcome, name, focus, rhythm, avatar, building, plan }
+enum _Step { welcome, name, focus, rhythm, avatar, perks, building, plan }
 
 class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   _Step _step = _Step.welcome;
@@ -55,6 +58,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     _Step.focus: AppColors.coral,
     _Step.rhythm: Color(0xFF6366F1),
     _Step.avatar: AppColors.accent,
+    _Step.perks: Color(0xFFEC4899),
     _Step.building: AppColors.info,
     _Step.plan: AppColors.primary,
   };
@@ -109,7 +113,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   void _back() {
     // The "building" moment is one-way: going back from the plan skips it.
-    final target = _step == _Step.plan ? _Step.avatar : _Step.values[_step.index - 1];
+    final target = _step == _Step.plan ? _Step.perks : _Step.values[_step.index - 1];
     if (_step.index > 0) _go(target);
   }
 
@@ -156,6 +160,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           onPick: (c) => notifier.update((p) => p.copyWith(avatarCharacter: c)),
           onContinue: _next,
         ),
+      _Step.perks => _PerksStep(draft: draft, onContinue: _next),
       _Step.building => _BuildingStep(draft: draft, onDone: _next),
       _Step.plan => _PlanStep(
           draft: draft,
@@ -986,7 +991,243 @@ class _AvatarOption extends StatelessWidget {
   }
 }
 
-// ─── Step 5: building the plan (labour illusion) ───────────────────────────
+// ─── Step 5: student perks ─────────────────────────────────────────────────
+
+/// One student perk: front of a flip card, its detail on the back, and what
+/// the mascot says when it's peeked. Copy must not mention attendance or "%"
+/// (see test/onboarding_screen_test.dart).
+class _Perk {
+  const _Perk(this.icon, this.title, this.detail, this.reaction, this.color);
+  final IconData icon;
+  final String title;
+  final String detail;
+  final String reaction;
+  final Color color;
+}
+
+const _perks = [
+  _Perk(Icons.redeem_rounded, 'Student deals', 'Student prices on tech, apps, shopping and more.',
+      'Student prices? My favourite kind of maths.', AppColors.success),
+  _Perk(Icons.school_rounded, 'Scholarships', 'Funding you can apply for, with deadlines up front.',
+      'Free money for studying? Yes please!', AppColors.primary),
+  _Perk(Icons.work_outline_rounded, 'Internships', 'Real roles that grow your CV while you study.',
+      'Future you is already saying thanks.', AppColors.info),
+  _Perk(Icons.emoji_events_rounded, 'Hackathons & more', 'Contests, free courses and events worth your time.',
+      'Build it, win it, brag about it.', AppColors.coral),
+];
+
+/// A short "and there's more" moment after the questions: the perks pass
+/// unlocks, then four flip cards to tap. The mascot reacts to each peek.
+class _PerksStep extends StatefulWidget {
+  const _PerksStep({required this.draft, required this.onContinue});
+
+  final OnboardingProfile draft;
+  final VoidCallback onContinue;
+
+  @override
+  State<_PerksStep> createState() => _PerksStepState();
+}
+
+class _PerksStepState extends State<_PerksStep> {
+  final Set<int> _flipped = {};
+  int? _last;
+
+  void _toggle(int i) {
+    HapticFeedback.lightImpact();
+    setState(() {
+      if (!_flipped.remove(i)) {
+        _flipped.add(i);
+        _last = i;
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final draft = widget.draft;
+    final last = _last;
+
+    Widget tile(int i) => Expanded(
+          child: _PerkTile(perk: _perks[i], flipped: _flipped.contains(i), onTap: () => _toggle(i))
+              .pop(context, delayMs: 380 + 70 * i),
+        );
+    Widget row(int a, int b) => IntrinsicHeight(
+          child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [tile(a), const SizedBox(width: 12), tile(b)]),
+        );
+
+    return _StepScaffold(
+      pose: last == null ? MascotPose.talk : MascotPose.excited,
+      reaction: last != null
+          ? _perks[last].reaction
+          : draft.hasName
+              ? 'Psst, ${draft.firstName}… students get perks!'
+              : 'Psst… students get perks!',
+      title: 'Student perks, unlocked',
+      subtitle: 'Deals and chances made for students, all in one place. Tap a card to peek.',
+      cta: _Cta(
+        label: _flipped.isEmpty ? 'Build my plan' : 'Love it, build my plan',
+        icon: Icons.auto_awesome_rounded,
+        onPressed: widget.onContinue,
+      ),
+      child: Column(
+        children: [
+          const PerksHero(),
+          const SizedBox(height: 18),
+          row(0, 1),
+          const SizedBox(height: 12),
+          row(2, 3),
+          const SizedBox(height: 14),
+          Row(children: [
+            Icon(Icons.workspace_premium_rounded, size: 16, color: theme.textTheme.bodySmall?.color),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text('Free members see the newest perks. Pro opens the full library.',
+                  style: theme.textTheme.bodySmall),
+            ),
+          ]).enter(context, delayMs: 680),
+        ],
+      ),
+    );
+  }
+}
+
+/// A card that flips in 3D to show its perk's detail on the back.
+class _PerkTile extends StatelessWidget {
+  const _PerkTile({required this.perk, required this.flipped, required this.onTap});
+
+  final _Perk perk;
+  final bool flipped;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final motion = motionOn(context);
+    final c = perk.color;
+    final surface = theme.cardTheme.color ?? theme.colorScheme.surface;
+
+    final front = Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: c.withValues(alpha: 0.2), width: 1.5),
+        boxShadow: AppColors.softShadow(opacity: 0.06, blur: 16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color.lerp(c, Colors.white, 0.3)!, c],
+              ),
+            ),
+            child: Icon(perk.icon, color: Colors.white, size: 24),
+          ),
+          const SizedBox(height: 12),
+          Text(perk.title, style: theme.textTheme.titleMedium),
+          const SizedBox(height: 4),
+          Row(children: [
+            Icon(Icons.touch_app_rounded, size: 14, color: c),
+            const SizedBox(width: 4),
+            Flexible(child: Text('Tap to peek', style: theme.textTheme.labelMedium)),
+          ]),
+        ],
+      ),
+    );
+
+    final back = Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Color.lerp(surface, c, 0.10),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: c, width: 2),
+        boxShadow: [BoxShadow(color: c.withValues(alpha: 0.22), blurRadius: 18, offset: const Offset(0, 8))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Icon(perk.icon, color: c, size: 22),
+            const Spacer(),
+            Icon(Icons.check_circle_rounded, color: c, size: 20),
+          ]),
+          const SizedBox(height: 10),
+          Text(perk.detail, style: theme.textTheme.bodyMedium?.copyWith(height: 1.35, fontWeight: FontWeight.w500)),
+        ],
+      ),
+    );
+
+    final card = TweenAnimationBuilder<double>(
+      tween: Tween(end: flipped ? 1.0 : 0.0),
+      duration: motion ? const Duration(milliseconds: 620) : Duration.zero,
+      curve: Curves.easeOutBack,
+      builder: (context, t, _) {
+        final showBack = t >= 0.5;
+        // Perspective + Y rotation; the card also dips slightly mid-flip so
+        // it reads as being lifted and turned over.
+        final transform = Matrix4.identity()
+          ..setEntry(3, 2, 0.0015)
+          ..multiply(Matrix4.rotationY(t * math.pi));
+        return Transform.scale(
+          scale: 1 - 0.06 * math.sin(t.clamp(0.0, 1.0) * math.pi),
+          child: Transform(
+            alignment: Alignment.center,
+            transform: transform,
+            // Both faces stay laid out so the tile keeps the taller face's
+            // height; only the visible one is painted and hit-tested.
+            child: Stack(fit: StackFit.expand, children: [
+              IgnorePointer(ignoring: showBack, child: Opacity(opacity: showBack ? 0 : 1, child: front)),
+              IgnorePointer(
+                ignoring: !showBack,
+                child: Opacity(
+                  opacity: showBack ? 1 : 0,
+                  child: Transform(alignment: Alignment.center, transform: Matrix4.rotationY(math.pi), child: back),
+                ),
+              ),
+            ]),
+          ),
+        );
+      },
+    );
+
+    return Semantics(
+      button: true,
+      toggled: flipped,
+      label: flipped ? '${perk.title}. ${perk.detail}' : perk.title,
+      hint: flipped ? null : 'Tap to peek',
+      child: ExcludeSemantics(
+        child: PressScale(
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onTap,
+            child: Stack(
+              clipBehavior: Clip.none,
+              fit: StackFit.passthrough,
+              children: [
+                card,
+                Positioned(
+                  top: -34,
+                  right: -34,
+                  child: SparkleBurst(trigger: flipped ? perk.title : null, radius: 46),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Step 6: building the plan (labour illusion) ───────────────────────────
 
 class _BuildingStep extends StatefulWidget {
   const _BuildingStep({required this.draft, required this.onDone});
@@ -1113,7 +1354,7 @@ class _BuildRow extends StatelessWidget {
   }
 }
 
-// ─── Step 6: personalised plan ─────────────────────────────────────────────
+// ─── Step 7: personalised plan ─────────────────────────────────────────────
 
 class _PlanStep extends StatefulWidget {
   const _PlanStep({required this.draft, required this.onCreate, required this.onHaveAccount});

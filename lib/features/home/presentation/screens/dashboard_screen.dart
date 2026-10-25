@@ -260,7 +260,8 @@ class _Header extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
-    final alertCount = ref.watch(homeAlertsProvider).length;
+    final alertCount = ref.watch(homeAlertsProvider).length +
+        ref.watch(newResourceCountProvider);
     final profile = ref.watch(userProfileProvider).valueOrNull;
     return Row(
       children: [
@@ -380,6 +381,9 @@ class _Header extends ConsumerWidget {
           borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
       builder: (_) => const _NotificationsSheet(),
     );
+    // The header can be rebuilt/disposed while the sheet is open (tab switch,
+    // sign-out); using `ref` then throws "Cannot use ref after disposed".
+    if (!context.mounted) return;
     // Mark what was shown as seen once the sheet closes — clears the "new
     // match" nudges and unread announcements (standing items like overdue
     // tasks remain until actually resolved).
@@ -477,55 +481,9 @@ final homeAlertsProvider = Provider<List<_HomeAlert>>((ref) {
     ));
   }
 
-  // Option A — personalized "new for you" opportunity/perk nudges. New =
-  // published after the bell was last opened; matched = featured or a strong
-  // personalized score (perks always qualify). Excludes hidden/saved items.
+  // Opportunities & perks are listed one by one in the sheet (see
+  // [notificationResourcesProvider]); only the new ones add to the badge.
   final seen = ref.watch(notificationsSeenProvider);
-  final country = ref.watch(effectiveCountryProvider);
-  final hidden = ref.watch(hiddenResourceIdsProvider).valueOrNull ?? const {};
-  final saved = ref.watch(savedResourceIdsProvider).valueOrNull ?? const {};
-  final resources =
-      ref.watch(visibleResourcesProvider).valueOrNull ?? const [];
-  var newOpps = 0;
-  var newPerks = 0;
-  Resource? firstOpp;
-  Resource? firstPerk;
-  for (final r in resources) {
-    final pub = r.publishedAt ?? r.createdAt;
-    if (pub == null || !pub.isAfter(seen.seenAt)) continue;
-    if (!r.isInActiveFeed || !r.targetsCountry(country)) continue;
-    if (hidden.contains(r.id) || saved.contains(r.id)) continue;
-    if (r.type.isDiscount) {
-      newPerks++;
-      firstPerk ??= r;
-    } else {
-      final score = ref.watch(resourceScoreProvider(r));
-      final matched =
-          r.featured || (score.personalized && score.score >= 60);
-      if (matched) {
-        newOpps++;
-        firstOpp ??= r;
-      }
-    }
-  }
-  if (newOpps > 0) {
-    alerts.add(_HomeAlert(
-      icon: Icons.auto_awesome_rounded,
-      color: AppColors.primary,
-      title: '$newOpps new ${newOpps == 1 ? 'opportunity' : 'opportunities'} for you',
-      subtitle: firstOpp?.title ?? 'Matched to your profile',
-      target: _AlertTarget.opportunities,
-    ));
-  }
-  if (newPerks > 0) {
-    alerts.add(_HomeAlert(
-      icon: Icons.redeem_rounded,
-      color: AppColors.coral,
-      title: '$newPerks new ${newPerks == 1 ? 'perk' : 'perks'} available',
-      subtitle: firstPerk?.brandName ?? 'Fresh student deals',
-      target: _AlertTarget.perks,
-    ));
-  }
 
   // Option B1 — unread in-app announcements (CMS banners on the "announcement"
   // placement). Device-local read state via [notificationsSeenProvider].
@@ -547,6 +505,43 @@ final homeAlertsProvider = Provider<List<_HomeAlert>>((ref) {
   return alerts;
 });
 
+/// Opportunities and perks published for the student's location (profile
+/// country, else the phone's detected country) AFTER they started getting
+/// notifications ([NotificationsSeenState.listSince]), newest first. Items
+/// that were already published before are not listed. Items the student hid
+/// ("not interested") are left out. Listed in the bell sheet.
+final notificationResourcesProvider = Provider<List<Resource>>((ref) {
+  final country = ref.watch(effectiveCountryProvider);
+  final since = ref.watch(notificationsSeenProvider).listSince;
+  final hidden = ref.watch(hiddenResourceIdsProvider).valueOrNull ?? const {};
+  final all = ref.watch(visibleResourcesProvider).valueOrNull ?? const [];
+  final list = all
+      .where((r) => r.isInActiveFeed && r.targetsCountry(country))
+      .where((r) => _isNewResource(r, since))
+      .where((r) => !hidden.contains(r.id))
+      .toList();
+  DateTime key(Resource r) =>
+      r.publishedAt ?? r.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+  list.sort((a, b) => key(b).compareTo(key(a)));
+  return list;
+});
+
+/// Published after [since] (the bell was last opened → "New"; or the
+/// notification start → listed at all).
+bool _isNewResource(Resource r, DateTime since) {
+  final pub = r.publishedAt ?? r.createdAt;
+  return pub != null && pub.isAfter(since);
+}
+
+/// How many listed opportunities/perks are new (for the bell badge).
+final newResourceCountProvider = Provider<int>((ref) {
+  final seenAt = ref.watch(notificationsSeenProvider).seenAt;
+  return ref
+      .watch(notificationResourcesProvider)
+      .where((r) => _isNewResource(r, seenAt))
+      .length;
+});
+
 /// The bell's notification center — a live, tappable digest of what needs
 /// attention. Each row deep-links to the relevant screen.
 class _NotificationsSheet extends ConsumerWidget {
@@ -556,6 +551,20 @@ class _NotificationsSheet extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final alerts = ref.watch(homeAlertsProvider);
+    final resources = ref.watch(notificationResourcesProvider);
+    final newCount = alerts.length + ref.watch(newResourceCountProvider);
+    final seenAt = ref.watch(notificationsSeenProvider).seenAt;
+    final country = ref.watch(effectiveCountryProvider);
+    final rowColor = theme.brightness == Brightness.dark
+        ? AppColors.darkSurfaceAlt
+        : AppColors.lavenderSoft;
+
+    void open(Resource r) {
+      Navigator.pop(context);
+      Navigator.of(context).push(MaterialPageRoute(
+          settings: const RouteSettings(name: 'Resource Detail'),
+          builder: (_) => ResourceDetailScreen(resource: r)));
+    }
 
     void go(_HomeAlert a) {
       Navigator.pop(context);
@@ -580,116 +589,188 @@ class _NotificationsSheet extends ConsumerWidget {
       }
     }
 
-    return SafeArea(
-      top: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 14),
-                decoration: BoxDecoration(
-                    color: theme.dividerColor,
-                    borderRadius: BorderRadius.circular(4)),
+    Widget row({
+      required IconData icon,
+      required Color color,
+      required String title,
+      required String subtitle,
+      required VoidCallback onTap,
+      bool isNew = false,
+    }) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Material(
+          color: rowColor,
+          borderRadius: BorderRadius.circular(16),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(icon, color: color, size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w700, fontSize: 14.5)),
+                        const SizedBox(height: 1),
+                        Text(subtitle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall
+                                ?.copyWith(color: theme.hintColor)),
+                      ],
+                    ),
+                  ),
+                  if (isNew)
+                    Container(
+                      margin: const EdgeInsets.only(left: 8),
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text('New',
+                          style: theme.textTheme.labelSmall?.copyWith(
+                              color: Colors.white, fontWeight: FontWeight.w700)),
+                    )
+                  else
+                    Icon(Icons.chevron_right_rounded, color: theme.hintColor),
+                ],
               ),
             ),
-            Row(
-              children: [
-                Text('Notifications', style: theme.textTheme.titleLarge),
-                const Spacer(),
-                if (alerts.isNotEmpty)
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text('${alerts.length} new',
-                        style: theme.textTheme.labelMedium?.copyWith(
-                            color: AppColors.primary,
-                            fontWeight: FontWeight.w700)),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            if (alerts.isEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Row(
-                  children: [
-                    const Icon(Icons.check_circle_rounded,
-                        color: AppColors.success),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        "You're all caught up — no overdue tasks, exams or "
-                        'classes needing attention right now.',
-                        style: theme.textTheme.bodyMedium
-                            ?.copyWith(color: theme.hintColor),
-                      ),
-                    ),
-                  ],
+          ),
+        ),
+      );
+    }
+
+    final hasCountry =
+        country != null && country.trim().isNotEmpty && country.trim().toLowerCase() != 'global';
+
+    return SafeArea(
+      top: false,
+      child: ConstrainedBox(
+        // Many perks can be published: cap the sheet and let the list scroll.
+        constraints:
+            BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.85),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 14),
+                  decoration: BoxDecoration(
+                      color: theme.dividerColor,
+                      borderRadius: BorderRadius.circular(4)),
                 ),
-              )
-            else
-              for (final a in alerts)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: Material(
-                    color: theme.brightness == Brightness.dark
-                        ? AppColors.darkSurfaceAlt
-                        : AppColors.lavenderSoft,
-                    borderRadius: BorderRadius.circular(16),
-                    clipBehavior: Clip.antiAlias,
-                    child: InkWell(
-                      onTap: () => go(a),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
+              ),
+              Row(
+                children: [
+                  Text('Notifications', style: theme.textTheme.titleLarge),
+                  const Spacer(),
+                  if (newCount > 0)
+                    Container(
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text('$newCount new',
+                          style: theme.textTheme.labelMedium?.copyWith(
+                              color: AppColors.primary,
+                              fontWeight: FontWeight.w700)),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  padding: EdgeInsets.zero,
+                  children: [
+                    if (alerts.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4, bottom: 12),
                         child: Row(
                           children: [
-                            Container(
-                              width: 40,
-                              height: 40,
-                              decoration: BoxDecoration(
-                                color: a.color.withValues(alpha: 0.14),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Icon(a.icon, color: a.color, size: 20),
-                            ),
+                            const Icon(Icons.check_circle_rounded,
+                                color: AppColors.success),
                             const SizedBox(width: 12),
                             Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(a.title,
-                                      style: theme.textTheme.titleMedium
-                                          ?.copyWith(
-                                              fontWeight: FontWeight.w700,
-                                              fontSize: 14.5)),
-                                  const SizedBox(height: 1),
-                                  Text(a.subtitle,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: theme.textTheme.bodySmall
-                                          ?.copyWith(color: theme.hintColor)),
-                                ],
+                              child: Text(
+                                "You're all caught up — no overdue tasks, exams or "
+                                'classes needing attention right now.',
+                                style: theme.textTheme.bodyMedium
+                                    ?.copyWith(color: theme.hintColor),
                               ),
                             ),
-                            Icon(Icons.chevron_right_rounded,
-                                color: theme.hintColor),
                           ],
                         ),
+                      )
+                    else
+                      for (final a in alerts)
+                        row(
+                          icon: a.icon,
+                          color: a.color,
+                          title: a.title,
+                          subtitle: a.subtitle,
+                          onTap: () => go(a),
+                        ),
+                    if (resources.isNotEmpty) ...[
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6, bottom: 10),
+                        child: Text(
+                          hasCountry
+                              ? 'Opportunities & perks · ${country.trim()}'
+                              : 'Opportunities & perks',
+                          style: theme.textTheme.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w700),
+                        ),
                       ),
-                    ),
-                  ),
+                      for (final r in resources)
+                        row(
+                          icon: r.type.icon,
+                          color: r.type.color,
+                          title: r.title,
+                          subtitle: [
+                            r.type.label,
+                            if ((r.type.isDiscount ? r.brandName : r.organization)
+                                .trim()
+                                .isNotEmpty)
+                              (r.type.isDiscount ? r.brandName : r.organization)
+                                  .trim(),
+                          ].join(' · '),
+                          isNew: _isNewResource(r, seenAt),
+                          onTap: () => open(r),
+                        ),
+                    ],
+                  ],
                 ),
-          ],
+              ),
+            ],
+          ),
         ),
       ),
     );

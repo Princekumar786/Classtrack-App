@@ -169,9 +169,10 @@ class TopicDetailScreen extends ConsumerWidget {
       bottomNavigationBar: _Actions(
         status: topic.status,
         onComplete: () async {
+          final analytics = ref.read(analyticsProvider);
           await controller.setTopicStatus(
               planId, topicId, TopicStatus.completed);
-          ref.read(analyticsProvider).plannerTopicCompleted();
+          analytics.plannerTopicCompleted();
           if (context.mounted) Navigator.of(context).maybePop();
         },
         onLearning: () => controller.setTopicStatus(
@@ -221,8 +222,9 @@ class TopicDetailScreen extends ConsumerWidget {
     );
     if (minutes == null || minutes <= 0) return;
     final controller = ref.read(learningPlansProvider.notifier);
+    final analytics = ref.read(analyticsProvider);
     await controller.logTopicTime(planId, topicId, minutes);
-    ref.read(analyticsProvider).plannerFocusLogged(minutes);
+    analytics.plannerFocusLogged(minutes);
     if (!context.mounted) return;
     // Offer to recalibrate future estimates from the student's real pace.
     final plan = ref.read(learningPlanByIdProvider(planId));
@@ -237,7 +239,7 @@ class TopicDetailScreen extends ConsumerWidget {
                 onPressed: () async {
                   final f = await controller.recalibrateRemaining(planId);
                   if (f != null) {
-                    ref.read(analyticsProvider).plannerRecalibrated(f);
+                    analytics.plannerRecalibrated(f);
                   }
                   if (context.mounted && f != null) {
                     ScaffoldMessenger.of(context).showSnackBar(

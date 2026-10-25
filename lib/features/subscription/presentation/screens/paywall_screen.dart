@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
-import 'package:url_launcher/url_launcher.dart';
+import '../../../../core/utils/url_launcher_util.dart';
 
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/providers/firebase_providers.dart';
@@ -232,7 +232,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   }
 
   Future<void> _openUrl(String url) async {
-    await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    await safeLaunchUri(Uri.parse(url));
   }
 
   bool get _plansReady =>

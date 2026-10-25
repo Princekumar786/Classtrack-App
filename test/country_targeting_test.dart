@@ -124,7 +124,9 @@ void main() {
       c.listen(countryDetectionSyncProvider, (_, __) {});
       c.listen(pushCountryTopicSyncProvider, (_, __) {});
       c.listen(opportunitiesFeedProvider, (_, __) {});
-      await Future<void>.delayed(const Duration(milliseconds: 50));
+      // Detection → profile write → stream → topic hops a few async gaps;
+      // 50ms was flaky on a busy machine.
+      await Future<void>.delayed(const Duration(milliseconds: 500));
       return (c, db, push);
     }
 

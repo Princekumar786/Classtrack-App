@@ -3,7 +3,7 @@
 A short, plain-English guide to this project. No deep code knowledge needed.
 
 ## What the app is
-A student app (Android, iOS and web) for tracking attendance, class timetables, exams, grades, notes, habits and expenses, plus an AI assistant. Version: 1.0.59.
+A student app (Android, iOS and web) for tracking attendance, class timetables, exams, grades, notes, habits and expenses, plus an AI assistant. Version: 1.0.64.
 
 ## The 3 big pieces
 | Piece | What it is | Where |
@@ -19,7 +19,7 @@ A student app (Android, iOS and web) for tracking attendance, class timetables, 
 
 ## Backend functions (`functions/index.js`)
 - AI: `parseSchedule` (reads a timetable photo, PDF or text) and `chat` (the AI assistant). Both use Google Gemini.
-- Payments: `revenueCatWebhook` and `reconcileEntitlement*` turn "Pro" on or off after a purchase.
+- Payments: `revenueCatWebhook` and `reconcileEntitlement*` turn "Pro" on or off after a purchase, expiry or refund. Plans: Monthly, Quarterly, Annual, and a one-time Lifetime.
 - Users: `deleteAccount`, referrals, user roles.
 - Admin/CMS: publishing opportunities, notifications, link checks, analytics.
 
@@ -29,18 +29,92 @@ A student app (Android, iOS and web) for tracking attendance, class timetables, 
    - If Gemini is overloaded (too many students at once), it waits a short random time before the next try, gives up after about 45 seconds and says "busy". The app then tries again by itself up to 2 times (after 3–8 s, then 6–16 s). Code: `functions/aiGenerate.js`, `functions/aiResilience.js`.
    - `parseSchedule` can run up to ~1,200 imports at the same time (150 servers × 8 each; capped by Google's us-central1 CPU quota). The real limit is the Gemini quota of the Google project.
 3. Free users get a limited number of AI uses. Pro users get many more.
+4. The AI only helps with studies and the app. It never writes code: the prompt says so, and `functions/chatGuard.js` checks every reply and swaps any code for a short "I can't write code" message.
+5. Deleting from chat always shows a Delete / Cancel card. Typing "yes" or "no" answers the card directly (no AI call), and the result is saved in the chat history so the AI doesn't ask again.
 
 ## Safety notes
 - `functions/serviceAccount.json` is a secret key. It is in `.gitignore`. Never commit it.
 - `node_modules/` (downloaded libraries) is also ignored.
+- A PostHog personal API key is stored in the Windows user setting `POSTHOG_PERSONAL_API_KEY` (project 276379) for reading exceptions. It was pasted in chat on 2026-10-23, so revoke it and make a new one.
 
 ## Where the code lives
-- `origin`: github.com/killersbEE08/Classtrack-App (the default for `git push`)
+- `origin`: github.com/Princekumar786/Classtrack-App (the default for `git push`)
 - `playstore`: github.com/killersbEE08/classtrack-play-store (push with `git push playstore main`)
 
 ---
 
 ## Change log (newest first)
+
+### 2026-10-25 - Project map for AI assistants
+- **What:** New `AGENTS.md` at the project root. It lists where everything lives (folders, key files per feature, backend functions, Firestore collections), the free/Pro limits, commands, and the rules that are easy to break. `.kiro/steering/project-map.md` loads it into Kiro automatically for every chat.
+- **Why:** So an AI can start working straight away without reading the whole codebase.
+- **Action needed:** None. Update `AGENTS.md` when big pieces move or get added. Other AI tools (Copilot, Cursor, Codex) also read `AGENTS.md`.
+
+### 2026-10-25 - New students now really get 2 free timetable scans
+- **What:** Import opened from Schedule, Subjects or Quick add (+) showed the upgrade prompt before the first scan, because the app checked for Pro itself (`requirePro` in `import_screen.dart`). Only the Attendance and Home buttons skipped that check. The app-side check is removed. The server (`parseSchedule`) counts the 2 free scans and shows the upgrade prompt only once both are used. The Import screen now says "Your first 2 scans are free", and the Pro list no longer says "one free scan".
+- **Why:** PostHog showed new users getting the upgrade prompt as soon as they tapped Import, before using any free scans.
+- **Action needed:** Upload `build/app/outputs/bundle/release/app-release.aab` (1.0.64, build 68, with the RevenueCat key; Crashlytics symbols uploaded) instead of build 67. No backend change: the server already allowed 2 scans.
+
+### 2026-10-25 - Faster release builds
+- **What:** (1) Turned off the extra "lint" check on release builds (`android/app/build.gradle.kts`). It added about 6 minutes to every build. (2) Gradle settings (`android/gradle.properties`): idle Gradle helper programs now close after 30 minutes, and the Kotlin helper's memory is capped. (3) `tool/build_release.ps1` now warns when the PC has less than 4 GB of free memory, and prints how long the build took.
+- **Why:** Builds took 35–45 minutes. The main cause was low memory: old idle Gradle helpers held about 12 GB, so Windows had to swap to disk.
+- **Action needed:** Before a build, close Chrome tabs, `flutter run` sessions and emulators. Restarting Windows Terminal also frees about 5 GB. Optional (needs admin): add a Windows Defender exclusion for the project folder, `C:\src\flutter` and `%USERPROFILE%\.gradle`.
+
+### 2026-10-25 - Bell only shows newly published perks (build 67)
+- **What:** The bell now lists only opportunities and perks published AFTER the student started using this version on their phone. Items that were already live before are not announced. Saved as `notif_list_since` (per account, on the phone) in `notifications_seen_provider.dart`. Also made one slow test wait longer (`country_targeting_test.dart`).
+- **Why:** Students should be told only when you publish something new, not see the whole old catalogue as "notifications".
+- **Action needed:** Upload `build/app/outputs/bundle/release/app-release.aab` (81 MB, 1.0.64, build 67, with the RevenueCat key; Crashlytics symbols uploaded) instead of build 66. Phone pushes still go out only when you send one from CMS → Notifications. Publishing an item doesn't send a push by itself.
+
+### 2026-10-25 - v1.0.64: perks in Notifications, ask for notifications once, smoother screen changes
+- **What:** (1) The bell (Notifications) now lists every published opportunity and perk for the student's country (profile country, or the phone's detected one), newest first. New ones get a "New" tag and count in the red badge. Tap one to open it. Code: `notificationResourcesProvider` in `dashboard_screen.dart`. (2) The phone's "Allow notifications" pop-up now shows only once. If notifications are already allowed, the Enable buttons don't ask again. Tapping Allow also switches reminders on by itself (`autoEnableRemindersProvider` in `reminder_scheduler.dart`). The "Alarms & reminders" settings page opens at most once. (3) Onboarding → sign-up → Home now soft-fade with a small zoom instead of sliding (`_stage` in `app_router.dart`). The home tour's steps fade and shrink smoothly as you swipe.
+- **Why:** Students should see all perks near them. The app kept asking for notification permission even after "Allow", and changes between big screens felt sudden.
+- **Action needed:** Upload `build/app/outputs/bundle/release/app-release.aab` (81 MB, 1.0.64, build 66, with the RevenueCat key) to Play Console. Crashlytics symbols are uploaded. Also fixed: Android always said "permission granted" even after "Don't allow".
+
+### 2026-10-25 - New "Student perks" page in onboarding
+- **What:** A new page after "Pick your sidekick" and before "Building your plan". A pink-purple ticket says "Unlocking…" then "Unlocked" with sparkles, and deal stickers (laptops, software, shopping, streaming) fly out of it. Below it are 4 cards (deals, scholarships, internships, hackathons) that flip over when tapped, and the mascot reacts to each one. Code: `_PerksStep` in `onboarding_screen.dart`, `PerksHero` in `onboarding_visuals.dart`. Back from the plan now returns to this page.
+- **Why:** To show new students the Perks and Opportunities they get before we ask them to sign up.
+- **Action needed:** None. It ships with the next app build. All animations turn off when the phone's "reduce motion" setting is on.
+
+### 2026-10-23 - AI answers "can I change the app language?"
+- **What:** Added two rules to the AI instructions (`CHAT_SYSTEM` in `functions/index.js`). (1) If asked to change the app language, the AI says the app is English-only for now, but the student can chat with it in any language. (2) The AI always replies in the language the student writes in, and keeps the names of screens and buttons in English so they can find them.
+- **Why:** Students were asking to use the app in their own language.
+- **Action needed:** None. Only the `chat` function was deployed on 2026-10-23. No new app build needed.
+
+### 2026-10-23 - Cut PostHog exception noise and fixed real errors (v1.0.63)
+- **What:** Checked the last 7 days of PostHog exceptions (about 1,300). (1) About 916 came from a harmless Firestore "transaction cancel" bug that fired on every app start. The profile check (`ensureProfileDoc`) and the chat counter no longer use transactions, and that error is no longer reported. (2) About 76 "permission-denied" errors when signing out are no longer reported. (3) The profile check no longer reports each offline retry, only the final failure. (4) Fixed "Cannot use ref after the widget was disposed" on Home (notifications sheet) and in the Planner (create plan, day/topic done, delete plan). (5) The link-opening crash (92 events) was already fixed in 1.0.62.
+- **Why:** The real bugs were hidden under the noise.
+- **Not fixed yet:** "Bad state: No element" when pressing Back (about 5 a week). It comes from inside the go_router library, so the fix is a library upgrade later. Broken logo images (404s) are tagged `transient` and are harmless.
+- **Action needed:** Upload the 1.0.63 .aab (build 65) instead of 1.0.62. In PostHog, filter by `error_kind = defect` to see only real bugs.
+
+### 2026-10-23 - v1.0.62 release build
+- **What:** Built `build/app/outputs/bundle/release/app-release.aab` (77.4 MB): version 1.0.62, build 64, with the RevenueCat key. Includes the link-crash fix and the AI fixes below. Crashlytics symbols were uploaded.
+- **Action needed:** None. Superseded by the 1.0.63 build; the backend is deployed.
+
+### 2026-10-23 - AI: study topics only, no code, and no more "say yes to delete" loop
+- **What:** (1) The AI prompt now forbids writing code, essays, emails, stories and so on. It can still explain ideas in plain words. A new check (`functions/chatGuard.js`, 7 tests) replaces any reply that has code in it with a refusal. (2) After you confirm a delete, the app now tells the AI that it's done. Typing "yes"/"no" answers the Delete card directly, and the prompt says the app (not the AI) asks for confirmation. Tests added in `test/chat_flow_test.dart` and `test/chat_actions_logic_test.dart`.
+- **Why:** Students could use the AI as a free coding bot. Also, the AI never heard that a delete had finished, so it kept asking "say yes to delete" for items that were already gone.
+- **Action needed:** Ship the 1.0.63 app. The backend was deployed on 2026-10-23 (the first try timed out while loading the code; `$env:FUNCTIONS_DISCOVERY_TIMEOUT='120'` before `npm run deploy` fixed it).
+
+### 2026-10-23 - Fixed crash when tapping a link on a phone with no browser
+- **What:** New `safeLaunchUri` in `lib/core/utils/url_launcher_util.dart` opens links without ever crashing. If no browser app exists, web links open inside the app instead, and if nothing works the user sees "Could not open". All link buttons (settings, paywall, privacy, Pro status) now use it. The Android manifest also lists `http`, `mailto` and `tel` links, not just `https`.
+- **Why:** Crashlytics showed 56 crashes (`ACTIVITY_NOT_FOUND`) from one Samsung user who probably has Chrome/Samsung Internet turned off. Android throws an error in that case instead of saying "no".
+- **Action needed:** None — included in the 1.0.62 build.
+
+
+### 2026-10-20 - Refunded lifetime purchases now lose Pro; AI knows about Lifetime
+- **What:** (1) When a purchase is refunded, RevenueCat sends a "CANCELLATION" with reason `CUSTOMER_SUPPORT`. The webhook now turns Pro off for that event (`isRefundCancellation` in `functions/entitlement.js`, plus 2 tests). Before, all cancellations were ignored, so a refunded lifetime buyer kept Pro forever. A refunded monthly/annual plan still runs until its period end, same as before. (2) The AI guide now lists Lifetime as a one-time plan with no renewals.
+- **Why:** You're adding a lifetime plan (`classtrack_pro_lifetime`). The app already shows it; only the backend needed this.
+- **Action needed:** None. The backend was deployed on 2026-10-20. Lifetime itself is on hold: nothing is created in Play Console or RevenueCat yet, so no student can buy it. When you launch it, create the product and add it to the `default` offering. No new .aab needed.
+
+### 2026-10-20 - New pastel Google Play screenshots (phone + landscape) and feature graphic
+- **What:** Made 8 new store images in two sizes: phone (1080×1920) in `play-store-assets/store-2026-v2/final/phone/` and landscape (1920×1080, also fine for tablets) in `.../final/wide/`, plus a new 1024×500 feature graphic. They use real app screens, soft pastel colours, tilted phones and the mascot. Design file: `play-store-assets/store-2026-v2/classtrack-play-assets-v2.html`.
+- **Why:** Brighter, more eye-catching listing images to get more installs. The screen-capture tool now also shows emoji and symbols (👋, ≥) properly instead of empty boxes, and captures the Import and Exams screens.
+- **Action needed:** Upload them in Play Console → Store listing. To rebuild: `flutter test tool/store_capture/capture_test.dart --update-goldens`, then `powershell -ExecutionPolicy Bypass -File tool/store_capture/render_v2.ps1`.
+
+### 2026-10-20 - Updated GitHub address (remote URL) for `origin`
+- **What:** Changed the saved web address Git pushes to from `github.com/killersbEE08/Classtrack-App` to `github.com/Princekumar786/Classtrack-App`. A "remote URL" is just the online location where the code is stored.
+- **Why:** GitHub reported the repo moved to the new address. The old one only worked via an automatic forward that isn't guaranteed to last.
+- **Action needed:** None. `git push` keeps working as before.
 
 ### 2026-10-20 - Pushed all pending work to GitHub
 - **What:** Committed all saved-but-not-sent changes (app, backend, store text, tests, new Notes/Tasks files) and pushed them to `origin` (github.com/killersbEE08/Classtrack-App) on the `main` branch.

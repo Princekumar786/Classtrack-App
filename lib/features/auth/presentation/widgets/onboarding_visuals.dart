@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -975,6 +976,386 @@ class FocusWindowBar extends StatelessWidget {
       ],
     );
   }
+}
+
+// ─── Perks hero ────────────────────────────────────────────────────────────
+
+/// The perks reveal: a locked "student perks" pass unlocks with a sparkle
+/// burst, then deal stickers fly out from behind it and settle into a gentle
+/// float. Drawn on a fixed 360×300 canvas and scaled to fit, like
+/// [WelcomeHero]. Under reduce motion it renders already unlocked and still.
+class PerksHero extends StatefulWidget {
+  const PerksHero({super.key});
+
+  @override
+  State<PerksHero> createState() => _PerksHeroState();
+}
+
+class _PerksHeroState extends State<PerksHero> {
+  /// The pass unlocks once the page slide and its own pop-in have finished.
+  static const _unlockMs = 700;
+
+  Timer? _timer;
+  bool _started = false;
+  bool _unlocked = false;
+
+  static const _stickers = [
+    _PerkSticker(Icons.laptop_mac_rounded, 'Laptops', AppColors.info, Alignment(-1, -0.92), -0.07),
+    _PerkSticker(Icons.apps_rounded, 'Software', AppColors.primary, Alignment(1, -1), 0.06),
+    _PerkSticker(Icons.shopping_bag_rounded, 'Shopping', Color(0xFFEC4899), Alignment(-0.92, 1), 0.06),
+    _PerkSticker(Icons.movie_rounded, 'Streaming', AppColors.coral, Alignment(1, 0.92), -0.06),
+  ];
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_started) return;
+    _started = true;
+    if (!motionOn(context)) {
+      _unlocked = true;
+      return;
+    }
+    _timer = Timer(const Duration(milliseconds: _unlockMs), () {
+      if (mounted) setState(() => _unlocked = true);
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final motion = motionOn(context);
+    const pink = Color(0xFFEC4899);
+
+    Widget halo(double size, Color c, double alpha, int delay) {
+      final w = Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(shape: BoxShape.circle, color: c.withValues(alpha: alpha)),
+      );
+      return motion
+          ? RepaintBoundary(child: w)
+              .animate(onPlay: (c) => c.repeat(reverse: true))
+              .scaleXY(begin: 0.92, end: 1.06, delay: delay.ms, duration: 2400.ms, curve: Curves.easeInOut)
+          : w;
+    }
+
+    Widget sparkle(double size, Color c, int delay) {
+      final w = Icon(Icons.auto_awesome, size: size, color: c);
+      return motion
+          ? RepaintBoundary(child: w)
+              .animate(onPlay: (c) => c.repeat(reverse: true))
+              .fade(begin: 0.2, end: 1, delay: delay.ms, duration: 1300.ms)
+              .scaleXY(begin: 0.8, end: 1.15, duration: 1300.ms)
+          : w;
+    }
+
+    /// Flies out from the pass (the canvas centre) with a little spin, then
+    /// bobs. Only translation/scale of a cached layer, so it stays cheap.
+    Widget dealt(Widget child, Alignment at, int i, {double spin = 0.1}) {
+      if (!motion) return Align(alignment: at, child: child);
+      final delay = _unlockMs + 80 + 90 * i;
+      final flown = RepaintBoundary(child: child)
+          .animate()
+          .fadeIn(delay: delay.ms, duration: 180.ms)
+          .move(
+            delay: delay.ms,
+            begin: Offset(-at.x * 130, -at.y * 100),
+            end: Offset.zero,
+            duration: 640.ms,
+            curve: Curves.easeOutBack,
+          )
+          .scaleXY(delay: delay.ms, begin: 0.3, end: 1, duration: 520.ms, curve: Curves.easeOutCubic)
+          .rotate(delay: delay.ms, begin: i.isEven ? -spin : spin, end: 0, duration: 640.ms, curve: Curves.easeOutCubic);
+      return Align(
+        alignment: at,
+        child: flown.float(context, dy: 4 + (i % 2) * 1.5, ms: 2600 + 300 * i),
+      );
+    }
+
+    return Semantics(
+      image: true,
+      label: 'Student perks pass, unlocked, surrounded by student prices on laptops, software, shopping and streaming',
+      child: ExcludeSemantics(
+        child: RepaintBoundary(
+          child: FittedBox(
+            child: SizedBox(
+              width: 360,
+              height: 300,
+              child: Stack(
+                alignment: Alignment.center,
+                clipBehavior: Clip.none,
+                children: [
+                  halo(260, pink, 0.06, 0),
+                  halo(200, AppColors.primary, 0.07, 500),
+                  // Stickers sit behind the pass so they appear to slide out of it.
+                  for (final (i, s) in _stickers.indexed)
+                    dealt(Transform.rotate(angle: s.tilt, child: _PerkStickerChip(sticker: s)), s.at, i),
+                  dealt(const _PerkBubble(icon: Icons.school_rounded, color: AppColors.primary), const Alignment(-1, 0.05), 4,
+                      spin: 0.2),
+                  dealt(const _PerkBubble(icon: Icons.work_outline_rounded, color: AppColors.success), const Alignment(1, -0.05), 5,
+                      spin: 0.2),
+                  _PerksPass(unlocked: _unlocked).pop(context, delayMs: 60),
+                  SparkleBurst(trigger: _unlocked ? 'perks' : null, radius: 130),
+                  Positioned(top: 52, left: 120, child: sparkle(14, AppColors.accent, 0)),
+                  Positioned(bottom: 50, right: 116, child: sparkle(16, pink, 500)),
+                  Positioned(top: 70, right: 96, child: sparkle(11, AppColors.primaryLight, 900)),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PerkSticker {
+  const _PerkSticker(this.icon, this.label, this.color, this.at, this.tilt);
+  final IconData icon;
+  final String label;
+  final Color color;
+  final Alignment at;
+
+  /// Resting tilt in radians, so the stickers look hand-placed.
+  final double tilt;
+}
+
+class _PerkStickerChip extends StatelessWidget {
+  const _PerkStickerChip({required this.sticker});
+  final _PerkSticker sticker;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final c = sticker.color;
+    return _HeroCard(
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Container(
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: LinearGradient(colors: [Color.lerp(c, Colors.white, 0.3)!, c]),
+          ),
+          child: Icon(sticker.icon, color: Colors.white, size: 18),
+        ),
+        const SizedBox(width: 8),
+        Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+          Text(sticker.label, style: t.labelLarge),
+          // The theme's success green is too light for small text on white.
+          Text('Student price',
+              style: t.bodySmall?.copyWith(
+                color: Theme.of(context).brightness == Brightness.dark ? AppColors.success : const Color(0xFF15803D),
+                fontWeight: FontWeight.w600,
+              )),
+        ]),
+      ]),
+    );
+  }
+}
+
+/// A round icon-only sticker for the non-deal perks (scholarships, internships).
+class _PerkBubble extends StatelessWidget {
+  const _PerkBubble({required this.icon, required this.color});
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      width: 46,
+      height: 46,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: theme.cardTheme.color ?? theme.colorScheme.surface,
+        border: Border.all(color: color.withValues(alpha: 0.25), width: 1.5),
+        boxShadow: AppColors.softShadow(opacity: 0.14, blur: 18),
+      ),
+      child: Icon(icon, color: color, size: 22),
+    );
+  }
+}
+
+/// The coupon-style "student perks" pass in the middle of [PerksHero]. It
+/// flips from "Unlocking…" to "Unlocked" when [unlocked] turns true.
+class _PerksPass extends StatelessWidget {
+  const _PerksPass({required this.unlocked});
+  final bool unlocked;
+
+  static const _w = 244.0;
+  static const _h = 140.0;
+
+  /// Height of the perforation line (and the side notches) from the top.
+  static const _tearY = 98.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final motion = motionOn(context);
+
+    Widget gift = Container(
+      width: 34,
+      height: 34,
+      decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withValues(alpha: 0.2)),
+      child: const Icon(Icons.redeem_rounded, color: Colors.white, size: 19),
+    );
+    if (motion && unlocked) {
+      // A little "there's something in here" wiggle every few seconds.
+      gift = RepaintBoundary(child: gift)
+          .animate(onPlay: (c) => c.repeat())
+          .shake(delay: 2400.ms, duration: 650.ms, hz: 4, rotation: 0.14);
+    }
+
+    Widget face = Container(
+      width: _w,
+      height: _h,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFF472B6), AppColors.primary, AppColors.primaryDark],
+        ),
+      ),
+      child: Stack(children: [
+        Positioned(right: -36, top: -46, child: StudentIdCard._ring(140, 0.10)),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                gift,
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text('STUDENT PERKS',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelMedium?.copyWith(color: Colors.white70, letterSpacing: 1.4)),
+                ),
+              ]),
+              const SizedBox(height: 10),
+              // "Unlocking…" rolls up and out as "Unlocked" rolls in from below.
+              ClipRect(
+                child: AnimatedSwitcher(
+                  duration: motion ? const Duration(milliseconds: 460) : Duration.zero,
+                  switchInCurve: Curves.easeOutBack,
+                  switchOutCurve: Curves.easeInCubic,
+                  layoutBuilder: (current, previous) => Stack(
+                    alignment: Alignment.centerLeft,
+                    children: [...previous, if (current != null) current],
+                  ),
+                  transitionBuilder: (c, a) {
+                    final incoming = c.key == ValueKey(unlocked);
+                    return SlideTransition(
+                      position: Tween(begin: Offset(0, incoming ? 0.9 : -0.9), end: Offset.zero).animate(a),
+                      child: FadeTransition(opacity: a, child: c),
+                    );
+                  },
+                  child: Row(
+                    key: ValueKey(unlocked),
+                    children: [
+                      Icon(unlocked ? Icons.lock_open_rounded : Icons.lock_rounded, color: Colors.white, size: 22),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(unlocked ? 'Unlocked' : 'Unlocking…',
+                              style: theme.textTheme.headlineSmall?.copyWith(color: Colors.white)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const Spacer(),
+              // Perforation.
+              Row(children: [
+                for (var i = 0; i < 16; i++)
+                  Expanded(
+                    child: Container(
+                      height: 2,
+                      margin: const EdgeInsets.symmetric(horizontal: 2),
+                      color: Colors.white.withValues(alpha: 0.28),
+                    ),
+                  ),
+              ]),
+              SizedBox(
+                height: _h - _tearY - 1,
+                child: Center(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text('Deals · Scholarships · Internships',
+                        maxLines: 1,
+                        style: theme.textTheme.bodySmall?.copyWith(color: Colors.white, fontWeight: FontWeight.w600)),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ]),
+    );
+
+    if (motion) {
+      face = SweepShimmer(
+        delay: const Duration(milliseconds: 1500),
+        every: const Duration(seconds: 6),
+        duration: const Duration(milliseconds: 1200),
+        color: Colors.white.withValues(alpha: 0.35),
+        child: face,
+      );
+    }
+
+    // The shadow is painted from the same ticket path, so it follows the
+    // notches (and looks the same in tests, unlike PhysicalShape).
+    const clipper = _TicketClipper(radius: 22, notch: 11, notchY: _tearY);
+    return RepaintBoundary(
+      child: CustomPaint(
+        painter: const _TicketShadowPainter(clipper),
+        child: ClipPath(clipper: clipper, child: face),
+      ),
+    );
+  }
+}
+
+class _TicketShadowPainter extends CustomPainter {
+  const _TicketShadowPainter(this.clipper);
+  final _TicketClipper clipper;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawShadow(clipper.getClip(size), AppColors.primary.withValues(alpha: 0.7), 12, false);
+  }
+
+  @override
+  bool shouldRepaint(_TicketShadowPainter old) => old.clipper.shouldReclip(clipper);
+}
+
+/// A rounded rectangle with a half-circle bitten out of each side at [notchY].
+class _TicketClipper extends CustomClipper<Path> {
+  const _TicketClipper({required this.radius, required this.notch, required this.notchY});
+  final double radius;
+  final double notch;
+  final double notchY;
+
+  @override
+  Path getClip(Size size) {
+    final card = Path()..addRRect(RRect.fromRectAndRadius(Offset.zero & size, Radius.circular(radius)));
+    final bites = Path()
+      ..addOval(Rect.fromCircle(center: Offset(0, notchY), radius: notch))
+      ..addOval(Rect.fromCircle(center: Offset(size.width, notchY), radius: notch));
+    return Path.combine(PathOperation.difference, card, bites);
+  }
+
+  @override
+  bool shouldReclip(_TicketClipper old) => old.radius != radius || old.notch != notch || old.notchY != notchY;
 }
 
 // ─── Sparkle burst ─────────────────────────────────────────────────────────

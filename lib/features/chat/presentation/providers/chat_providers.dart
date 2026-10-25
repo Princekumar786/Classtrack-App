@@ -641,6 +641,22 @@ class ChatController extends StateNotifier<ChatState> {
       pdfName: pdf != null ? (pdfName ?? 'timetable.pdf') : null,
     ));
 
+    // A delete card is waiting and the student answered it in words ("yes",
+    // "no"). Act on the card directly — no AI call, so the AI can't re-ask
+    // or re-emit the same delete (the old "say yes to delete" loop).
+    final openCard = image == null && pdf == null ? _openPendingCard() : null;
+    if (openCard != null) {
+      final answer = parseConfirmationReply(trimmed);
+      if (answer == true) {
+        await confirmPendingActions(openCard, userText: trimmed);
+        return;
+      }
+      if (answer == false) {
+        cancelPendingActions(openCard, userText: trimmed);
+        return;
+      }
+    }
+
     // Feature discovery: the AI assistant has now been tried.
     _ref.read(featureUsageProvider.notifier).markUsed(FeatureId.aiAssistant);
     final hasAttachment = image != null || pdf != null;
@@ -844,10 +860,18 @@ class ChatController extends StateNotifier<ChatState> {
       // Store the CLEANED, user-visible reply as the model turn (see the note
       // where `reply` is fetched above). This keeps the replayed transcript
       // free of stale action/schedule JSON so multi-turn chats stay accurate.
+      // For a pending delete, say exactly what the card is waiting on, so the
+      // AI knows the app is handling the confirmation (not the AI).
       _history.add({
         'role': 'model',
         'parts': [
-          {'text': finalText}
+          {
+            'text': hasPending
+                ? 'I showed a Delete / Cancel card for '
+                    '${_describeDeletions(pendingDeletes)}. Nothing is deleted '
+                    'until the student taps Delete.'
+                : finalText
+          }
         ]
       });
       _append(ChatMessage(
@@ -938,27 +962,61 @@ class ChatController extends StateNotifier<ChatState> {
 
   /// Runs the destructive actions the user explicitly confirmed on [message],
   /// then clears the pending state on that message and reports what changed.
-  Future<void> confirmPendingActions(ChatMessage message) async {
+  ///
+  /// [userText] is what the student typed when they confirmed by chat ("yes")
+  /// instead of tapping the card. Either way the confirmation AND the result
+  /// are written into the AI history: before, the AI never learned the delete
+  /// had happened, so on the next turn it asked "say yes to delete" again for
+  /// an item that was already gone.
+  Future<void> confirmPendingActions(ChatMessage message,
+      {String? userText}) async {
     final actions = message.pendingActions;
     if (actions == null || actions.isEmpty) return;
+    final summary = message.pendingSummary ?? _describeDeletions(actions);
     _clearPending(message);
     final outcome = await _executeActions(actions);
-    _append(ChatMessage(
-      role: ChatRole.assistant,
-      text: outcome.succeeded > 0
-          ? 'Done — deleted ${outcome.succeeded} item${outcome.succeeded == 1 ? '' : 's'}. ✅'
-          : "I couldn't find anything matching that, so nothing was deleted.",
-    ));
+    final reply = outcome.succeeded > 0
+        ? 'Done — deleted ${outcome.succeeded} item${outcome.succeeded == 1 ? '' : 's'} ($summary). ✅'
+        : "I couldn't find anything matching that, so nothing was deleted.";
+    _recordTurn(userText ?? '(I tapped Delete on the confirmation card.)', reply);
+    _append(ChatMessage(role: ChatRole.assistant, text: reply));
     await _persistSession();
   }
 
   /// Discards the pending deletions on [message] without running them.
-  void cancelPendingActions(ChatMessage message) {
+  void cancelPendingActions(ChatMessage message, {String? userText}) {
     _clearPending(message);
-    _append(const ChatMessage(
-      role: ChatRole.assistant,
-      text: 'No problem — I left everything as it is.',
-    ));
+    const reply = 'No problem — I left everything as it is.';
+    _recordTurn(userText ?? '(I tapped Cancel on the confirmation card.)', reply);
+    _append(const ChatMessage(role: ChatRole.assistant, text: reply));
+    _persistSession();
+  }
+
+  /// Adds a user + model pair to the AI history (keeps roles alternating).
+  void _recordTurn(String userText, String modelText) {
+    _history
+      ..add({
+        'role': 'user',
+        'parts': [
+          {'text': userText}
+        ]
+      })
+      ..add({
+        'role': 'model',
+        'parts': [
+          {'text': modelText}
+        ]
+      });
+  }
+
+  /// The delete card still waiting for an answer, if it is the assistant's
+  /// latest message (ignoring the user message just added).
+  ChatMessage? _openPendingCard() {
+    for (final m in state.messages.reversed) {
+      if (m.isUser) continue;
+      return m.hasPendingActions ? m : null;
+    }
+    return null;
   }
 
   /// Replaces [message] in the visible transcript with a copy that has no

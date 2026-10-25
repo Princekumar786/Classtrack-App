@@ -142,28 +142,61 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
           path: '/splash',
           name: 'Splash',
-          builder: (_, __) => const SplashScreen()),
+          pageBuilder: (_, s) => _stage(s, const SplashScreen())),
       GoRoute(
           path: '/onboarding',
           name: 'Onboarding',
-          builder: (_, __) => const OnboardingScreen()),
+          pageBuilder: (_, s) => _stage(s, const OnboardingScreen())),
       GoRoute(
           path: '/login',
           name: 'Login',
-          builder: (_, __) => const LoginScreen()),
+          pageBuilder: (_, s) => _stage(s, const LoginScreen())),
       GoRoute(
           path: '/signup',
           name: 'Signup',
-          builder: (_, __) => const SignupScreen()),
+          pageBuilder: (_, s) => _stage(s, const SignupScreen())),
       GoRoute(
           path: '/verify-email',
           name: 'Verify email',
-          builder: (_, __) => const VerifyEmailScreen()),
+          pageBuilder: (_, s) => _stage(s, const VerifyEmailScreen())),
       GoRoute(
-          path: '/home', name: 'Home', builder: (_, __) => const HomeShell()),
+          path: '/home',
+          name: 'Home',
+          pageBuilder: (_, s) => _stage(s, const HomeShell())),
     ],
   );
 });
+
+/// Page for the app's top-level stages (splash → onboarding → sign-up / sign-in
+/// → home). A soft cross-fade with a slight zoom-in, so finishing onboarding
+/// or signing in flows into the next screen instead of the default slide-up
+/// cut. Only opacity + scale of the page layer (no snapshot or blur filters,
+/// see app_theme.dart), so it stays cheap on low-end phones. Instant under
+/// the OS "reduce motion" setting.
+Page<void> _stage(GoRouterState state, Widget child) {
+  return CustomTransitionPage<void>(
+    key: state.pageKey,
+    name: state.name,
+    child: child,
+    transitionDuration: const Duration(milliseconds: 480),
+    reverseTransitionDuration: const Duration(milliseconds: 320),
+    transitionsBuilder: (context, animation, secondaryAnimation, child) {
+      if (MediaQuery.of(context).disableAnimations) return child;
+      final curved = CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeOutCubic,
+        reverseCurve: Curves.easeInCubic,
+      );
+      return FadeTransition(
+        opacity: curved,
+        child: ScaleTransition(
+          scale: Tween<double>(begin: 0.96, end: 1).animate(curved),
+          child: RepaintBoundary(child: child),
+        ),
+      );
+    },
+  );
+}
 
 /// Ties PostHog events to the signed-in Firebase user. Guarded + fire-and-forget
 /// so an analytics hiccup can never affect auth/navigation.

@@ -428,9 +428,10 @@ class _FocusCard extends ConsumerWidget {
                     ),
                     onPressed: () async {
                       HapticFeedback.mediumImpact();
+                      final analytics = ref.read(analyticsProvider);
                       await controller.markDayComplete(
                           plan.id, day.dayNumber, true);
-                      ref.read(analyticsProvider).plannerDayCompleted();
+                      analytics.plannerDayCompleted();
                       if (context.mounted) {
                         showQuickFeedback(context, 'Day ${day.dayNumber} done. Nice work!');
                       }

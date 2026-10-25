@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -245,6 +246,14 @@ Future<void> _bootstrap() async {
 class ErrorReportingProviderObserver extends ProviderObserver {
   const ErrorReportingProviderObserver();
 
+  static bool _signedOut() {
+    try {
+      return FirebaseAuth.instance.currentUser == null;
+    } catch (_) {
+      return false; // Firebase not ready: report as usual
+    }
+  }
+
   @override
   void providerDidFail(
     ProviderBase<Object?> provider,
@@ -252,6 +261,14 @@ class ErrorReportingProviderObserver extends ProviderObserver {
     StackTrace stackTrace,
     ProviderContainer container,
   ) {
+    // Signing out revokes access while the old account's Firestore listeners
+    // are still closing, so each one fails with permission-denied (~75 events
+    // a week, all on the Login screen). Expected, not a bug: skip them.
+    if (error is FirebaseException &&
+        error.code == 'permission-denied' &&
+        _signedOut()) {
+      return;
+    }
     ErrorReporter.report(
       error,
       stackTrace,

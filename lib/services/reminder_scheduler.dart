@@ -21,6 +21,7 @@ import '../features/subscription/presentation/providers/subscription_providers.d
 import '../features/tasks/domain/task_item.dart';
 import '../features/tasks/presentation/providers/task_providers.dart';
 import 'notification_service.dart';
+import 'push_messaging_service.dart';
 import 'error_reporter.dart';
 import 'reminder_sync_runner.dart';
 
@@ -310,6 +311,27 @@ final reminderSyncProvider = Provider<void>((ref) {
       await service.cancelAttendanceRiskAlert();
     }
   });
+});
+
+/// Once the OS allows notifications (e.g. the user tapped Allow on the launch
+/// prompt), switch reminders on for this account unless the student already
+/// chose on/off themselves. So "Allow" is all it takes to start getting class,
+/// task and exam reminders, and the Reminders card never asks a second time.
+/// Re-runs when the push prompt is answered; HomeShell also refreshes it on
+/// resume (the user may have allowed notifications in system settings).
+final autoEnableRemindersProvider = FutureProvider<void>((ref) async {
+  final push = ref.watch(pushMessagingServiceProvider);
+  void onAnswer() => ref.invalidateSelf();
+  push.permissionGranted.addListener(onAnswer);
+  ref.onDispose(() => push.permissionGranted.removeListener(onAnswer));
+
+  final prefs = ref.watch(scopedPrefsProvider);
+  if (prefs.getBool(AppConstants.prefsRemindersEnabled) != null) return;
+  // Null uid (signed out) → ScopedPrefs can't store a choice; nothing to do.
+  if (ref.watch(currentUidProvider) == null) return;
+  final granted = push.permissionGranted.value ||
+      await ref.read(notificationServiceProvider).hasPermission();
+  if (granted) await ref.read(remindersEnabledProvider.notifier).set(true);
 });
 
 /// Requests notification permission and, if granted, turns reminders on (which

@@ -142,4 +142,23 @@ void main() {
       expect(categorizeExpense('canteen lunch'), 'food');
     });
   });
+
+  group('parseConfirmationReply', () {
+    test('yes-type answers confirm', () {
+      for (final s in ['yes', 'Yes!', 'yes delete it', 'ok', 'Sure', 'confirm', 'go ahead', 'haan']) {
+        expect(parseConfirmationReply(s), isTrue, reason: s);
+      }
+    });
+    test('no-type answers cancel', () {
+      for (final s in ['no', 'No.', 'cancel', "don't", 'wait', 'keep it']) {
+        expect(parseConfirmationReply(s), isFalse, reason: s);
+      }
+    });
+    test('new requests and long messages go to the AI', () {
+      for (final s in ['', 'what is my attendance in Maths', 'add a physics exam tomorrow',
+          'yes and also add a Maths exam for next friday please']) {
+        expect(parseConfirmationReply(s), isNull, reason: s);
+      }
+    });
+  });
 }

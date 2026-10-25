@@ -31,19 +31,20 @@ class ChatUsageRepository {
 
   Future<int> currentCount() async => _readCount((await _doc.get()).data());
 
-  /// Atomically records one more used message, resetting on a new month.
+  /// Records one more used message, resetting on a new month.
+  ///
+  /// No transaction on purpose: this is only the UI mirror (the server keeps
+  /// the real count), and FlutterFire transactions throw a noisy
+  /// `MissingPluginException(cancel on …/firebase_firestore/transaction/…)`
+  /// after each run. `FieldValue.increment` keeps same-month bumps atomic.
   Future<void> increment() async {
     final month = currentMonth();
-    await db.runTransaction((tx) async {
-      final snap = await tx.get(_doc);
-      final data = snap.data();
-      if (data == null || data['month'] != month) {
-        tx.set(_doc, {'month': month, 'count': 1});
-      } else {
-        final next = ((data['count'] as num?)?.toInt() ?? 0) + 1;
-        tx.set(_doc, {'count': next}, SetOptions(merge: true));
-      }
-    });
+    final data = (await _doc.get()).data();
+    if (data == null || data['month'] != month) {
+      await _doc.set({'month': month, 'count': 1});
+    } else {
+      await _doc.set({'count': FieldValue.increment(1)}, SetOptions(merge: true));
+    }
   }
 
   /// Marks this month as fully used (the server reported the free limit even
@@ -51,11 +52,8 @@ class ChatUsageRepository {
   /// lowers an existing higher count.
   Future<void> markExhausted(int limit) async {
     final month = currentMonth();
-    await db.runTransaction((tx) async {
-      final snap = await tx.get(_doc);
-      final current = _readCount(snap.data());
-      if (current >= limit) return;
-      tx.set(_doc, {'month': month, 'count': limit});
-    });
+    final current = _readCount((await _doc.get()).data());
+    if (current >= limit) return;
+    await _doc.set({'month': month, 'count': limit});
   }
 }

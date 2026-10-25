@@ -59,7 +59,8 @@ class _HomeTourSheetState extends State<_HomeTourSheet> {
       Navigator.of(context).maybePop();
     } else {
       _controller.nextPage(
-          duration: const Duration(milliseconds: 260), curve: Curves.easeOut);
+          duration: const Duration(milliseconds: 420),
+          curve: Curves.easeOutCubic);
     }
   }
 
@@ -88,7 +89,28 @@ class _HomeTourSheetState extends State<_HomeTourSheet> {
                 controller: _controller,
                 onPageChanged: (i) => setState(() => _index = i),
                 itemCount: widget.steps.length,
-                itemBuilder: (_, i) => _StepView(step: widget.steps[i]),
+                // Each step fades, shrinks a little and drifts with the swipe,
+                // so moving between steps feels continuous rather than a
+                // flat slide. Driven by the page position (follows the finger).
+                itemBuilder: (_, i) => AnimatedBuilder(
+                  animation: _controller,
+                  child: _StepView(step: widget.steps[i]),
+                  builder: (context, child) {
+                    final page = _controller.hasClients &&
+                            _controller.position.haveDimensions
+                        ? (_controller.page ?? _index.toDouble())
+                        : _index.toDouble();
+                    final d = (page - i).clamp(-1.0, 1.0);
+                    final t = d.abs();
+                    return Opacity(
+                      opacity: 1 - t * 0.85,
+                      child: Transform.translate(
+                        offset: Offset(d * 60, 0),
+                        child: Transform.scale(scale: 1 - t * 0.12, child: child),
+                      ),
+                    );
+                  },
+                ),
               ),
             ),
             const SizedBox(height: 14),
@@ -97,7 +119,8 @@ class _HomeTourSheetState extends State<_HomeTourSheet> {
               children: [
                 for (var i = 0; i < widget.steps.length; i++)
                   AnimatedContainer(
-                    duration: const Duration(milliseconds: 220),
+                    duration: const Duration(milliseconds: 320),
+                    curve: Curves.easeOutCubic,
                     margin: const EdgeInsets.symmetric(horizontal: 3),
                     width: i == _index ? 20 : 7,
                     height: 7,
@@ -127,7 +150,11 @@ class _HomeTourSheetState extends State<_HomeTourSheet> {
                         backgroundColor: AppColors.primary,
                         minimumSize: const Size.fromHeight(48)),
                     onPressed: _next,
-                    child: Text(_isLast ? 'Done' : 'Next'),
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 200),
+                      child: Text(_isLast ? 'Done' : 'Next',
+                          key: ValueKey(_isLast)),
+                    ),
                   ),
                 ),
               ],

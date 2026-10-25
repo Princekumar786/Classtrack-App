@@ -169,6 +169,10 @@ class AppConstants {
   //    published after it counts as a new match;
   //  • CSV of announcement (banner) ids the user has already seen.
   static const String prefsNotifSeenAt = 'notif_seen_at';
+  //   When this account started getting opportunity/perk notifications on
+  //   this device. Only items published AFTER it are listed in the bell, so
+  //   content that was already live before isn't announced.
+  static const String prefsNotifListSince = 'notif_list_since';
   static const String prefsAnnouncementsSeen = 'announcements_seen';
 
   // Notification preferences

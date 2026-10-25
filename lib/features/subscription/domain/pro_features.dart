@@ -28,7 +28,7 @@ class ProFeatures {
     ProFeature(
       Icons.document_scanner_rounded,
       'Unlimited AI timetable import',
-      'Import as many timetables as you like — snap a photo, upload a PDF or paste text and let AI build your schedule. (New students get one free scan during first-time setup, before adding any subjects.)',
+      'Import as many timetables as you like — snap a photo, upload a PDF or paste text and let AI build your schedule. (Free members get 2 scans in total.)',
     ),
     ProFeature(
       Icons.explore_rounded,

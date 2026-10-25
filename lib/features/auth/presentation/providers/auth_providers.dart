@@ -83,9 +83,15 @@ Future<void> runProfileSelfHeal({
       if (created) await onCreated?.call();
       return;
     } catch (e, st) {
-      ErrorReporter.report(e, st,
-          reason: 'profile_self_heal', extra: {'attempt': attempt + 1});
-      if (attempt >= delays.length) return;
+      // A phone that is offline at launch fails every early try; reporting
+      // each one flooded PostHog (100+ "unable to resolve host" a week). Only
+      // report real defects, or a network failure that outlasted every retry.
+      final lastTry = attempt >= delays.length;
+      if (lastTry || !isTransientError(e)) {
+        ErrorReporter.report(e, st,
+            reason: 'profile_self_heal', extra: {'attempt': attempt + 1});
+      }
+      if (lastTry) return;
       await Future<void>.delayed(delays[attempt]);
     }
   }

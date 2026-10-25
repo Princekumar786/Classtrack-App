@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:url_launcher/url_launcher.dart';
+import '../../../../core/utils/url_launcher_util.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../data/subscription_service.dart';
@@ -43,8 +43,7 @@ class _ProStatusScreenState extends ConsumerState<ProStatusScreen> {
   Future<void> _manage(String url) async {
     final uri = Uri.tryParse(url);
     if (uri == null) return;
-    final launched =
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
+    final launched = await safeLaunchUri(uri);
     if (!launched && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Could not open subscription settings.')),

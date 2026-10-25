@@ -41,3 +41,17 @@ export function deriveEntitlement(subscriber, entitlementId, now) {
   }
   return { active: true, pro: false, proUntil: Date.parse(ent.expires_date) };
 }
+
+
+/// True when a RevenueCat webhook event is a REFUND. RevenueCat reports refunds
+/// as `CANCELLATION` with `cancel_reason: "CUSTOMER_SUPPORT"`. A normal
+/// CANCELLATION (auto-renew turned off) keeps access until EXPIRATION, but a
+/// refunded lifetime (non-renewing) purchase never gets an EXPIRATION event, so
+/// without this the refunded buyer would keep Pro forever.
+export function isRefundCancellation(event) {
+  return (
+    !!event &&
+    event.type === "CANCELLATION" &&
+    event.cancel_reason === "CUSTOMER_SUPPORT"
+  );
+}

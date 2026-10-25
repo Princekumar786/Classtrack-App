@@ -211,8 +211,9 @@ class _TopBar extends ConsumerWidget {
                   ),
                 );
                 if (ok == true && context.mounted) {
+                  final analytics = ref.read(analyticsProvider);
                   await controller.deletePlan(plan.id);
-                  ref.read(analyticsProvider).plannerDeleted();
+                  analytics.plannerDeleted();
                   if (context.mounted) Navigator.of(context).maybePop();
                 }
               }, danger: true),

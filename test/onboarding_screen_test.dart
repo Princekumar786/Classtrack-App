@@ -93,11 +93,24 @@ void main() {
     await settle();
     await tester.tap(find.text('Looks good'));
     await settle();
+    // Perks: the pass unlocks, and peeking a card makes the mascot react.
+    expect(find.text('Student perks, unlocked'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 2));
+    await tester.ensureVisible(find.text('Scholarships'));
+    await settle();
+    await tester.tap(find.text('Scholarships'));
+    await settle();
+    expect(find.text('Free money for studying? Yes please!'), findsWidgets);
+    await tester.tap(find.text('Love it, build my plan'));
+    await settle();
     expect(find.text('Building your plan…'), findsOneWidget);
     await tester.pump(const Duration(seconds: 3));
     await settle();
     expect(find.text('You’re all set, Priya.'), findsOneWidget);
     // Back from the plan skips the one-way "building" step.
+    await tester.tap(find.byTooltip('Back'));
+    await settle();
+    expect(find.text('Student perks, unlocked'), findsOneWidget);
     await tester.tap(find.byTooltip('Back'));
     await settle();
     expect(find.text('Pick your sidekick'), findsOneWidget);
@@ -155,6 +168,12 @@ void main() {
     expect(find.text('Pick your sidekick'), findsOneWidget);
     expect(find.text('Early bird'), findsOneWidget);
     await tester.tap(find.text('Skip'));
+    await tester.pumpAndSettle();
+
+    // Perks: a reveal step with no question, then on to the plan.
+    expect(find.text('Student perks, unlocked'), findsOneWidget);
+    expect(noAttendance, findsNothing);
+    await tester.tap(find.text('Build my plan'));
     await tester.pump();
 
     // "Building your plan" auto-advances.

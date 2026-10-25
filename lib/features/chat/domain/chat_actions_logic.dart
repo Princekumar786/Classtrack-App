@@ -260,6 +260,25 @@ bool claimsDataChange(String reply) {
       RegExp(r'\bis now (marked|complete|completed|done|deleted|updated)').hasMatch(s);
 }
 
+/// Reads a short typed answer to the delete-confirmation card.
+/// Returns true for "yes"-type answers, false for "no"-type answers, and null
+/// for anything else (a new question/request, which then goes to the AI).
+/// Only short replies count, so "yes and also add a Maths exam" is not
+/// treated as a plain confirmation.
+bool? parseConfirmationReply(String text) {
+  final s = text
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z\s]'), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+  if (s.isEmpty || s.split(' ').length > 5) return null;
+  const no = r'^(no|nope|nah|cancel|stop|dont|don t|do not|wait|keep it|never mind|nevermind)\b';
+  const yes = r'^(yes|yeah|yep|yup|ya|y|ok|okay|sure|confirm|confirmed|do it|go ahead|delete it|delete|remove it|please do|haan|ha|han)\b';
+  if (RegExp(no).hasMatch(s)) return false;
+  if (RegExp(yes).hasMatch(s)) return true;
+  return null;
+}
+
 /// Fields the action handlers read as numbers, yes/no flags or lists.
 const _numericActionKeys = {
   'amount', 'newAmount', 'score', 'maxScore', 'weight', 'minutes', 'dailyMinutes',

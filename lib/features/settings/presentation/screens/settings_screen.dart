@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:classtrack/core/theme/app_icons.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+
+import '../../../../core/utils/url_launcher_util.dart';
 import '../../../semesters/presentation/screens/past_semesters_screen.dart';
 
 import '../../../../core/constants/app_constants.dart';
@@ -1016,9 +1018,8 @@ class SettingsScreen extends ConsumerWidget {
 
   Future<void> _rate(BuildContext context) async {
     final market = Uri.parse(AppConstants.playStoreMarketUrl);
-    if (!await launchUrl(market, mode: LaunchMode.externalApplication)) {
-      await launchUrl(Uri.parse(AppConstants.playStoreUrl),
-          mode: LaunchMode.externalApplication);
+    if (!await safeLaunchUri(market)) {
+      await safeLaunchUri(Uri.parse(AppConstants.playStoreUrl));
     }
   }
 
@@ -1037,16 +1038,15 @@ class SettingsScreen extends ConsumerWidget {
       path: AppConstants.supportEmail,
       query: 'subject=${Uri.encodeComponent('ClassTrack feedback')}',
     );
-    await launchUrl(uri);
+    await safeLaunchUri(uri, mode: LaunchMode.platformDefault);
   }
 
   Future<void> _manageSubscription() async {
-    await launchUrl(Uri.parse(AppConstants.manageSubscriptionsUrl),
-        mode: LaunchMode.externalApplication);
+    await safeLaunchUri(Uri.parse(AppConstants.manageSubscriptionsUrl));
   }
 
   Future<void> _openUrl(String url) async {
-    await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    await safeLaunchUri(Uri.parse(url));
   }
 
   Future<void> _restorePurchases(BuildContext context, WidgetRef ref) async {
