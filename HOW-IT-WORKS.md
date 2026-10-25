@@ -45,6 +45,11 @@ A student app (Android, iOS and web) for tracking attendance, class timetables, 
 
 ## Change log (newest first)
 
+### 2026-10-25 - Pushed all work to GitHub
+- **What:** Committed everything from 1.0.61 to 1.0.64 build 68 as one commit (`7c4e84a`): perks onboarding page, perks in Notifications, the 2-free-scans fix, ask-for-notifications-once, smoother transitions, faster builds, `AGENTS.md`, plus older pending work (chat guard, Notes/Tasks redesign, store images). Pushed to `origin` (github.com/Princekumar786/Classtrack-App), branch `main`. Checked before pushing: no secret keys in the commit.
+- **Why:** Back up the latest code.
+- **Action needed:** None. Not pushed to `playstore`. Run `git push playstore main` if that copy should get it too.
+
 ### 2026-10-25 - Project map for AI assistants
 - **What:** New `AGENTS.md` at the project root. It lists where everything lives (folders, key files per feature, backend functions, Firestore collections), the free/Pro limits, commands, and the rules that are easy to break. `.kiro/steering/project-map.md` loads it into Kiro automatically for every chat.
 - **Why:** So an AI can start working straight away without reading the whole codebase.
